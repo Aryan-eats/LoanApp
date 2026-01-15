@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { Home, ShieldCheck, Briefcase, Calculator, Info, Phone, Menu, X } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -44,12 +45,25 @@ const Navbar: React.FC = () => {
           </div>
 
           {/* Desktop Menu */}
-          <div className="hidden md:flex space-x-6">
-            <Link to="/" className="text-gray-700 hover:text-black px-3 py-2 rounded-md text-sm font-medium">Home</Link>
-            <Link to="/why-us" className="text-gray-700 hover:text-black px-3 py-2 rounded-md text-sm font-medium">Why Us?</Link>
-            <Link to="/services" className="text-gray-700 hover:text-black px-3 py-2 rounded-md text-sm font-medium">Services</Link>
-            <Link to="/about-us" className="text-gray-700 hover:text-black px-3 py-2 rounded-md text-sm font-medium">About Us</Link>
-            <Link to="/contact" className="text-gray-700 hover:text-black px-3 py-2 rounded-md text-sm font-medium">Contact</Link>
+          <div className="hidden md:flex space-x-4">
+            <Link to="/" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <Home size={16} /> Home
+            </Link>
+            <Link to="/why-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <ShieldCheck size={16} /> Why Us?
+            </Link>
+            <Link to="/services" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <Briefcase size={16} /> Services
+            </Link>
+            <Link to="/calculator" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <Calculator size={16} /> EMI Calculator
+            </Link>
+            <Link to="/about-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <Info size={16} /> About Us
+            </Link>
+            <Link to="/contact" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+              <Phone size={16} /> Contact
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -63,13 +77,9 @@ const Navbar: React.FC = () => {
             >
               <span className="sr-only">Open main menu</span>
               {!isOpen ? (
-                <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
+                <Menu size={24} />
               ) : (
-                <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X size={24} />
               )}
             </button>
           </div>
@@ -80,11 +90,24 @@ const Navbar: React.FC = () => {
       {isOpen && (
         <div className="md:hidden" id="mobile-menu">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white shadow-lg">
-            <Link to="/" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium" onClick={toggleMenu}>Home</Link>
-            <Link to="/why-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium" onClick={toggleMenu}>Why Us?</Link>
-            <Link to="/services" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium" onClick={toggleMenu}>Services</Link>
-            <Link to="/about-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium" onClick={toggleMenu}>About Us</Link>
-            <Link to="/contact" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium" onClick={toggleMenu}>Contact</Link>
+            <Link to="/" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <Home size={20} /> Home
+            </Link>
+            <Link to="/why-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <ShieldCheck size={20} /> Why Us?
+            </Link>
+            <Link to="/services" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <Briefcase size={20} /> Services
+            </Link>
+            <Link to="/calculator" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <Calculator size={20} /> EMI Calculator
+            </Link>
+            <Link to="/about-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <Info size={20} /> About Us
+            </Link>
+            <Link to="/contact" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+              <Phone size={20} /> Contact
+            </Link>
           </div>
         </div>
       )}

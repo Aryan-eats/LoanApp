@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { serviceCategories } from '../data/loanCategories';
+import { useLeadsStore } from '../stores/leadsStore';
 
 const ApplicationForm: React.FC = () => {
   const location = useLocation();
+  const addLead = useLeadsStore((state) => state.addLead);
   
   // 1. State for Form Data
   const [formData, setFormData] = useState({
@@ -48,22 +50,21 @@ const ApplicationForm: React.FC = () => {
     }
   };
 
-  // 5. Handle Form Submission to Google Sheets
+  // 5. Handle Form Submission - Add to Leads Store
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus('Sending...');
 
-    // Your Google Apps Script Web App URL
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjnsB2vLx0u3AjstwOxsVrY0BPwjRYElu46hNdI3USsO1fEPLPUZnYwefIQKCzFXsvgQ/exec/exec";
-
     try {
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      // Add lead to the store (will appear in Admin > Leads)
+      addLead({
+        customerName: formData.name,
+        customerPhone: formData.phone,
+        city: formData.city,
+        loanType: formData.loanType,
+        loanSubType: formData.loanSubType,
+        loanAmount: Number(formData.loanAmount),
+        salaryType: formData.salaryType,
       });
 
       // Show success message

@@ -22,6 +22,7 @@ const Cards: React.FC = () => {
                   className="w-full h-full object-cover"
                   src={loan.image}
                   alt={loan.title}
+                  loading="lazy"
                 />
               </div>
               <div className="p-6 flex-1 flex flex-col">

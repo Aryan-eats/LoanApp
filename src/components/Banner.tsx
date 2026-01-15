@@ -15,8 +15,8 @@ const Banner: React.FC = () => {
           <Link to="/services" className="bg-white text-black hover:bg-gray-100 font-bold py-3 px-8 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
             Explore Categories
           </Link>
-          <Link to="/contact" className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-black font-bold py-3 px-8 rounded-full transition duration-300">
-            Contact Us
+          <Link to="/onboarding" className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-black font-bold py-3 px-8 rounded-full transition duration-300 animate-pulse-glow transform hover:scale-105">
+            Become a Partner
           </Link>
         </div>
       </div>

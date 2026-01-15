@@ -1,0 +1,9 @@
+export { default as PartnerDashboard } from './PartnerDashboard';
+export { default as AddClientPage } from './AddClientPage';
+export { default as MyLeadsPage } from './MyLeadsPage';
+export { default as CreditCheckPage } from './CreditCheckPage';
+export { default as DocumentsPage } from './DocumentsPage';
+export { default as CommissionsPage } from './CommissionsPage';
+export { default as BankOffersPage } from './BankOffersPage';
+export { default as ProfilePage } from './ProfilePage';
+export { default as SupportPage } from './SupportPage';

@@ -1,0 +1,9 @@
+export { default as AdminDashboard } from './AdminDashboard';
+export { default as PartnersPage } from './PartnersPage';
+export { default as LeadsPage } from './LeadsPage';
+export { default as DocumentsPage } from './DocumentsPage';
+export { default as BanksPage } from './BanksPage';
+export { default as CommissionsPage } from './CommissionsPage';
+export { default as UsersPage } from './UsersPage';
+export { default as AuditLogsPage } from './AuditLogsPage';
+export { default as SettingsPage } from './SettingsPage';
