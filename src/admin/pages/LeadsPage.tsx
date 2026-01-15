@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../components/StatusBadge';
-import { leads as placeholderLeads } from '../data/placeholderData';
+import { leads as placeholderLeads, banks } from '../data/placeholderData';
 import { useLeadsStore } from '../../stores/leadsStore';
 import type { Lead, LeadStatus, LoanType } from '../types/admin';
 import { buildLoanTypeLabels, getProductsByCategory, type LoanCategory } from '../../data/loanProducts';
@@ -31,6 +31,21 @@ import {
 
 // Dynamic labels from registry - supports all loan products
 const loanTypeLabels = buildLoanTypeLabels(true);
+
+// Helper function to get loan type display label
+// Handles both registered codes and website-submitted loan types
+const getLoanTypeLabel = (loanType: string): string => {
+  // First try to find in registered labels
+  if (loanTypeLabels[loanType]) {
+    return loanTypeLabels[loanType];
+  }
+  // Otherwise, format the loan type string nicely
+  // Convert snake_case to Title Case (e.g., "personal_loans" -> "Personal Loans")
+  return loanType
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
 const statusSteps: LeadStatus[] = ['submitted', 'docs_collected', 'bank_logged', 'approved', 'disbursed'];
 
@@ -95,6 +110,8 @@ const LeadsPage: React.FC = () => {
 
   const [statusNote, setStatusNote] = useState('');
   const [showStatusDropdown, setShowStatusDropdown] = useState<string | null>(null);
+  const [showBankConfirmModal, setShowBankConfirmModal] = useState(false);
+  const [pendingBankAssignment, setPendingBankAssignment] = useState<string | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -218,6 +235,86 @@ const LeadsPage: React.FC = () => {
     setShowStatusDropdown(null);
   };
 
+  const handleBankAssignmentClick = (bankName: string) => {
+    if (!selectedLead || !bankName) return;
+    
+    // If a bank is already assigned and we're changing to a different one, show confirmation
+    if (selectedLead.bankAssigned && selectedLead.bankAssigned !== bankName) {
+      setPendingBankAssignment(bankName);
+      setShowBankConfirmModal(true);
+    } else {
+      // No bank assigned yet, assign directly
+      handleBankAssignment(selectedLead.id, bankName);
+    }
+  };
+
+  const confirmBankAssignment = () => {
+    if (selectedLead && pendingBankAssignment) {
+      handleBankAssignment(selectedLead.id, pendingBankAssignment);
+    }
+    setShowBankConfirmModal(false);
+    setPendingBankAssignment(null);
+  };
+
+  const cancelBankAssignment = () => {
+    setShowBankConfirmModal(false);
+    setPendingBankAssignment(null);
+  };
+
+  const handleBankAssignment = (leadId: string, bankName: string) => {
+    if (!bankName) return;
+    
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    setLeads((prev) =>
+      prev.map((lead) => {
+        if (lead.id === leadId) {
+          const isChangingBank = lead.bankAssigned && lead.bankAssigned !== bankName;
+          const newTimelineEntry = {
+            id: `T${lead.timeline.length + 1}`,
+            status: lead.status,
+            timestamp,
+            updatedBy: 'Admin',
+            note: isChangingBank 
+              ? `Bank changed from ${lead.bankAssigned} to ${bankName}`
+              : `Bank assigned: ${bankName}`,
+          };
+          return {
+            ...lead,
+            bankAssigned: bankName,
+            updatedAt: dateStr,
+            timeline: [...lead.timeline, newTimelineEntry],
+          };
+        }
+        return lead;
+      })
+    );
+
+    // Update selectedLead if it's the one being modified
+    if (selectedLead?.id === leadId) {
+      setSelectedLead((prev) => {
+        if (!prev) return null;
+        const isChangingBank = prev.bankAssigned && prev.bankAssigned !== bankName;
+        const newTimelineEntry = {
+          id: `T${prev.timeline.length + 1}`,
+          status: prev.status,
+          timestamp,
+          updatedBy: 'Admin',
+          note: isChangingBank 
+            ? `Bank changed from ${prev.bankAssigned} to ${bankName}`
+            : `Bank assigned: ${bankName}`,
+        };
+        return {
+          ...prev,
+          bankAssigned: bankName,
+          updatedAt: dateStr,
+          timeline: [...prev.timeline, newTimelineEntry],
+        };
+      });
+    }
+  };
+
   const getNextStatuses = (currentStatus: LeadStatus): LeadStatus[] => {
     const statusFlow: Record<LeadStatus, LeadStatus[]> = {
       submitted: ['docs_collected', 'rejected'],
@@ -335,7 +432,7 @@ const LeadsPage: React.FC = () => {
                       <p className="text-xs text-gray-500">{lead.customerPhone}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{loanTypeLabels[lead.loanType]}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{getLoanTypeLabel(lead.loanType)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lead.loanAmount)}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{lead.partnerName}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{lead.bankAssigned || '-'}</td>
@@ -460,7 +557,7 @@ const LeadsPage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-lg p-4">
                       <p className="text-sm text-gray-500">Loan Type</p>
-                      <p className="text-lg font-semibold text-gray-900">{loanTypeLabels[selectedLead.loanType]}</p>
+                      <p className="text-lg font-semibold text-gray-900">{getLoanTypeLabel(selectedLead.loanType)}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
                       <p className="text-sm text-gray-500">Loan Amount</p>
@@ -634,42 +731,90 @@ const LeadsPage: React.FC = () => {
 
               {/* Bank Submission Tab */}
               {activeTab === 'bank' && (
-                <div className="space-y-4">
-                  {selectedLead.bankAssigned ? (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-12 h-12 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                <div className="space-y-6">
+                  {/* Current Bank Info */}
+                  {selectedLead.bankAssigned && (
+                    <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{selectedLead.bankAssigned}</p>
-                          <p className="text-xs text-gray-500">Assigned Bank</p>
+                          <p className="text-sm font-semibold text-green-800">Currently Assigned: {selectedLead.bankAssigned}</p>
+                          <p className="text-xs text-green-600">Last updated: {selectedLead.updatedAt}</p>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Application Status</span>
-                          <StatusBadge status={selectedLead.status} size="sm" />
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Last Updated</span>
-                          <span className="text-gray-900">{selectedLead.updatedAt}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <svg className="w-12 h-12 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                      <p className="mt-2 text-sm text-gray-500">No bank assigned yet</p>
-                      <button className="mt-4 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
-                        Assign Bank
-                      </button>
                     </div>
                   )}
+
+                  {/* Available Banks - Click to Assign */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      {selectedLead.bankAssigned ? 'Change Bank' : 'Select a Bank to Assign'}
+                    </h4>
+                    <p className="text-xs text-gray-500">Click on a bank to assign it to this lead</p>
+                    <div className="grid gap-3">
+                      {banks
+                        .filter((bank) => bank.status === 'active')
+                        .map((bank) => {
+                          const isCurrentBank = selectedLead.bankAssigned === bank.name;
+                          return (
+                            <div
+                              key={bank.id}
+                              onClick={() => !isCurrentBank && handleBankAssignmentClick(bank.name)}
+                              className={`p-4 rounded-lg border-2 transition-all ${
+                                isCurrentBank
+                                  ? 'border-green-400 bg-green-50 cursor-default'
+                                  : 'border-gray-200 hover:border-gray-900 hover:bg-gray-50 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${
+                                    isCurrentBank
+                                      ? 'bg-green-200 text-green-800'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {bank.code.substring(0, 2)}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-900">{bank.name}</p>
+                                    <p className="text-xs text-gray-500">TAT: {bank.avgTat} days • Contact: {bank.contactPerson}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="text-right">
+                                    <p className="text-sm font-semibold text-green-600">{bank.approvalRate}%</p>
+                                    <p className="text-xs text-gray-500">Approval</p>
+                                  </div>
+                                  {!isCurrentBank && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleBankAssignmentClick(bank.name);
+                                      }}
+                                      className="px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+                                    >
+                                      Assign
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {isCurrentBank && (
+                                <div className="mt-3 pt-3 border-t border-green-200 flex items-center gap-1 text-xs text-green-700">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  Currently Assigned
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -773,6 +918,41 @@ const LeadsPage: React.FC = () => {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Change Confirmation Modal */}
+      {showBankConfirmModal && selectedLead && pendingBankAssignment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Bank Change</h3>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to change the assigned bank from{' '}
+              <span className="font-semibold text-gray-900">{selectedLead.bankAssigned}</span> to{' '}
+              <span className="font-semibold text-gray-900">{pendingBankAssignment}</span>?
+            </p>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={cancelBankAssignment}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmBankAssignment}
+                className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+              >
+                Confirm Change
+              </button>
             </div>
           </div>
         </div>

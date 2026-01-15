@@ -1,0 +1,1 @@
+when a lead is added, automatically create a section in documents page with customer name and document list (fetched with loan type required documents).

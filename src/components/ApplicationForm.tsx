@@ -177,7 +177,6 @@ const ApplicationForm: React.FC = () => {
               name="loanSubType"
               value={formData.loanSubType}
               onChange={handleChange}
-              required
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-black focus:border-black outline-none transition-colors bg-white"
             >
               <option value="" disabled>Select Sub-type</option>

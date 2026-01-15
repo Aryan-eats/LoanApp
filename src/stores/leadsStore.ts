@@ -48,7 +48,7 @@ export const useLeadsStore = create<LeadsStore>()(
           loanType: leadData.loanType.toLowerCase().replace(/\s+/g, '_'),
           loanAmount: leadData.loanAmount,
           partnerId: 'WEBSITE',
-          partnerName: 'Website Application',
+          partnerName: 'Direct (Website)',
           status: 'submitted',
           createdAt: dateStr,
           updatedAt: dateStr,
