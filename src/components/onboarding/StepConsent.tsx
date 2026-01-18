@@ -6,6 +6,8 @@ interface StepConsentProps {
   updateFormData: (fields: Partial<PartnerFormData>) => void;
   onSubmit: () => void;
   onBack: () => void;
+  isSubmitting?: boolean;
+  submitError?: string | null;
 }
 
 const StepConsent: React.FC<StepConsentProps> = ({
@@ -13,9 +15,10 @@ const StepConsent: React.FC<StepConsentProps> = ({
   updateFormData,
   onSubmit,
   onBack,
+  isSubmitting: externalIsSubmitting = false,
+  submitError = null,
 }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, checked } = e.target;
@@ -48,9 +51,6 @@ const StepConsent: React.FC<StepConsentProps> = ({
 
     const hasErrors = Object.values(newErrors).some((error) => error !== '');
     if (!hasErrors) {
-      setIsSubmitting(true);
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
       onSubmit();
     }
   };
@@ -232,12 +232,22 @@ const StepConsent: React.FC<StepConsentProps> = ({
         </p>
       </div>
 
+      {/* Error Message */}
+      {submitError && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+          <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <p className="text-sm text-red-700 whitespace-pre-line">{submitError}</p>
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <div className="flex gap-4 pt-4">
         <button
           type="button"
           onClick={onBack}
-          disabled={isSubmitting}
+          disabled={externalIsSubmitting}
           className="flex-1 border border-gray-300 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-50 transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -247,10 +257,10 @@ const StepConsent: React.FC<StepConsentProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={externalIsSubmitting}
           className="flex-1 bg-black text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-800 transition-colors duration-200 flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? (
+          {externalIsSubmitting ? (
             <>
               <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import Tooltip from '../components/Tooltip';
 import { getProductsByCategory, type LoanCategory } from '../../data/loanProducts';
+import { useLeadsStore } from '../../stores/leadsStore';
 
 type Step = 'client' | 'loan' | 'employment' | 'address' | 'consent';
 
@@ -83,6 +84,8 @@ export default function AddClientPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showEligibilityOption, setShowEligibilityOption] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<LoanCategory | ''>('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { createLead } = useLeadsStore();
 
   const [formData, setFormData] = useState({
     // Client Details
@@ -203,10 +206,37 @@ export default function AddClientPage() {
     if (!validateStep()) return;
 
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsSubmitting(false);
-    setShowEligibilityOption(true);
+    setSubmitError(null);
+
+    try {
+      // Create lead via API
+      const lead = await createLead({
+        fullName: formData.fullName,
+        phone: formData.phone,
+        email: formData.email || 'not-provided@placeholder.com',
+        city: formData.city,
+        pincode: formData.pincode,
+        employmentType: formData.employmentType,
+        monthlyIncome: formData.monthlyIncome ? Number(formData.monthlyIncome) : undefined,
+        companyName: formData.companyName,
+        loanType: formData.loanType || formData.loanCategory || 'personal_loan',
+        loanAmount: Number(formData.loanAmount),
+        tenure: formData.tenure ? Number(formData.tenure) : undefined,
+      });
+
+      if (lead) {
+        setShowEligibilityOption(true);
+      } else {
+        setSubmitError('Failed to create lead. Please try again.');
+      }
+    } catch (error) {
+      console.error('Submit lead error:', error);
+      // Use centralized error parser
+      const { parseApiError } = await import('../../utils/parseApiError');
+      setSubmitError(parseApiError(error, 'Failed to create lead. Please try again.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCheckEligibility = () => {
@@ -884,6 +914,17 @@ export default function AddClientPage() {
                   {errors.consentTerms}
                 </p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {submitError && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="text-sm font-medium text-red-800">Submission Failed</p>
+              <p className="text-sm text-red-700 mt-1">{submitError}</p>
             </div>
           </div>
         )}

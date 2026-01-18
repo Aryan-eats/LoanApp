@@ -30,9 +30,10 @@ import {
 } from '@mui/icons-material';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
-import { recentLeads } from '../data/placeholderData';
+import { useLeadsStore } from '../../stores/leadsStore';
 import type { Lead, LeadStatus, LoanType } from '../types/partner-dashboard';
 import { buildLoanTypeLabels, buildLoanTypeOptions, getLoanProduct, getLoanIcon, categoryLabels, type LoanCategory } from '../../data/loanProducts';
+import { useEffect } from 'react';
 
 // Dynamic labels from registry - supports all loan products
 const loanTypeLabels = buildLoanTypeLabels(true);
@@ -85,6 +86,14 @@ export default function MyLeadsPage() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showLeadDetails, setShowLeadDetails] = useState(false);
 
+  // Get leads from store
+  const { leads, fetchLeads } = useLeadsStore();
+
+  // Fetch leads on mount
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+
   // Get filtered sub-types based on selected categories
   const getFilteredSubTypes = () => {
     if (selectedCategories.length === 0) {
@@ -96,8 +105,8 @@ export default function MyLeadsPage() {
     });
   };
 
-  // Filter leads
-  const filteredLeads = recentLeads.filter((lead) => {
+  // Filter leads (client-side filtering on top of API data)
+  const filteredLeads = (leads as Lead[]).filter((lead) => {
     const matchesSearch =
       lead.client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.client.phone.includes(searchQuery) ||
@@ -337,7 +346,7 @@ export default function MyLeadsPage() {
       <div className="flex items-center justify-between text-sm text-slate-500">
         <p>
           Showing <span className="font-medium text-slate-700">{filteredLeads.length}</span> of{' '}
-          <span className="font-medium text-slate-700">{recentLeads.length}</span> leads
+          <span className="font-medium text-slate-700">{leads.length}</span> leads
         </p>
       </div>
 

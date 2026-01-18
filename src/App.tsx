@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ApplicationForm from './components/ApplicationForm';
 import ErrorBoundary from './components/ErrorBoundary';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Lazy load pages for better performance
 const Home = lazy(() => import('./pages/Home'));
@@ -13,6 +14,7 @@ const AboutUs = lazy(() => import('./pages/AboutUs'));
 const Contact = lazy(() => import('./pages/Contact'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 const PartnerOnboarding = lazy(() => import('./pages/PartnerOnboarding'));
+const LogIn = lazy(() => import('./pages/LogIn'));
 
 // Lazy load admin pages
 const AdminDashboard = lazy(() => import('./admin/pages/AdminDashboard'));
@@ -49,8 +51,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isPartnerDashboard = location.pathname.startsWith('/partner');
+  const isLoginPage = location.pathname === '/login';
 
-  if (isAdminRoute || isPartnerDashboard) {
+  if (isAdminRoute || isPartnerDashboard || isLoginPage) {
     // Admin and Partner Dashboard routes have their own layout
     return <>{children}</>;
   }
@@ -80,21 +83,22 @@ function App() {
               <Route path="/calculator" element={<Calculator />} />
               <Route path="/apply" element={<div className="pt-24 pb-12 px-4"><ApplicationForm /></div>} />
               <Route path="/onboarding" element={<PartnerOnboarding />} />
+              <Route path="/login" element={<LogIn />} />
 
               {/* Admin routes */}
-              <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/admin/partners" element={<PartnersPage />} />
-              <Route path="/admin/leads" element={<LeadsPage />} />
-              <Route path="/admin/documents" element={<DocumentsPage />} />
-              <Route path="/admin/banks" element={<BanksPage />} />
-              <Route path="/admin/commissions" element={<CommissionsPage />} />
-              <Route path="/admin/users" element={<UsersPage />} />
-              <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
-              <Route path="/admin/settings" element={<SettingsPage />} />
+              <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+              <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+              <Route path="/admin/partners" element={<ProtectedRoute allowedRoles={['admin']}><PartnersPage /></ProtectedRoute>} />
+              <Route path="/admin/leads" element={<ProtectedRoute allowedRoles={['admin']}><LeadsPage /></ProtectedRoute>} />
+              <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin']}><DocumentsPage /></ProtectedRoute>} />
+              <Route path="/admin/banks" element={<ProtectedRoute allowedRoles={['admin']}><BanksPage /></ProtectedRoute>} />
+              <Route path="/admin/commissions" element={<ProtectedRoute allowedRoles={['admin']}><CommissionsPage /></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><UsersPage /></ProtectedRoute>} />
+              <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></ProtectedRoute>} />
+              <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={['admin']}><SettingsPage /></ProtectedRoute>} />
 
               {/* Partner Dashboard routes */}
-              <Route path="/partner" element={<PartnerLayout />}>
+              <Route path="/partner" element={<ProtectedRoute allowedRoles={['partner']}><PartnerLayout /></ProtectedRoute>}>
                 <Route index element={<PartnerDashboard />} />
                 <Route path="add-client" element={<AddClientPage />} />
                 <Route path="leads" element={<MyLeadsPage />} />

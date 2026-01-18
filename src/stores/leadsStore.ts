@@ -1,98 +1,279 @@
+/**
+ * Leads Store with Backend Integration
+ * 
+ * Zustand store that syncs with the backend API.
+ * Uses frontend Lead types from partner-dashboard.ts.
+ */
+
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Lead } from '../admin/types/admin';
+import * as leadsApi from '../api/leadsApi';
+import type { Lead, LeadStatus, LeadsQueryParams, LeadStatsResponse, CreateLeadData } from '../api/leadsApi';
 
-// Generate unique ID for new leads
-const generateLeadId = () => {
-  return `L${Date.now().toString(36).toUpperCase()}`;
-};
+export type { Lead, LeadStatus, CreateLeadData };
 
-// Generate unique customer ID
-const generateCustomerId = () => {
-  return `C${Date.now().toString(36).toUpperCase()}`;
-};
-
-interface LeadsStore {
+interface LeadsState {
   leads: Lead[];
-  addLead: (leadData: {
-    customerName: string;
-    customerPhone: string;
-    customerEmail?: string;
-    city: string;
-    loanType: string;
-    loanSubType?: string;
-    loanAmount: number;
-    salaryType: string;
-  }) => Lead;
-  updateLead: (id: string, updates: Partial<Lead>) => void;
-  deleteLead: (id: string) => void;
-  getLeadById: (id: string) => Lead | undefined;
+  selectedLead: Lead | null;
+  stats: LeadStatsResponse['stats'] | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+  isLoading: boolean;
+  error: string | null;
+  filters: LeadsQueryParams;
 }
 
-export const useLeadsStore = create<LeadsStore>()(
-  persist(
-    (set, get) => ({
-      leads: [],
+interface LeadsActions {
+  // Fetch actions
+  fetchLeads: (params?: LeadsQueryParams, isAdmin?: boolean) => Promise<void>;
+  fetchLeadById: (id: string, isAdmin?: boolean) => Promise<Lead | null>;
+  fetchStats: (isAdmin?: boolean) => Promise<void>;
+  
+  // CRUD actions
+  createLead: (data: CreateLeadData) => Promise<Lead | null>;
+  updateLead: (id: string, data: Partial<Lead>, isAdmin?: boolean) => Promise<Lead | null>;
+  deleteLead: (id: string) => Promise<boolean>;
+  
+  // Status actions
+  updateStatus: (id: string, status: LeadStatus, note?: string, isAdmin?: boolean) => Promise<Lead | null>;
+  assignBank: (id: string, bankName: string, bankLogo?: string, note?: string) => Promise<Lead | null>;
+  
+  // Local actions
+  setSelectedLead: (lead: Lead | null) => void;
+  setFilters: (filters: LeadsQueryParams) => void;
+  clearError: () => void;
+  reset: () => void;
+}
 
-      addLead: (leadData) => {
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
-        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+type LeadsStore = LeadsState & LeadsActions;
 
-        const newLead: Lead = {
-          id: generateLeadId(),
-          customerId: generateCustomerId(),
-          customerName: leadData.customerName,
-          customerPhone: leadData.customerPhone,
-          customerEmail: leadData.customerEmail || `${leadData.customerPhone}@placeholder.com`,
-          loanType: leadData.loanType.toLowerCase().replace(/\s+/g, '_'),
-          loanAmount: leadData.loanAmount,
-          partnerId: 'WEBSITE',
-          partnerName: 'Direct (Website)',
-          status: 'submitted',
-          createdAt: dateStr,
-          updatedAt: dateStr,
-          timeline: [
-            {
-              id: 'T1',
-              status: 'submitted',
-              timestamp: `${dateStr} ${timeStr}`,
-              updatedBy: 'System',
-              note: `Applied via website. City: ${leadData.city}. Employment: ${leadData.salaryType}${leadData.loanSubType ? `. Sub-type: ${leadData.loanSubType}` : ''}`,
-            },
-          ],
-          documents: [],
-        };
+const initialState: LeadsState = {
+  leads: [],
+  selectedLead: null,
+  stats: null,
+  pagination: {
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  },
+  isLoading: false,
+  error: null,
+  filters: {},
+};
 
+export const useLeadsStore = create<LeadsStore>()((set, get) => ({
+  ...initialState,
+
+  // Fetch leads from API
+  fetchLeads: async (params = {}, isAdmin = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      const mergedParams = { ...get().filters, ...params };
+      const response = await leadsApi.getLeads(mergedParams, isAdmin);
+      
+      if (response.success && response.data) {
+        set({
+          leads: response.data.leads,
+          pagination: response.data.pagination,
+          isLoading: false,
+        });
+      } else {
+        set({ error: 'Failed to fetch leads', isLoading: false });
+      }
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch leads',
+        isLoading: false,
+      });
+    }
+  },
+
+  // Fetch single lead
+  fetchLeadById: async (id, isAdmin = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.getLeadById(id, isAdmin);
+      
+      if (response.success && response.data) {
+        set({ selectedLead: response.data.lead, isLoading: false });
+        return response.data.lead;
+      }
+      set({ error: 'Lead not found', isLoading: false });
+      return null;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch lead',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
+
+  // Fetch stats
+  fetchStats: async (isAdmin = false) => {
+    try {
+      const response = await leadsApi.getLeadStats(isAdmin);
+      
+      if (response.success && response.data) {
+        set({ stats: response.data.stats });
+      }
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    }
+  },
+
+  // Create new lead
+  createLead: async (data) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.createLead(data);
+      
+      if (response.success && response.data) {
+        // Add to local state
         set((state) => ({
-          leads: [newLead, ...state.leads],
+          leads: [response.data!.lead, ...state.leads],
+          pagination: {
+            ...state.pagination,
+            total: state.pagination.total + 1,
+          },
+          isLoading: false,
         }));
+        return response.data.lead;
+      }
+      set({ error: response.message || 'Failed to create lead', isLoading: false });
+      return null;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to create lead',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
 
-        return newLead;
-      },
-
-      updateLead: (id, updates) => {
+  // Update lead
+  updateLead: async (id, data, isAdmin = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.updateLead(id, data, isAdmin);
+      
+      if (response.success && response.data) {
+        // Update local state
         set((state) => ({
           leads: state.leads.map((lead) =>
-            lead.id === id
-              ? { ...lead, ...updates, updatedAt: new Date().toISOString().split('T')[0] }
-              : lead
+            lead.id === id ? response.data!.lead : lead
           ),
+          selectedLead: state.selectedLead?.id === id ? response.data!.lead : state.selectedLead,
+          isLoading: false,
         }));
-      },
+        return response.data.lead;
+      }
+      set({ error: response.message || 'Failed to update lead', isLoading: false });
+      return null;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update lead',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
 
-      deleteLead: (id) => {
+  // Delete lead
+  deleteLead: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.deleteLead(id);
+      
+      if (response.success) {
         set((state) => ({
           leads: state.leads.filter((lead) => lead.id !== id),
+          selectedLead: state.selectedLead?.id === id ? null : state.selectedLead,
+          pagination: {
+            ...state.pagination,
+            total: state.pagination.total - 1,
+          },
+          isLoading: false,
         }));
-      },
-
-      getLeadById: (id) => {
-        return get().leads.find((lead) => lead.id === id);
-      },
-    }),
-    {
-      name: 'leads-storage',
+        return true;
+      }
+      set({ error: response.message || 'Failed to delete lead', isLoading: false });
+      return false;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to delete lead',
+        isLoading: false,
+      });
+      return false;
     }
-  )
-);
+  },
+
+  // Update status
+  updateStatus: async (id, status, note, isAdmin = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.updateLeadStatus(id, status, note, isAdmin);
+      
+      if (response.success && response.data) {
+        set((state) => ({
+          leads: state.leads.map((lead) =>
+            lead.id === id ? response.data!.lead : lead
+          ),
+          selectedLead: state.selectedLead?.id === id ? response.data!.lead : state.selectedLead,
+          isLoading: false,
+        }));
+        return response.data.lead;
+      }
+      set({ error: response.message || 'Failed to update status', isLoading: false });
+      return null;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update status',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
+
+  // Assign bank
+  assignBank: async (id, bankName, bankLogo, note) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await leadsApi.assignBank(id, bankName, bankLogo, note);
+      
+      if (response.success && response.data) {
+        set((state) => ({
+          leads: state.leads.map((lead) =>
+            lead.id === id ? response.data!.lead : lead
+          ),
+          selectedLead: state.selectedLead?.id === id ? response.data!.lead : state.selectedLead,
+          isLoading: false,
+        }));
+        return response.data.lead;
+      }
+      set({ error: response.message || 'Failed to assign bank', isLoading: false });
+      return null;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to assign bank',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
+
+  // Local actions
+  setSelectedLead: (lead) => set({ selectedLead: lead }),
+  
+  setFilters: (filters) => set({ filters }),
+  
+  clearError: () => set({ error: null }),
+  
+  reset: () => set(initialState),
+}));
+
+export default useLeadsStore;

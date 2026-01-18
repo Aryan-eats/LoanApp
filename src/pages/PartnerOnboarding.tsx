@@ -7,6 +7,7 @@ import StepConsent from '../components/onboarding/StepConsent';
 import SubmissionSuccess from '../components/onboarding/SubmissionSuccess';
 import type { PartnerFormData } from '../types/partner';
 import { initialFormData } from '../types/partner';
+import { registerPartner, type PartnerRegistrationData } from '../api/authApi';
 
 const steps = [
   { id: 1, title: 'Basic Identity' },
@@ -19,6 +20,8 @@ const PartnerOnboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<PartnerFormData>(initialFormData);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const updateFormData = (fields: Partial<PartnerFormData>) => {
     setFormData((prev) => ({ ...prev, ...fields }));
@@ -38,11 +41,58 @@ const PartnerOnboarding: React.FC = () => {
     }
   };
 
-  const handleSubmit = () => {
-    // Placeholder for submission logic
-    console.log('Form submitted:', formData);
-    setIsSubmitted(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // Prepare data for API
+      const registrationData: PartnerRegistrationData = {
+        fullName: formData.fullName,
+        mobileNumber: formData.mobileNumber,
+        email: formData.email,
+        password: formData.password || '', // Password should be collected in the form
+        partnerType: formData.partnerType,
+        city: formData.city,
+        businessName: formData.businessName,
+        businessAddress: formData.businessAddress,
+        yearsInOperation: formData.yearsInOperation,
+        panNumber: formData.panNumber,
+        gstNumber: formData.gstNumber,
+        hasExperience: formData.hasExperience,
+        expectedLeads: formData.expectedLeads,
+        accountHolderName: formData.accountHolderName,
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        ifscCode: formData.ifscCode,
+        upiId: formData.upiId,
+        consentDataShare: formData.consentDataShare,
+        consentCommission: formData.consentCommission,
+        declarationNotEmployed: formData.declarationNotEmployed,
+        consentPrivacyPolicy: formData.consentPrivacyPolicy,
+      };
+
+      const response = await registerPartner(registrationData);
+
+      if (response.success && response.data) {
+        // Store tokens - accessToken in localStorage for auth, refreshToken handled by cookie
+        if (response.data.accessToken) {
+          localStorage.setItem('token', response.data.accessToken);
+        }
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        
+        setIsSubmitted(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (error: unknown) {
+      console.error('Partner registration error:', error);
+      
+      // Use centralized error parser
+      const { parseApiError } = await import('../utils/parseApiError');
+      setSubmitError(parseApiError(error, 'Registration failed. Please try again.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
@@ -99,6 +149,8 @@ const PartnerOnboarding: React.FC = () => {
               updateFormData={updateFormData}
               onSubmit={handleSubmit}
               onBack={prevStep}
+              isSubmitting={isSubmitting}
+              submitError={submitError}
             />
           )}
         </div>

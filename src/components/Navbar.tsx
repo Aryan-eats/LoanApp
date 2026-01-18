@@ -64,6 +64,9 @@ const Navbar: React.FC = () => {
             <Link to="/contact" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Phone size={16} /> Contact
             </Link>
+            <Link to="/login" className="bg-black text-white hover:bg-gray-800 font-semibold py-2 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 ml-2">
+              Login
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -107,6 +110,9 @@ const Navbar: React.FC = () => {
             </Link>
             <Link to="/contact" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Phone size={20} /> Contact
+            </Link>
+            <Link to="/login" className="bg-black text-white hover:bg-gray-800 block px-3 py-2 rounded-full text-base font-semibold text-center mt-2" onClick={toggleMenu}>
+              Login
             </Link>
           </div>
         </div>

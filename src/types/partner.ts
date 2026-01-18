@@ -3,6 +3,8 @@ export interface PartnerFormData {
   fullName: string;
   mobileNumber: string;
   email: string;
+  password: string;
+  confirmPassword: string;
   partnerType: string;
   city: string;
   otpVerified: boolean;
@@ -34,6 +36,8 @@ export const initialFormData: PartnerFormData = {
   fullName: '',
   mobileNumber: '',
   email: '',
+  password: '',
+  confirmPassword: '',
   partnerType: '',
   city: '',
   otpVerified: false,

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmModal from '../components/ConfirmModal';
-import { partners } from '../data/placeholderData';
+import { getPartners, updatePartnerStatus } from '../../api/partnersApi';
 import type { Partner, ApplicationStatus, PartnerType } from '../types/admin';
 
 const partnerTypeLabels: Record<PartnerType, string> = {
@@ -14,6 +14,8 @@ const partnerTypeLabels: Record<PartnerType, string> = {
 };
 
 const PartnersPage: React.FC = () => {
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | ''>('');
   const [typeFilter, setTypeFilter] = useState<PartnerType | ''>('');
@@ -23,6 +25,24 @@ const PartnersPage: React.FC = () => {
     action: 'approve' | 'reject' | 'suspend' | null;
     partner: Partner | null;
   }>({ isOpen: false, action: null, partner: null });
+
+  // Fetch partners on mount
+  useEffect(() => {
+    const fetchPartners = async () => {
+      try {
+        setIsLoading(true);
+        const response = await getPartners();
+        if (response.success && response.data) {
+          setPartners(response.data.partners);
+        }
+      } catch (error) {
+        console.error('Failed to fetch partners:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchPartners();
+  }, []);
 
   const filteredPartners = partners.filter((partner) => {
     const matchesSearch = 
@@ -40,9 +60,27 @@ const PartnersPage: React.FC = () => {
     setConfirmModal({ isOpen: true, action, partner });
   };
 
-  const executeAction = () => {
-    // Placeholder for API call
-    console.log(`${confirmModal.action} partner:`, confirmModal.partner?.id);
+  const executeAction = async () => {
+    if (!confirmModal.partner || !confirmModal.action) return;
+    
+    try {
+      const statusMap = {
+        approve: 'approved' as const,
+        reject: 'rejected' as const,
+        suspend: 'suspended' as const,
+      };
+      
+      await updatePartnerStatus(confirmModal.partner.id, statusMap[confirmModal.action]);
+      
+      // Refresh partners list
+      const response = await getPartners();
+      if (response.success && response.data) {
+        setPartners(response.data.partners);
+      }
+    } catch (error) {
+      console.error('Action failed:', error);
+    }
+    
     setConfirmModal({ isOpen: false, action: null, partner: null });
   };
 

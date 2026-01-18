@@ -33,6 +33,15 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
         return !/^[6-9]\d{9}$/.test(value) ? 'Enter a valid 10-digit mobile number' : '';
       case 'email':
         return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? 'Enter a valid email address' : '';
+      case 'password':
+        if (value.length < 8) return 'Password must be at least 8 characters';
+        if (!/(?=.*[a-z])/.test(value)) return 'Password must contain a lowercase letter';
+        if (!/(?=.*[A-Z])/.test(value)) return 'Password must contain an uppercase letter';
+        if (!/(?=.*\d)/.test(value)) return 'Password must contain a number';
+        if (!/(?=.*[@$!%*?&])/.test(value)) return 'Password must contain a special character (@$!%*?&)';
+        return '';
+      case 'confirmPassword':
+        return value !== formData.password ? 'Passwords do not match' : '';
       case 'partnerType':
         return !value ? 'Please select a partner type' : '';
       case 'city':
@@ -84,6 +93,8 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
     newErrors.fullName = validateField('fullName', formData.fullName);
     newErrors.mobileNumber = validateField('mobileNumber', formData.mobileNumber);
     newErrors.email = validateField('email', formData.email);
+    newErrors.password = validateField('password', formData.password);
+    newErrors.confirmPassword = validateField('confirmPassword', formData.confirmPassword);
     newErrors.partnerType = validateField('partnerType', formData.partnerType);
     newErrors.city = validateField('city', formData.city);
 
@@ -216,6 +227,53 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
         />
         {errors.email && (
           <p className="mt-1 text-sm text-red-500">{errors.email}</p>
+        )}
+      </div>
+
+      {/* Password */}
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          Password <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className={`w-full px-4 py-2.5 border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-colors ${
+            errors.password ? 'border-red-500' : 'border-gray-300'
+          }`}
+          placeholder="Create a strong password"
+        />
+        {errors.password && (
+          <p className="mt-1 text-sm text-red-500">{errors.password}</p>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Must be 8+ characters with uppercase, lowercase, number, and special character
+        </p>
+      </div>
+
+      {/* Confirm Password */}
+      <div>
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+          Confirm Password <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="password"
+          id="confirmPassword"
+          name="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className={`w-full px-4 py-2.5 border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-colors ${
+            errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+          }`}
+          placeholder="Re-enter your password"
+        />
+        {errors.confirmPassword && (
+          <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>
         )}
       </div>
 
