@@ -8,6 +8,7 @@ export interface PartnerFormData {
   partnerType: string;
   city: string;
   otpVerified: boolean;
+  phoneVerificationToken?: string;
 
   // Step 2: Business Details
   businessName: string;
@@ -41,6 +42,7 @@ export const initialFormData: PartnerFormData = {
   partnerType: '',
   city: '',
   otpVerified: false,
+  phoneVerificationToken: undefined,
   businessName: '',
   businessAddress: '',
   yearsInOperation: '',

@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import crypto from 'crypto';
-import AuditLog, { AuditEventType } from '../models/AuditLog.js';
+import type { AuditEventType } from '@prisma/client';
+import prisma from '../config/prisma.js';
 
 /**
  * Generate a device fingerprint from request headers
@@ -26,6 +27,9 @@ export const getClientIP = (req: Request): string => {
   return req.ip || req.socket.remoteAddress || 'unknown';
 };
 
+const hashEmail = (email: string): string =>
+  crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+
 /**
  * Log an audit event
  */
@@ -41,16 +45,19 @@ export const logAuditEvent = async (
   } = {}
 ): Promise<void> => {
   try {
-    await AuditLog.create({
-      event,
-      userId: options.userId,
-      email: options.email,
-      ip: getClientIP(req),
-      userAgent: req.headers['user-agent'],
-      deviceFingerprint: generateDeviceFingerprint(req),
-      success: options.success ?? true,
-      failureReason: options.failureReason,
-      metadata: options.metadata,
+    const hashedEmail = options.email ? hashEmail(options.email) : null;
+    await prisma.auditLog.create({
+      data: {
+        event,
+        userId: options.userId,
+        hashedEmail,
+        ip: getClientIP(req),
+        userAgent: req.headers['user-agent'],
+        deviceFingerprint: generateDeviceFingerprint(req),
+        success: options.success ?? true,
+        failureReason: options.failureReason,
+        metadata: options.metadata as any,
+      },
     });
   } catch (error) {
     // Don't fail the request if audit logging fails
@@ -65,16 +72,18 @@ export const checkSuspiciousActivity = async (
   userId: string,
   currentFingerprint: string
 ): Promise<boolean> => {
-  const recentLogins = await AuditLog.find({
-    userId,
-    event: 'LOGIN_SUCCESS',
-    createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-  })
-    .sort({ createdAt: -1 })
-    .limit(5);
+  const recentLogins = await prisma.auditLog.findMany({
+    where: {
+      userId,
+      event: 'LOGIN_SUCCESS',
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+  });
 
   // Check if login is from a new device
-  const knownFingerprints = new Set(recentLogins.map((log) => log.deviceFingerprint));
+  const knownFingerprints = new Set(recentLogins.map((log: any) => log.deviceFingerprint));
   const isNewDevice = !knownFingerprints.has(currentFingerprint) && knownFingerprints.size > 0;
 
   return isNewDevice;

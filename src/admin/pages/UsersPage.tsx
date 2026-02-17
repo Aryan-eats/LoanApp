@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../components/StatusBadge';
-import { adminUsers } from '../data/placeholderData';
-import type { AdminUser, AdminRole } from '../types/admin';
+import { getUsers, createUser } from '../../api/adminApi';
+import type { AdminRole } from '../types/admin';
+import { useDebounce } from '../../hooks';
 
 const roleLabels: Record<AdminRole, string> = {
   super_admin: 'Super Admin',
@@ -20,28 +21,160 @@ const roleDescriptions: Record<AdminRole, string> = {
   viewer: 'Read-only access to dashboard and reports',
 };
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: AdminRole;
+  isActive: boolean;
+  lastLogin?: string;
+  createdAt: string;
+}
+
+const VALID_ROLES: readonly AdminRole[] = ['super_admin', 'admin', 'manager', 'agent', 'viewer'] as const;
+
+interface ApiUser {
+  _id?: string;
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: string;
+  isActive?: boolean;
+  lastLogin?: string;
+  createdAt?: string;
+}
+
+function isValidRole(role: unknown): role is AdminRole {
+  return typeof role === 'string' && VALID_ROLES.includes(role as AdminRole);
+}
+
+function safeFormatDate(value: unknown): string {
+  if (!value || typeof value !== 'string') return 'Invalid date';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return 'Invalid date';
+  return d.toISOString().split('T')[0];
+}
+
 const UsersPage: React.FC = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [roleFilter, setRoleFilter] = useState<AdminRole | ''>('');
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: '' as AdminRole | '',
+    password: '',
+  });
 
-  const filteredUsers = adminUsers.filter((user) => {
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setError(null);
+      try {
+        setIsLoading(true);
+        const response = await getUsers();
+        if (response.success && response.data) {
+          const apiUsers = response.data.users.map((user: ApiUser) => ({
+            id: user._id || user.id || '',
+            name: `${user.firstName ?? ''}${user.firstName && user.lastName ? ' ' : ''}${user.lastName ?? ''}`.trim() || '\u2014',
+            email: user.email || '',
+            role: isValidRole(user.role) ? user.role : 'viewer' as AdminRole,
+            isActive: Boolean(user.isActive),
+            lastLogin: user.lastLogin,
+            createdAt: safeFormatDate(user.createdAt),
+          }));
+          setUsers(apiUsers);
+        }
+      } catch (err) {
+        console.error('Failed to fetch users:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load users. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  const resetForm = () => {
+    setNewUser({ firstName: '', lastName: '', email: '', role: '', password: '' });
+    setFormError(null);
+  };
+
+  const handleCreateUser = async () => {
+    setFormError(null);
+
+    if (!newUser.firstName.trim() || !newUser.lastName.trim() || !newUser.email.trim() || !newUser.role || !newUser.password) {
+      setFormError('All fields are required.');
+      return;
+    }
+
+    if (newUser.password.length < 6) {
+      setFormError('Password must be at least 6 characters.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const response = await createUser({
+        email: newUser.email.trim(),
+        password: newUser.password,
+        firstName: newUser.firstName.trim(),
+        lastName: newUser.lastName.trim(),
+        role: newUser.role,
+      });
+
+      if (response.success && response.data) {
+        const u = response.data.user;
+        setUsers(prev => [{
+          id: u.id || '',
+          name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+          email: u.email || '',
+          role: isValidRole(u.role) ? u.role : 'viewer' as AdminRole,
+          isActive: Boolean(u.isActive),
+          lastLogin: u.lastLogin,
+          createdAt: safeFormatDate(u.createdAt),
+        }, ...prev]);
+        resetForm();
+        setIsAddModalOpen(false);
+      } else {
+        setFormError(response.message || 'Failed to create user.');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create user. Please try again.';
+      if (typeof err === 'object' && err !== null && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { message?: string } } };
+        setFormError(axiosErr.response?.data?.message || message);
+      } else {
+        setFormError(message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredUsers = users.filter((user) => {
     const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
+      user.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
 
     const matchesRole = !roleFilter || user.role === roleFilter;
 
     return matchesSearch && matchesRole;
   });
 
-  const activeUsers = adminUsers.filter(u => u.isActive).length;
+  const activeUsers = users.filter(u => u.isActive).length;
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users & Roles</h1>
@@ -58,13 +191,21 @@ const UsersPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats */}
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center gap-2">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Total Users</p>
-              <p className="text-2xl font-bold text-gray-900">{adminUsers.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{isLoading ? '—' : users.length}</p>
             </div>
             <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,7 +233,7 @@ const UsersPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Admins</p>
-              <p className="text-2xl font-bold text-blue-600">{adminUsers.filter(u => u.role === 'admin' || u.role === 'super_admin').length}</p>
+              <p className="text-2xl font-bold text-blue-600">{users.filter((u: User) => u.role === 'admin' || u.role === 'super_admin').length}</p>
             </div>
             <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +258,6 @@ const UsersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-white rounded-xl border border-gray-200 mb-6">
         <div className="border-b border-gray-200 px-4">
           <nav className="flex gap-6">
@@ -144,10 +284,8 @@ const UsersPage: React.FC = () => {
           </nav>
         </div>
 
-        {/* Users Tab */}
         {activeTab === 'users' && (
           <div className="p-4">
-            {/* Filters */}
             <div className="flex flex-col lg:flex-row gap-4 mb-4">
               <div className="flex-1">
                 <div className="relative">
@@ -176,7 +314,6 @@ const UsersPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Users Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -267,7 +404,6 @@ const UsersPage: React.FC = () => {
           </div>
         )}
 
-        {/* Roles Tab */}
         {activeTab === 'roles' && (
           <div className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -276,7 +412,7 @@ const UsersPage: React.FC = () => {
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-gray-900">{label}</h3>
                     <span className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded">
-                      {adminUsers.filter(u => u.role === role).length} users
+                      {users.filter((u: User) => u.role === role).length} users
                     </span>
                   </div>
                   <p className="text-sm text-gray-600 mb-4">{roleDescriptions[role as AdminRole]}</p>
@@ -323,7 +459,6 @@ const UsersPage: React.FC = () => {
         )}
       </div>
 
-      {/* User Detail Modal */}
       {selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedUser(null)} />
@@ -412,15 +547,14 @@ const UsersPage: React.FC = () => {
         </div>
       )}
 
-      {/* Add User Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIsAddModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setIsAddModalOpen(false); resetForm(); }} />
           <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-gray-900">Add New User</h2>
               <button
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => { setIsAddModalOpen(false); resetForm(); }}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -429,20 +563,42 @@ const UsersPage: React.FC = () => {
               </button>
             </div>
 
+            {formError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {formError}
+              </div>
+            )}
+
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  placeholder="Enter full name"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    value={newUser.firstName}
+                    onChange={(e) => setNewUser(prev => ({ ...prev, firstName: e.target.value }))}
+                    className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    placeholder="First name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    value={newUser.lastName}
+                    onChange={(e) => setNewUser(prev => ({ ...prev, lastName: e.target.value }))}
+                    className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    placeholder="Last name"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                 <input
                   type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                   placeholder="Enter email address"
                 />
@@ -451,6 +607,8 @@ const UsersPage: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as AdminRole | '' }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
                 >
                   <option value="">Select role</option>
@@ -464,6 +622,8 @@ const UsersPage: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password *</label>
                 <input
                   type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                   placeholder="Enter temporary password"
                 />
@@ -473,13 +633,18 @@ const UsersPage: React.FC = () => {
 
             <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
               <button
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => { setIsAddModalOpen(false); resetForm(); }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
-              <button className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
-                Create User
+              <button
+                onClick={handleCreateUser}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? 'Creating...' : 'Create User'}
               </button>
             </div>
           </div>

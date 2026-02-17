@@ -15,7 +15,6 @@ const partnerTypeLabels: Record<PartnerType, string> = {
 
 const PartnersPage: React.FC = () => {
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | ''>('');
   const [typeFilter, setTypeFilter] = useState<PartnerType | ''>('');
@@ -26,19 +25,15 @@ const PartnersPage: React.FC = () => {
     partner: Partner | null;
   }>({ isOpen: false, action: null, partner: null });
 
-  // Fetch partners on mount
   useEffect(() => {
     const fetchPartners = async () => {
       try {
-        setIsLoading(true);
         const response = await getPartners();
         if (response.success && response.data) {
           setPartners(response.data.partners);
         }
       } catch (error) {
         console.error('Failed to fetch partners:', error);
-      } finally {
-        setIsLoading(false);
       }
     };
     fetchPartners();
@@ -72,7 +67,6 @@ const PartnersPage: React.FC = () => {
       
       await updatePartnerStatus(confirmModal.partner.id, statusMap[confirmModal.action]);
       
-      // Refresh partners list
       const response = await getPartners();
       if (response.success && response.data) {
         setPartners(response.data.partners);
@@ -86,7 +80,6 @@ const PartnersPage: React.FC = () => {
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Partners</h1>
@@ -97,10 +90,8 @@ const PartnersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search */}
           <div className="flex-1">
             <div className="relative">
               <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,7 +107,6 @@ const PartnersPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as ApplicationStatus | '')}
@@ -129,7 +119,6 @@ const PartnersPage: React.FC = () => {
             <option value="suspended">Suspended</option>
           </select>
 
-          {/* Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as PartnerType | '')}
@@ -145,7 +134,6 @@ const PartnersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Partners Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -246,7 +234,6 @@ const PartnersPage: React.FC = () => {
         )}
       </div>
 
-      {/* Partner Detail Drawer */}
       {selectedPartner && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedPartner(null)} />
@@ -264,7 +251,6 @@ const PartnersPage: React.FC = () => {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Basic Info */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Basic Information</h3>
                 <div className="space-y-3">
@@ -295,7 +281,6 @@ const PartnersPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* PAN/Business Details */}
               <div className="pt-4 border-t border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">PAN / Business Details</h3>
                 <div className="space-y-3">
@@ -324,7 +309,6 @@ const PartnersPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Payout Details */}
               <div className="pt-4 border-t border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Payout Details</h3>
                 <div className="space-y-3">
@@ -353,7 +337,6 @@ const PartnersPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Lead History */}
               <div className="pt-4 border-t border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Lead History</h3>
                 <div className="bg-gray-50 rounded-lg p-4">
@@ -364,7 +347,6 @@ const PartnersPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Internal Notes */}
               {selectedPartner.notes && (
                 <div className="pt-4 border-t border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Internal Notes</h3>
@@ -374,7 +356,6 @@ const PartnersPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="pt-4 border-t border-gray-200 flex gap-3">
                 {selectedPartner.status === 'pending' && (
                   <>
@@ -406,7 +387,6 @@ const PartnersPage: React.FC = () => {
         </div>
       )}
 
-      {/* Confirm Modal */}
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal({ isOpen: false, action: null, partner: null })}

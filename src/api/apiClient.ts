@@ -1,10 +1,9 @@
 /**
  * API Client with automatic token refresh
- * 
+ *
  * This client handles:
- * - Automatic access token refresh on 401 errors
- * - Token storage in memory (more secure than localStorage)
- * - Credential cookies for refresh token
+ * - Automatic access token refresh on 401 errors via httpOnly cookie
+ * - Access token stored in memory only (never in localStorage)
  */
 
 import axios, { AxiosError } from 'axios';
@@ -12,13 +11,13 @@ import type { InternalAxiosRequestConfig } from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// In-memory token storage (more secure than localStorage for access tokens)
+// In-memory token storage (never persisted to localStorage)
 let accessToken: string | null = null;
 
 // Create axios instance
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // Enable cookies for refresh token
+  withCredentials: true, // send httpOnly cookies automatically
   headers: {
     'Content-Type': 'application/json',
   },
@@ -33,7 +32,6 @@ export const getAccessToken = () => accessToken;
 
 export const clearTokens = () => {
   accessToken = null;
-  // Refresh token is in httpOnly cookie, cleared by backend on logout
 };
 
 // Request interceptor - add access token to requests
@@ -65,35 +63,41 @@ apiClient.interceptors.response.use(
   async (error: AxiosError<{ code?: string; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Check if error is due to expired token
+    // On any 401, attempt a silent token refresh via httpOnly cookie.
+    // This handles both TOKEN_EXPIRED responses and requests made without
+    // a Bearer token (e.g. after a page refresh clears the in-memory token).
     if (
       error.response?.status === 401 &&
-      error.response?.data?.code === 'TOKEN_EXPIRED' &&
       !originalRequest._retry
     ) {
       originalRequest._retry = true;
 
       if (isRefreshing) {
         // Wait for token refresh to complete
-        return new Promise((resolve) => {
+        return new Promise((resolve, _reject) => {
           subscribeTokenRefresh((token: string) => {
             originalRequest.headers.Authorization = `Bearer ${token}`;
             resolve(apiClient(originalRequest));
           });
+          // If refresh fails, the catch block below will reject all subscribers
         });
       }
 
       isRefreshing = true;
 
       try {
-        // Try to refresh the token
+        // Refresh token is sent automatically via httpOnly cookie
         const response = await axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
           {},
           { withCredentials: true }
         );
 
-        const newAccessToken = response.data.data.accessToken;
+        const newAccessToken = response?.data?.data?.accessToken;
+        if (typeof newAccessToken !== 'string' || newAccessToken.trim() === '') {
+          throw new Error('Refresh token response missing access token');
+        }
+
         setAccessToken(newAccessToken);
         onTokenRefreshed(newAccessToken);
 
@@ -101,10 +105,10 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - clear tokens and redirect to login
+        // Refresh failed - clear in-memory token and let calling code decide
+        // (the auth store's grace period logic handles logout decisions)
         clearTokens();
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+        refreshSubscribers = [];
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

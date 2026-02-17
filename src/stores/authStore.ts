@@ -2,7 +2,8 @@
  * Centralized Authentication Store
  * 
  * Manages auth state across the application using Zustand.
- * Integrates with API client for token management.
+ * Uses JWT-based authentication with httpOnly cookie refresh tokens.
+ * Access tokens are kept in memory only (never persisted to localStorage).
  */
 
 import { create } from 'zustand';
@@ -27,6 +28,8 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  /** Counts consecutive failed silent-refresh attempts across page reloads */
+  refreshCount: number;
 }
 
 interface AuthActions {
@@ -41,12 +44,13 @@ type AuthStore = AuthState & AuthActions;
 
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // State
       user: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      refreshCount: 0,
 
       // Actions
       login: async (email: string, password: string) => {
@@ -54,14 +58,13 @@ export const useAuthStore = create<AuthStore>()(
 
         try {
           const response = await apiClient.post('/auth/login', { email, password });
-          const { user, accessToken, refreshToken } = response.data.data;
+          const data = response.data.data;
 
-          // Store access token in memory (handled by apiClient)
-          setAccessToken(accessToken);
+          const { user, accessToken } = data;
 
-          // Store refresh token for mobile apps (optional, cookies handle web)
-          if (refreshToken) {
-            localStorage.setItem('refreshToken', refreshToken);
+          // Store access token in memory only
+          if (accessToken) {
+            setAccessToken(accessToken);
           }
 
           set({
@@ -69,11 +72,13 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            refreshCount: 0,
           });
         } catch (error) {
           // Use centralized error parser
           const { parseApiError } = await import('../utils/parseApiError');
           const message = parseApiError(error, 'Login failed. Please try again.');
+
           set({
             user: null,
             isAuthenticated: false,
@@ -94,40 +99,36 @@ export const useAuthStore = create<AuthStore>()(
           // Ignore logout errors - still clear local state
         } finally {
           clearTokens();
-          localStorage.removeItem('refreshToken');
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
             error: null,
+            refreshCount: 0,
           });
         }
       },
 
       checkAuth: async () => {
-        // Check if we have a stored user and try to validate
-        const storedUser = get().user;
-        if (!storedUser) {
-          set({ isAuthenticated: false, isLoading: false });
-          return;
-        }
-
-        // Try to restore session from refresh token
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken && !getAccessToken()) {
-          set({ user: null, isAuthenticated: false, isLoading: false });
-          return;
-        }
+        // If we have an access token in memory, use it; otherwise refresh from cookie.
+        const existingToken = getAccessToken();
+        const hadInMemoryToken = !!existingToken;
+        const { isAuthenticated: wasAuthenticated, refreshCount } = useAuthStore.getState();
 
         set({ isLoading: true });
 
         try {
-          // If we don't have an access token, try to get one via refresh
-          if (!getAccessToken()) {
-            const refreshResponse = await apiClient.post('/auth/refresh-token', {
-              refreshToken,
-            });
-            setAccessToken(refreshResponse.data.data.accessToken);
+          if (!existingToken) {
+            const refreshResponse = await apiClient.post('/auth/refresh-token');
+            const refreshedAccessToken = refreshResponse.data.data?.accessToken;
+
+            if (refreshedAccessToken) {
+              setAccessToken(refreshedAccessToken);
+            } else {
+              clearTokens();
+              set({ user: null, isAuthenticated: false, isLoading: false, refreshCount: 0 });
+              return;
+            }
           }
 
           // Validate token by fetching current user
@@ -138,15 +139,22 @@ export const useAuthStore = create<AuthStore>()(
             user,
             isAuthenticated: true,
             isLoading: false,
+            refreshCount: 0,
           });
         } catch {
-          // Token invalid or expired
+          // Allow limited grace retries only when a token existed in memory.
+          // If we had no token/cookie, mark user as logged out immediately.
+          if (hadInMemoryToken && wasAuthenticated && refreshCount < 3) {
+            set({ isLoading: false, refreshCount: refreshCount + 1 });
+            return;
+          }
+
           clearTokens();
-          localStorage.removeItem('refreshToken');
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
+            refreshCount: 0,
           });
         }
       },
@@ -158,10 +166,15 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => localStorage),
-      // Only persist user data, not loading states or tokens
-      partialize: (state) => ({ user: state.user }),
+      // Persist user data, auth status, and refresh counter (not loading states or tokens)
+      partialize: (state) => ({ 
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        refreshCount: state.refreshCount,
+      }),
     }
   )
 );
 
 export default useAuthStore;
+

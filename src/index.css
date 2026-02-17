@@ -6,9 +6,12 @@
 
 @layer utilities {
   @keyframes pulse-glow {
-    0%, 100% {
+
+    0%,
+    100% {
       box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
     }
+
     50% {
       box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
     }

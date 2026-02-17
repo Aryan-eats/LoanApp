@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { featuredLoans } from '../data/featuredLoans';
+import OptimizedImage from './shared/OptimizedImage';
 
 const Cards: React.FC = () => {
   return (
@@ -18,11 +19,11 @@ const Cards: React.FC = () => {
           {featuredLoans.map((loan, index) => (
             <div key={index} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col">
               <div className="h-48 w-full bg-gray-200">
-                <img
+                <OptimizedImage
                   className="w-full h-full object-cover"
                   src={loan.image}
                   alt={loan.title}
-                  loading="lazy"
+                  containerClassName="w-full h-full"
                 />
               </div>
               <div className="p-6 flex-1 flex flex-col">

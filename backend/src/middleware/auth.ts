@@ -1,40 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import User, { IUser, UserRole } from '../models/User.js';
+import type { User, UserRole } from '@prisma/client';
+import prisma from '../config/prisma.js';
+import { verifyAccessToken, extractTokenFromHeader } from '../utils/jwt.js';
 import { tokenBlacklist } from '../utils/tokenBlacklist.js';
 
-interface JwtPayload {
-  id: string;
-  role: UserRole;
-  iat?: number;
-  exp?: number;
-}
-
-// Extend Express Request to include user
 declare global {
   namespace Express {
     interface Request {
-      user?: IUser;
+      user?: User;
     }
   }
 }
 
-// Protect routes - verify JWT token
 export const protect = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    let token: string | undefined;
-
-    // Check for token in Authorization header
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
-    ) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    const token = extractTokenFromHeader(req.headers.authorization);
 
     if (!token) {
       res.status(401).json({
@@ -44,28 +28,21 @@ export const protect = async (
       return;
     }
 
-    // Check if token is blacklisted (logged out) - now async
     const isBlacklisted = await tokenBlacklist.isBlacklisted(token);
     if (isBlacklisted) {
       res.status(401).json({
         success: false,
-        message: 'Token has been revoked, please login again',
+        message: 'Token has been revoked',
       });
       return;
     }
 
-    // Verify token
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET is not defined');
-    }
-
-    let decoded: JwtPayload;
+    let payload;
     try {
-      decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      payload = verifyAccessToken(token);
     } catch (error) {
-      // Handle specific JWT errors
-      if (error instanceof jwt.TokenExpiredError) {
+      const err = error as { name?: string; message?: string };
+      if (err.name === 'TokenExpiredError' || err.message?.includes('expired')) {
         res.status(401).json({
           success: false,
           message: 'Token expired, please refresh or login again',
@@ -73,19 +50,22 @@ export const protect = async (
         });
         return;
       }
-      if (error instanceof jwt.JsonWebTokenError) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid token',
-        });
-        return;
-      }
-      throw error;
+      res.status(401).json({
+        success: false,
+        message: 'Invalid token',
+      });
+      return;
     }
 
-    // Get user from token
-    const user = await User.findById(decoded.id);
+    if (typeof payload.sub !== 'string' || payload.sub.trim() === '') {
+      res.status(401).json({
+        success: false,
+        message: 'Not authorized, invalid subject',
+      });
+      return;
+    }
 
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) {
       res.status(401).json({
         success: false,
@@ -102,27 +82,17 @@ export const protect = async (
       return;
     }
 
-    // Verify role hasn't changed since token was issued
-    if (user.role !== decoded.role) {
-      res.status(401).json({
-        success: false,
-        message: 'User role has changed, please login again',
-      });
-      return;
-    }
-
     req.user = user;
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
     res.status(401).json({
       success: false,
-      message: 'Not authorized, token invalid',
+      message: 'Not authorized',
     });
   }
 };
 
-// Authorize based on roles
 export const authorize = (...roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -145,34 +115,18 @@ export const authorize = (...roles: UserRole[]) => {
   };
 };
 
-// Optional authentication - doesn't fail if no token, but populates user if valid
 export const optionalAuth = async (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    let token: string | undefined;
-
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
-    ) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
+    const token = extractTokenFromHeader(req.headers.authorization);
     if (!token) {
       next();
       return;
     }
 
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      next();
-      return;
-    }
-
-    // Check if blacklisted
     const isBlacklisted = await tokenBlacklist.isBlacklisted(token);
     if (isBlacklisted) {
       next();
@@ -180,13 +134,13 @@ export const optionalAuth = async (
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
-      const user = await User.findById(decoded.id);
+      const payload = verifyAccessToken(token);
+      const user = await prisma.user.findUnique({ where: { id: payload.sub } });
       if (user && user.isActive) {
         req.user = user;
       }
     } catch {
-      // Invalid token, but we don't fail for optional auth
+      // Ignore invalid tokens for optional auth
     }
 
     next();

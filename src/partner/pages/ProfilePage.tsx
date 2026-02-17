@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   User,
   Building2,
@@ -13,9 +13,12 @@ import {
   FileText,
   Eye,
   EyeOff,
+  Loader2,
 } from 'lucide-react';
-import { partnerProfile } from '../data/placeholderData';
-import type { KYCStatus } from '../types/partner-dashboard';
+import { useAuthStore } from '../../stores/authStore';
+import { usePartnerProfileStore } from '../../stores/partnerProfileStore';
+import { useLeadsStore } from '../../stores/leadsStore';
+import type { KYCStatus, PartnerProfile } from '../types/partner-dashboard';
 
 const kycStatusConfig: Record<KYCStatus, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
   pending: { icon: <Clock size={16} />, label: 'Pending', color: 'text-amber-600', bg: 'bg-amber-100' },
@@ -35,7 +38,58 @@ const partnerTypeBadges: Record<string, { label: string; color: string }> = {
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [showAccountNumber, setShowAccountNumber] = useState(false);
-  const [editData, setEditData] = useState({ ...partnerProfile });
+  const [editData, setEditData] = useState<PartnerProfile | null>(null);
+  
+  const { user } = useAuthStore();
+  const { partnerInfo, isLoading: profileLoading, fetchProfile } = usePartnerProfileStore();
+  const { leads, fetchLeads } = useLeadsStore();
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfile(user.id, {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      });
+    }
+    fetchLeads();
+  }, [user, fetchProfile, fetchLeads]);
+
+  const partnerProfile = partnerInfo?.profile ?? null;
+  const isLoading = profileLoading && !partnerProfile;
+
+  // Sync editData when profile loads
+  useEffect(() => {
+    if (partnerProfile) {
+      setEditData(partnerProfile);
+    }
+  }, [partnerProfile]);
+  
+  const totalLeads = leads.length;
+  const approvedLeads = leads.filter(l => l.status === 'approved' || l.status === 'disbursed').length;
+  const successRate = totalLeads > 0 ? Math.round((approvedLeads / totalLeads) * 100) : 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-3 text-slate-500">
+          <Loader2 className="animate-spin" size={24} />
+          <span>Loading profile...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!partnerProfile) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center text-slate-500">
+          <AlertCircle size={48} className="mx-auto mb-4 text-slate-300" />
+          <p>Unable to load profile. Please try again.</p>
+        </div>
+      </div>
+    );
+  }
   
   const kycConfig = kycStatusConfig[partnerProfile.kycStatus];
   const partnerBadge = partnerTypeBadges[partnerProfile.partnerType];
@@ -47,12 +101,10 @@ export default function ProfilePage() {
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Could add toast notification here
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Profile & KYC</h1>
@@ -60,7 +112,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* KYC Status Banner */}
       {partnerProfile.kycStatus !== 'verified' && (
         <div
           className={`rounded-xl p-4 border ${
@@ -124,10 +175,8 @@ export default function ProfilePage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Card */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-slate-200 p-6">
-            {/* Avatar Section */}
             <div className="text-center mb-6">
               <div className="relative inline-block">
                 <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
@@ -152,7 +201,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Partner Code */}
             <div className="p-4 bg-slate-50 rounded-lg mb-4">
               <p className="text-xs text-slate-500 mb-1">Partner Code</p>
               <div className="flex items-center justify-between">
@@ -167,7 +215,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Quick Stats */}
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Member Since</span>
@@ -175,19 +222,17 @@ export default function ProfilePage() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Total Leads</span>
-                <span className="font-medium text-slate-700">156</span>
+                <span className="font-medium text-slate-700">{totalLeads}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Success Rate</span>
-                <span className="font-medium text-green-600">57%</span>
+                <span className="font-medium text-green-600">{successRate}%</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Details Section */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Personal Information */}
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -206,7 +251,7 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-500 mb-1">Full Name</label>
-                  {isEditing ? (
+                  {isEditing && editData ? (
                     <input
                       type="text"
                       value={editData.fullName}
@@ -219,7 +264,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-500 mb-1">Email Address</label>
-                  {isEditing ? (
+                  {isEditing && editData ? (
                     <input
                       type="email"
                       value={editData.email}
@@ -232,7 +277,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-500 mb-1">Phone Number</label>
-                  {isEditing ? (
+                  {isEditing && editData ? (
                     <input
                       type="tel"
                       value={editData.phone}
@@ -270,7 +315,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* KYC Documents */}
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Shield className="text-blue-600" size={20} />
@@ -278,7 +322,6 @@ export default function ProfilePage() {
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* PAN */}
                 <div className="p-4 border border-slate-200 rounded-lg">
                   <div className="flex items-start justify-between">
                     <div>
@@ -294,7 +337,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Aadhaar */}
                 <div className="p-4 border border-slate-200 rounded-lg">
                   <div className="flex items-start justify-between">
                     <div>
@@ -310,7 +352,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* GST */}
                 {partnerProfile.gstNumber && (
                   <div className="p-4 border border-slate-200 rounded-lg md:col-span-2">
                     <div className="flex items-start justify-between">
@@ -331,7 +372,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Bank Details */}
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -386,7 +426,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Security Section */}
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Shield className="text-blue-600" size={20} />

@@ -3,12 +3,16 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import connectDB from './config/db.js';
+import prisma from './config/prisma.js';
+import { isRedisAvailable, disconnectRedis } from './config/redis.js';
+import { destroyR2Client } from './config/r2.js';
 import authRoutes from './routes/authRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import partnerRoutes from './routes/partnerRoutes.js';
 import partnersRoutes from './routes/partnersRoutes.js';
+import leadsRoutes from './routes/leadsRoutes.js';
+import documentRoutes from './routes/documentRoutes.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { validateJWTConfig } from './utils/jwtValidator.js';
 
@@ -26,8 +30,7 @@ try {
 // Create Express app
 const app = express();
 
-// Connect to MongoDB
-connectDB();
+// Prisma connection is lazy; validate JWT config first and then rely on Prisma client.
 
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
@@ -90,6 +93,8 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/partners', partnersRoutes);
+app.use('/api/leads', leadsRoutes); // Public leads endpoint for website forms
+app.use('/api/documents', documentRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -145,10 +150,41 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Graceful shutdown handling
+let server: ReturnType<typeof app.listen>;
+
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Shutting down gracefully...`);
-  
-  // Close server and cleanup
+
+  // Close HTTP server first to stop accepting new requests
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    console.log('HTTP server closed.');
+  } catch (err) {
+    console.error('Error closing HTTP server:', err);
+  }
+
+  // Disconnect Redis
+  if (isRedisAvailable()) {
+    try {
+      await disconnectRedis();
+    } catch (err) {
+      console.error('Error disconnecting Redis:', err);
+    }
+  }
+
+  // Then disconnect Prisma
+  try {
+    await prisma.$disconnect();
+    console.log('Prisma disconnected.');
+  } catch (err) {
+    console.error('Error disconnecting Prisma:', err);
+  }
+
+  // Destroy R2 client
+  destroyR2Client();
+
   process.exit(0);
 };
 
@@ -167,7 +203,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔒 CORS origins: ${getAllowedOrigins().join(', ')}`);

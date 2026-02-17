@@ -14,8 +14,7 @@ const LogIn: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  // Get the page they were trying to visit
+ 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,10 +25,8 @@ const LogIn: React.FC = () => {
     try {
       await login(email, password);
       
-      // Get user from store after login
       const user = useAuthStore.getState().user;
       
-      // Validate that the user role matches the selected login type
       if (loginType === 'admin' && user?.role !== 'admin') {
         setError('You do not have admin access');
         return;
@@ -40,16 +37,18 @@ const LogIn: React.FC = () => {
         return;
       }
 
-      // Redirect to the page they were trying to visit, or to dashboard
-      if (from) {
-        navigate(from, { replace: true });
-      } else if (user?.role === 'admin') {
-        navigate('/admin', { replace: true });
+      let destination: string;
+      
+      if (user?.role === 'admin') {
+        destination = from?.startsWith('/admin') ? from : '/admin';
       } else if (user?.role === 'partner') {
-        navigate('/partner', { replace: true });
+        destination = from?.startsWith('/partner') ? from : '/partner';
+      } else {
+        destination = '/';
       }
+      
+      navigate(destination, { replace: true });
     } catch (err) {
-      // Use centralized error parser
       const { parseApiError } = await import('../utils/parseApiError');
       setError(parseApiError(err, 'Login failed. Please try again.'));
     }
@@ -67,7 +66,6 @@ const LogIn: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-      {/* Promotional Banner */}
       {loginType === 'partner' && (
         <div className="w-full max-w-4xl text-center mb-6 sm:mb-8 px-2">
           <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-snug sm:leading-tight">
@@ -78,7 +76,6 @@ const LogIn: React.FC = () => {
       
       <div className="w-full max-w-md">
         {loginType === 'select' ? (
-          // Login Type Selection
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
@@ -86,7 +83,6 @@ const LogIn: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {/* Partner Login - Attractive/Prominent */}
               <button
                 onClick={() => setLoginType('partner')}
                 className="w-full group relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-5 px-6 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl"
@@ -103,7 +99,6 @@ const LogIn: React.FC = () => {
                 </div>
               </button>
 
-              {/* Admin Login - Lowkey/Subtle */}
               <button
                 onClick={() => setLoginType('admin')}
                 className="w-full text-gray-400 hover:text-gray-600 font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
@@ -121,7 +116,6 @@ const LogIn: React.FC = () => {
             </div>
           </div>
         ) : (
-          // Login Form
           <div className="bg-white rounded-2xl shadow-2xl p-5 sm:p-6">
             <button
               onClick={handleBack}

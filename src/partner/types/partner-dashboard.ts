@@ -1,7 +1,7 @@
 // Partner Dashboard Types
 // Re-exports shared types and adds partner-specific types
 
-import type { LoanProductCode } from '../../data/loanProducts';
+import type { LoanProductCode } from '../../data/loanProductsData';
 
 // Re-export shared types for convenience
 export type {
@@ -80,9 +80,12 @@ export interface Lead {
   loanType: LoanType;
   loanAmount: number;
   tenure: number;
+  partnerId?: string;
+  partnerName?: string;
   status: LeadStatus;
   bankAssigned?: string;
   bankLogo?: string;
+  preferredBank?: string;
   sanctionedAmount?: number;
   disbursedAmount?: number;
   interestRate?: number;
@@ -177,6 +180,15 @@ export interface Commission {
   paidAt?: string;
 }
 
+export interface LoanTypeCommission {
+  loanType: LoanType;
+  partnerCommission: number; // percentage
+  interestRate?: string; // specific rate for this loan type
+  maxAmount?: number;
+  minAmount?: number;
+  maxTenure?: number;
+}
+
 export interface BankOffer {
   id: string;
   bankName: string;
@@ -191,6 +203,7 @@ export interface BankOffer {
   processingTime: string;
   features: string[];
   isPopular: boolean;
+  commissionRates?: LoanTypeCommission[];
 }
 
 export interface SupportTicket {

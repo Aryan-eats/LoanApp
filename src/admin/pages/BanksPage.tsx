@@ -3,9 +3,8 @@ import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../components/StatusBadge';
 import { banks } from '../data/placeholderData';
 import type { Bank } from '../types/admin';
-import { buildLoanTypeLabels } from '../../data/loanProducts';
+import { buildLoanTypeLabels } from '../../data/loanProductsData';
 
-// Dynamic labels from registry - supports all loan products
 const loanTypeLabels = buildLoanTypeLabels(true);
 
 const BanksPage: React.FC = () => {
@@ -29,7 +28,6 @@ const BanksPage: React.FC = () => {
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Banks & Products</h1>
@@ -46,7 +44,6 @@ const BanksPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
@@ -107,10 +104,8 @@ const BanksPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
           <div className="flex-1">
             <div className="relative">
               <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,7 +121,6 @@ const BanksPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'active' | 'inactive' | '')}
@@ -139,7 +133,6 @@ const BanksPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Banks Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredBanks.map((bank) => (
           <div
@@ -147,7 +140,6 @@ const BanksPage: React.FC = () => {
             className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer"
             onClick={() => setSelectedBank(bank)}
           >
-            {/* Bank Header */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-lg font-bold text-gray-600">
@@ -161,7 +153,6 @@ const BanksPage: React.FC = () => {
               <StatusBadge status={bank.status} size="sm" />
             </div>
 
-            {/* Loan Types */}
             <div className="mb-4">
               <p className="text-xs font-medium text-gray-500 mb-2">Supported Products</p>
               <div className="flex flex-wrap gap-1">
@@ -181,7 +172,6 @@ const BanksPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100">
               <div className="text-center">
                 <p className="text-lg font-semibold text-gray-900">{bank.avgTat}</p>
@@ -209,12 +199,10 @@ const BanksPage: React.FC = () => {
         </div>
       )}
 
-      {/* Bank Detail Drawer */}
       {selectedBank && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedBank(null)} />
           <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto">
-            {/* Header */}
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-lg font-bold text-gray-600">
@@ -236,7 +224,6 @@ const BanksPage: React.FC = () => {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Status & Actions */}
               <div className="flex items-center justify-between">
                 <StatusBadge status={selectedBank.status} />
                 <div className="flex items-center gap-2">
@@ -253,7 +240,6 @@ const BanksPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bank Stats */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm text-gray-500">Average TAT</p>
@@ -273,7 +259,6 @@ const BanksPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Supported Products */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Supported Loan Products</h3>
                 <div className="space-y-2">
@@ -288,7 +273,6 @@ const BanksPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Contact Information */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Contact Information</h3>
                 <div className="space-y-3">
@@ -313,7 +297,6 @@ const BanksPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Commission Slabs */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Commission Structure</h3>
                 <div className="bg-gray-50 rounded-lg overflow-hidden">
@@ -340,7 +323,6 @@ const BanksPage: React.FC = () => {
         </div>
       )}
 
-      {/* Add Bank Modal Placeholder */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setIsAddModalOpen(false)} />

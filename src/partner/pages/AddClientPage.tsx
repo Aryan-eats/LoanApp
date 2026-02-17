@@ -31,7 +31,7 @@ import {
   FlashOn,
 } from '@mui/icons-material';
 import Tooltip from '../components/Tooltip';
-import { getProductsByCategory, type LoanCategory } from '../../data/loanProducts';
+import { getProductsByCategory, type LoanCategory } from '../../data/loanProductsData';
 import { useLeadsStore } from '../../stores/leadsStore';
 
 type Step = 'client' | 'loan' | 'employment' | 'address' | 'consent';
@@ -44,7 +44,6 @@ const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
   { id: 'consent', label: 'Consent', icon: <CheckCircle size={18} /> },
 ];
 
-// Main loan categories with icons
 const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
   { value: 'personal', label: 'Personal Loan', icon: <CreditCard fontSize="small" /> },
   { value: 'business', label: 'Business Loan', icon: <Business fontSize="small" /> },
@@ -88,7 +87,6 @@ export default function AddClientPage() {
   const { createLead } = useLeadsStore();
 
   const [formData, setFormData] = useState({
-    // Client Details
     fullName: '',
     phone: '',
     email: '',
@@ -96,14 +94,12 @@ export default function AddClientPage() {
     gender: '',
     panNumber: '',
     
-    // Loan Details
     loanCategory: '',
     loanType: '',
     loanAmount: '',
     tenure: '',
     loanPurpose: '',
     
-    // Employment
     employmentType: '',
     monthlyIncome: '',
     companyName: '',
@@ -113,14 +109,12 @@ export default function AddClientPage() {
     businessVintage: '',
     annualTurnover: '',
     
-    // Address
     currentAddress: '',
     city: '',
     state: '',
     pincode: '',
     residenceType: '',
     
-    // Consent
     consentCredit: false,
     consentContact: false,
     consentTerms: false,
@@ -209,7 +203,6 @@ export default function AddClientPage() {
     setSubmitError(null);
 
     try {
-      // Create lead via API
       const lead = await createLead({
         fullName: formData.fullName,
         phone: formData.phone,
@@ -222,7 +215,7 @@ export default function AddClientPage() {
         loanType: formData.loanType || formData.loanCategory || 'personal_loan',
         loanAmount: Number(formData.loanAmount),
         tenure: formData.tenure ? Number(formData.tenure) : undefined,
-      });
+      }, true); // isPartner = true
 
       if (lead) {
         setShowEligibilityOption(true);
@@ -231,7 +224,6 @@ export default function AddClientPage() {
       }
     } catch (error) {
       console.error('Submit lead error:', error);
-      // Use centralized error parser
       const { parseApiError } = await import('../../utils/parseApiError');
       setSubmitError(parseApiError(error, 'Failed to create lead. Please try again.'));
     } finally {
@@ -240,7 +232,7 @@ export default function AddClientPage() {
   };
 
   const handleCheckEligibility = () => {
-    navigate('/partner/eligibility', { state: { clientData: formData } });
+    navigate('/partner/credit-check', { state: { clientData: formData } });
   };
 
   const handleSubmitLead = () => {
@@ -249,7 +241,6 @@ export default function AddClientPage() {
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
 
-  // Render form input helper
   const renderInput = (
     label: string,
     field: string,
@@ -330,13 +321,11 @@ export default function AddClientPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Add New Client</h1>
         <p className="text-slate-500 mt-1">Enter client details to submit a new loan lead</p>
       </div>
 
-      {/* Progress Steps */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <div className="flex items-center justify-between">
           {steps.map((step, index) => (
@@ -376,9 +365,7 @@ export default function AddClientPage() {
         </div>
       </div>
 
-      {/* Form Content */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
-        {/* Step 1: Client Details */}
         {currentStep === 'client' && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -430,7 +417,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Step 2: Loan Details */}
         {currentStep === 'loan' && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -438,7 +424,6 @@ export default function AddClientPage() {
               <h2 className="text-lg font-semibold text-slate-800">Loan Details</h2>
             </div>
 
-            {/* Loan Category Selection */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-3">Select Loan Category *</label>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -476,7 +461,6 @@ export default function AddClientPage() {
               )}
             </div>
 
-            {/* Loan Sub-Type Dropdown - Only shown when category is selected */}
             {selectedCategory && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -582,7 +566,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Step 3: Employment */}
         {currentStep === 'employment' && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -731,7 +714,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Step 4: Address */}
         {currentStep === 'address' && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -820,7 +802,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Step 5: Consent */}
         {currentStep === 'consent' && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 mb-4">
@@ -828,7 +809,6 @@ export default function AddClientPage() {
               <h2 className="text-lg font-semibold text-slate-800">Consent & Declaration</h2>
             </div>
 
-            {/* Info Banner */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
               <Info className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
               <div>
@@ -918,7 +898,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Error Message */}
         {submitError && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
             <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
@@ -929,7 +908,6 @@ export default function AddClientPage() {
           </div>
         )}
 
-        {/* Navigation Buttons */}
         <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
           <button
             onClick={handleBack}

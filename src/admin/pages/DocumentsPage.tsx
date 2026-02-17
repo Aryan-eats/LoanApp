@@ -12,7 +12,7 @@ import { FileText, X, Plus } from 'lucide-react';
 import {
   getProductsByCategory,
   type LoanCategory,
-} from '../../data/loanProducts';
+} from '../../data/loanProductsData';
 import {
   CreditCard,
   Business,
@@ -27,11 +27,10 @@ import {
   FlashOn,
   Construction,
 } from '@mui/icons-material';
+import { uploadLeadDocument, getDocumentDownloadUrl } from '../../api/documentsApi';
 
-// Get leads that have documents
 const leadsWithDocs = leads.filter((lead) => lead.documents && lead.documents.length > 0);
 
-// Loan categories for the form
 const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
   { value: 'personal', label: 'Personal', icon: <CreditCard fontSize="small" /> },
   { value: 'business', label: 'Business', icon: <Business fontSize="small" /> },
@@ -49,7 +48,6 @@ const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNod
   { value: 'specialized', label: 'Specialized', icon: <FlashOn fontSize="small" /> },
 ];
 
-// Standard documents required for loans
 const standardDocuments = [
   'PAN Card',
   'Aadhaar Card',
@@ -65,7 +63,6 @@ const DocumentsPage: React.FC = () => {
   const [expandedLeads, setExpandedLeads] = useState<string[]>([leadsWithDocs[0]?.id || '']);
   const [selectedDoc, setSelectedDoc] = useState<{ doc: LeadDocument; lead: Lead } | null>(null);
   
-  // Add Client Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedClients, setAddedClients] = useState<Lead[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<LoanCategory | ''>('');
@@ -75,8 +72,8 @@ const DocumentsPage: React.FC = () => {
     loanAmount: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
 
-  // Memoized document stats
   const documentStats = useMemo(() => {
     const allLeads = [...leads, ...addedClients];
     const allDocuments = allLeads.flatMap((lead) => lead.documents);
@@ -88,13 +85,11 @@ const DocumentsPage: React.FC = () => {
     };
   }, [addedClients]);
 
-  // Combine placeholder leads with added clients
   const allLeadsWithDocs = useMemo(() => {
     const addedWithDocs = addedClients.filter((lead) => lead.documents && lead.documents.length > 0);
     return [...addedWithDocs, ...leadsWithDocs];
   }, [addedClients]);
 
-  // Memoized filtered leads
   const filteredLeads = useMemo(() => {
     return allLeadsWithDocs.filter((lead) => {
       const matchesSearch =
@@ -111,7 +106,6 @@ const DocumentsPage: React.FC = () => {
     });
   }, [searchQuery, statusFilter]);
 
-  // Handlers with useCallback
   const toggleExpand = useCallback((leadId: string) => {
     setExpandedLeads((prev) =>
       prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
@@ -127,19 +121,16 @@ const DocumentsPage: React.FC = () => {
   }, [expandedLeads.length, filteredLeads]);
 
   const handleApprove = useCallback((docId: string, leadId: string) => {
-    // Placeholder: Would call API to approve document
     console.log('Approving document:', docId, 'for lead:', leadId);
     setSelectedDoc(null);
   }, []);
 
   const handleReject = useCallback((docId: string, leadId: string) => {
-    // Placeholder: Would call API to reject document
     console.log('Rejecting document:', docId, 'for lead:', leadId);
     setSelectedDoc(null);
   }, []);
 
   const handleNotifyPartner = useCallback((lead: Lead, doc: LeadDocument) => {
-    // Placeholder: Would call API to send notification to partner
     console.log('Notifying partner for lead:', lead.id, 'document:', doc.type);
     alert(
       `Notification sent to partner "${lead.partnerName}" requesting ${doc.type} for ${lead.customerName}`
@@ -147,7 +138,6 @@ const DocumentsPage: React.FC = () => {
   }, []);
 
   const handleSendUploadLink = useCallback((lead: Lead, doc: LeadDocument) => {
-    // Placeholder: Would call API to send upload link to customer
     console.log('Sending upload link to customer:', lead.customerEmail, 'for document:', doc.type);
     alert(`Upload link sent to ${lead.customerEmail} for uploading ${doc.type}`);
   }, []);
@@ -156,7 +146,62 @@ const DocumentsPage: React.FC = () => {
     setSelectedDoc({ doc, lead });
   }, []);
 
-  // Add Client handlers
+  const handleUploadFile = useCallback(async (leadId: string, docId: string, file: File) => {
+    setUploadingDocId(docId);
+    try {
+      const response = await uploadLeadDocument(leadId, docId, file);
+      if (response.success && response.data?.document) {
+        const updatedDoc = response.data.document;
+        // Update the document in added clients if it exists there
+        setAddedClients((prev) =>
+          prev.map((lead) => {
+            if (lead.id !== leadId) return lead;
+            return {
+              ...lead,
+              documents: lead.documents.map((d) =>
+                d.id === docId
+                  ? {
+                      ...d,
+                      fileName: updatedDoc.fileName,
+                      uploadedBy: updatedDoc.uploadedBy || 'Admin',
+                      uploadedAt: updatedDoc.uploadedAt
+                        ? new Date(updatedDoc.uploadedAt).toLocaleDateString()
+                        : new Date().toLocaleDateString(),
+                      status: (updatedDoc.status as DocumentStatus) || 'uploaded',
+                      url: updatedDoc.fileUrl || undefined,
+                    }
+                  : d
+              ),
+            };
+          })
+        );
+        alert(`✅ "${file.name}" uploaded successfully for ${updatedDoc.type || 'document'}`);
+      } else {
+        alert(`❌ Upload failed: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      alert(`❌ ${message}`);
+    } finally {
+      setUploadingDocId(null);
+    }
+  }, []);
+
+  const handleDownloadFile = useCallback(async (docId: string) => {
+    try {
+      const response = await getDocumentDownloadUrl(docId);
+      if (response.success && response.data?.url) {
+        // Open the pre-signed URL in a new tab to download
+        window.open(response.data.url, '_blank');
+      } else {
+        alert(response.message || 'Could not generate download link');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Download failed';
+      alert(`❌ ${message}`);
+    }
+  }, []);
+
   const handleOpenAddModal = useCallback(() => {
     setShowAddModal(true);
     setFormData({ customerName: '', loanType: '', loanAmount: '' });
@@ -193,7 +238,6 @@ const DocumentsPage: React.FC = () => {
     const newClientId = `NEW-${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
     
-    // Create documents checklist for the new client
     const newDocuments: LeadDocument[] = standardDocuments.map((docType, index) => ({
       id: `${newClientId}-D${index + 1}`,
       type: docType,
@@ -234,16 +278,13 @@ const DocumentsPage: React.FC = () => {
 
   return (
     <AdminLayout onAddLead={handleOpenAddModal} addButtonLabel="Add Client">
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
         <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
       </div>
 
-      {/* Stats Cards */}
       <DocumentStatsCards stats={documentStats} />
 
-      {/* Filters */}
       <DocumentFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -254,7 +295,6 @@ const DocumentsPage: React.FC = () => {
         onToggleExpandAll={handleToggleExpandAll}
       />
 
-      {/* Documents by Customer */}
       {filteredLeads.length > 0 ? (
         <div className="space-y-4">
           {filteredLeads.map((lead) => (
@@ -268,6 +308,9 @@ const DocumentsPage: React.FC = () => {
               onReject={(docId) => handleReject(docId, lead.id)}
               onNotifyPartner={(doc) => handleNotifyPartner(lead, doc)}
               onSendUploadLink={(doc) => handleSendUploadLink(lead, doc)}
+              onUploadFile={handleUploadFile}
+              onDownloadFile={handleDownloadFile}
+              uploadingDocId={uploadingDocId}
             />
           ))}
         </div>
@@ -279,7 +322,6 @@ const DocumentsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Document Preview Modal */}
       {selectedDoc && (
         <DocumentPreviewModal
           selectedDoc={selectedDoc}
@@ -291,11 +333,9 @@ const DocumentsPage: React.FC = () => {
         />
       )}
 
-      {/* Add Client Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
@@ -314,9 +354,7 @@ const DocumentsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-4 space-y-4">
-              {/* Client Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client Name <span className="text-red-500">*</span>
@@ -335,7 +373,6 @@ const DocumentsPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Loan Category */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Loan Category <span className="text-red-500">*</span>
@@ -364,7 +401,6 @@ const DocumentsPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Loan Type (Sub-type) */}
               {selectedCategory && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -390,7 +426,6 @@ const DocumentsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Loan Amount */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Loan Amount <span className="text-red-500">*</span>
@@ -414,7 +449,6 @@ const DocumentsPage: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1">Minimum: ₹50,000</p>
               </div>
 
-              {/* Documents Preview */}
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-sm font-medium text-gray-700 mb-2">Documents Checklist</p>
                 <p className="text-xs text-gray-500 mb-2">
@@ -434,7 +468,6 @@ const DocumentsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
               <button
                 onClick={handleCloseAddModal}

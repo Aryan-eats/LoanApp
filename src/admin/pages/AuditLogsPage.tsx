@@ -1,55 +1,84 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import { auditLogs } from '../data/placeholderData';
+import { getAuditLogs } from '../../api/adminApi';
+import type { AuditEventType, AuditLog, AuditLogsPagination } from '../types/admin';
 
-type AuditAction = 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout' | 'export';
-
-const actionLabels: Record<AuditAction, string> = {
-  create: 'Created',
-  update: 'Updated',
-  delete: 'Deleted',
-  approve: 'Approved',
-  reject: 'Rejected',
-  login: 'Logged In',
-  logout: 'Logged Out',
-  export: 'Exported',
+const eventLabels: Record<AuditEventType, string> = {
+  LOGIN_SUCCESS: 'Login Success',
+  LOGIN_FAILED: 'Login Failed',
+  LOGOUT: 'Logout',
+  REGISTER: 'Register',
+  PASSWORD_RESET_REQUEST: 'Password Reset Request',
+  PASSWORD_RESET_SUCCESS: 'Password Reset Success',
+  PASSWORD_CHANGE: 'Password Change',
+  OTP_SENT: 'OTP Sent',
+  OTP_VERIFIED: 'OTP Verified',
+  ACCOUNT_LOCKED: 'Account Locked',
+  TOKEN_REFRESH: 'Token Refresh',
+  SUSPICIOUS_ACTIVITY: 'Suspicious Activity',
 };
 
-const actionColors: Record<AuditAction, string> = {
-  create: 'bg-green-100 text-green-700',
-  update: 'bg-blue-100 text-blue-700',
-  delete: 'bg-red-100 text-red-700',
-  approve: 'bg-green-100 text-green-700',
-  reject: 'bg-red-100 text-red-700',
-  login: 'bg-gray-100 text-gray-700',
-  logout: 'bg-gray-100 text-gray-700',
-  export: 'bg-purple-100 text-purple-700',
+const eventColors: Record<AuditEventType, string> = {
+  LOGIN_SUCCESS: 'bg-green-100 text-green-700',
+  LOGIN_FAILED: 'bg-red-100 text-red-700',
+  LOGOUT: 'bg-gray-100 text-gray-700',
+  REGISTER: 'bg-blue-100 text-blue-700',
+  PASSWORD_RESET_REQUEST: 'bg-yellow-100 text-yellow-700',
+  PASSWORD_RESET_SUCCESS: 'bg-green-100 text-green-700',
+  PASSWORD_CHANGE: 'bg-blue-100 text-blue-700',
+  OTP_SENT: 'bg-purple-100 text-purple-700',
+  OTP_VERIFIED: 'bg-purple-100 text-purple-700',
+  ACCOUNT_LOCKED: 'bg-red-100 text-red-700',
+  TOKEN_REFRESH: 'bg-gray-100 text-gray-700',
+  SUSPICIOUS_ACTIVITY: 'bg-red-100 text-red-700',
 };
 
 const AuditLogsPage: React.FC = () => {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [pagination, setPagination] = useState<AuditLogsPagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [actionFilter, setActionFilter] = useState<AuditAction | ''>('');
-  const [entityFilter, setEntityFilter] = useState('');
+  const [eventFilter, setEventFilter] = useState<AuditEventType | ''>('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const entityTypes = [...new Set(auditLogs.map(log => log.entity))];
+  const fetchLogs = useCallback(async (page = 1) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params: Record<string, unknown> = { page, limit: 50 };
+      if (searchQuery) params.search = searchQuery;
+      if (eventFilter) params.event = eventFilter;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
 
-  const filteredLogs = auditLogs.filter((log) => {
-    const matchesSearch =
-      log.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.entityId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchQuery.toLowerCase());
+      const response = await getAuditLogs(params as any);
+      if (response.success && response.data) {
+        setLogs(response.data.logs as AuditLog[]);
+        setPagination(response.data.pagination);
+      } else {
+        setError(response.message || 'Failed to fetch audit logs');
+      }
+    } catch (err) {
+      setError('Failed to fetch audit logs');
+      console.error('Audit logs fetch error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, eventFilter, dateFrom, dateTo]);
 
-    const matchesAction = !actionFilter || log.action === actionFilter;
-    const matchesEntity = !entityFilter || log.entity === entityFilter;
+  useEffect(() => {
+    fetchLogs(1);
+  }, [fetchLogs]);
 
-    return matchesSearch && matchesAction && matchesEntity;
-  });
+  const loginEvents = logs.filter(l => l.event === 'LOGIN_SUCCESS' || l.event === 'LOGIN_FAILED' || l.event === 'LOGOUT').length;
+  const securityEvents = logs.filter(l => l.event === 'ACCOUNT_LOCKED' || l.event === 'SUSPICIOUS_ACTIVITY').length;
+  const authEvents = logs.filter(l => ['REGISTER', 'PASSWORD_CHANGE', 'PASSWORD_RESET_REQUEST', 'PASSWORD_RESET_SUCCESS'].includes(l.event)).length;
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
@@ -63,13 +92,12 @@ const AuditLogsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Total Events</p>
-              <p className="text-2xl font-bold text-gray-900">{auditLogs.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{pagination.total}</p>
             </div>
             <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,7 +111,7 @@ const AuditLogsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Login Events</p>
-              <p className="text-2xl font-bold text-blue-600">{auditLogs.filter(l => l.action === 'login' || l.action === 'logout').length}</p>
+              <p className="text-2xl font-bold text-blue-600">{loginEvents}</p>
             </div>
             <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,12 +124,12 @@ const AuditLogsPage: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Data Changes</p>
-              <p className="text-2xl font-bold text-green-600">{auditLogs.filter(l => ['create', 'update', 'delete'].includes(l.action)).length}</p>
+              <p className="text-sm text-gray-500">Security Events</p>
+              <p className="text-2xl font-bold text-red-600">{securityEvents}</p>
             </div>
-            <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
           </div>
@@ -110,8 +138,8 @@ const AuditLogsPage: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Approvals</p>
-              <p className="text-2xl font-bold text-yellow-600">{auditLogs.filter(l => l.action === 'approve' || l.action === 'reject').length}</p>
+              <p className="text-sm text-gray-500">Auth Changes</p>
+              <p className="text-2xl font-bold text-yellow-600">{authEvents}</p>
             </div>
             <div className="w-10 h-10 bg-yellow-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,10 +150,8 @@ const AuditLogsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
           <div className="flex-1">
             <div className="relative">
               <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,31 +167,17 @@ const AuditLogsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Filter */}
           <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value as AuditAction | '')}
+            value={eventFilter}
+            onChange={(e) => setEventFilter(e.target.value as AuditEventType | '')}
             className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
           >
-            <option value="">All Actions</option>
-            {Object.entries(actionLabels).map(([value, label]) => (
+            <option value="">All Events</option>
+            {Object.entries(eventLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
 
-          {/* Entity Filter */}
-          <select
-            value={entityFilter}
-            onChange={(e) => setEntityFilter(e.target.value)}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
-          >
-            <option value="">All Entities</option>
-            {entityTypes.map((entity) => (
-              <option key={entity} value={entity}>{entity}</option>
-            ))}
-          </select>
-
-          {/* Date Range */}
           <div className="flex items-center gap-2">
             <input
               type="date"
@@ -186,28 +198,47 @@ const AuditLogsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Audit Logs Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin"></div>
+            <p className="mt-2 text-sm text-gray-500">Loading audit logs...</p>
+          </div>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <svg className="w-12 h-12 text-red-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <p className="mt-2 text-sm text-red-600">{error}</p>
+            <button onClick={() => fetchLogs(pagination.page)} className="mt-3 px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
+              Retry
+            </button>
+          </div>
+        ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Timestamp</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">User</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Entity</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Entity ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Details</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Event</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">IP Address</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredLogs.map((log) => (
+              {logs.map((log) => {
+                const date = new Date(log.createdAt);
+                const dateStr = date.toLocaleDateString();
+                const timeStr = date.toLocaleTimeString();
+                return (
                 <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <div>
-                      <p className="text-sm text-gray-900">{log.timestamp.split(' ')[0]}</p>
-                      <p className="text-xs text-gray-500">{log.timestamp.split(' ').slice(1).join(' ')}</p>
+                      <p className="text-sm text-gray-900">{dateStr}</p>
+                      <p className="text-xs text-gray-500">{timeStr}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -222,31 +253,39 @@ const AuditLogsPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 text-xs font-medium rounded ${actionColors[log.action as AuditAction] || 'bg-gray-100 text-gray-700'}`}>
-                      {actionLabels[log.action as AuditAction] || log.action}
+                    <span className={`px-2 py-1 text-xs font-medium rounded ${eventColors[log.event] || 'bg-gray-100 text-gray-700'}`}>
+                      {eventLabels[log.event] || log.event}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm text-gray-600">{log.entity}</span>
+                    {log.success ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-700">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                        Success
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                        Failed
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-mono text-gray-500">{log.entityId || '-'}</span>
+                    <span className="text-sm font-mono text-gray-500">{log.ip || '-'}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-gray-600 max-w-xs truncate" title={log.details}>
-                      {log.details}
+                    <p className="text-sm text-gray-600 max-w-xs truncate" title={log.failureReason || ''}>
+                      {log.failureReason || (log.metadata ? JSON.stringify(log.metadata) : '-')}
                     </p>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-mono text-gray-500">{log.ipAddress}</span>
-                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {filteredLogs.length === 0 && (
+        {logs.length === 0 && (
           <div className="p-8 text-center">
             <svg className="w-12 h-12 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -255,23 +294,34 @@ const AuditLogsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination */}
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            Showing <span className="font-medium">{filteredLogs.length}</span> of <span className="font-medium">{auditLogs.length}</span> logs
+            Showing <span className="font-medium">{logs.length}</span> of <span className="font-medium">{pagination.total}</span> logs
+            {pagination.totalPages > 1 && (
+              <span> &middot; Page {pagination.page} of {pagination.totalPages}</span>
+            )}
           </p>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors disabled:opacity-50" disabled>
+            <button
+              className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={pagination.page <= 1}
+              onClick={() => fetchLogs(pagination.page - 1)}
+            >
               Previous
             </button>
-            <button className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors">
+            <button
+              className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={pagination.page >= pagination.totalPages}
+              onClick={() => fetchLogs(pagination.page + 1)}
+            >
               Next
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
 
-      {/* Security Notice */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
         <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

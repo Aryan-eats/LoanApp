@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
-import User from '../models/User.js';
 import { Request, Response } from 'express';
+import prisma from '../config/prisma.js';
+import { Prisma } from '@prisma/client';
+import { hashPassword } from '../services/userService.js';
 import {
   getLeads,
   getLeadById,
+  createLead,
   updateLead,
   deleteLead,
   getLeadStats,
@@ -14,18 +17,12 @@ import {
 
 const router = Router();
 
-// All admin routes require authentication and admin role
 router.use(protect);
 router.use(authorize('admin'));
 
-/**
- * @desc    Get all users
- * @route   GET /api/admin/users
- * @access  Private/Admin
- */
 router.get('/users', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
 
     res.status(200).json({
       success: true,
@@ -41,33 +38,32 @@ router.get('/users', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * @desc    Get all partners (users with role='partner')
- * @route   GET /api/admin/partners
- * @access  Private/Admin
- */
 router.get('/partners', async (req: Request, res: Response): Promise<void> => {
   try {
-    // Build query
-    const query: Record<string, unknown> = { role: 'partner' };
-    
-    // Filter by status if provided
+    const where: Record<string, unknown> = { role: 'partner' };
+
     if (req.query.status) {
-      query.isActive = req.query.status === 'approved';
+      where.isActive = req.query.status === 'approved';
     }
 
-    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    const users = await prisma.user.findMany({ where, orderBy: { createdAt: 'desc' } });
 
-    // Format response to match frontend Partner type
+    const leadCounts = await prisma.lead.groupBy({
+      by: ['partnerId'],
+      where: { partnerId: { in: users.map((u) => u.id) } },
+      _count: { id: true },
+    });
+    const leadCountMap = new Map(leadCounts.map((lc) => [lc.partnerId, lc._count.id]));
+
     const partners = users.map((user) => ({
-      id: user._id.toString(),
+      id: user.id,
       fullName: `${user.firstName} ${user.lastName}`,
       email: user.email,
       phone: user.phone,
       partnerType: user.partnerType || 'freelancer',
       city: user.city || 'N/A',
       status: user.isActive ? 'approved' : 'pending',
-      leadsSubmitted: 0, // Would need Lead aggregation for real count
+      leadsSubmitted: leadCountMap.get(user.id) || 0,
       joinedDate: user.createdAt.toISOString().split('T')[0],
       panNumber: user.panNumber || 'N/A',
       businessName: user.businessName,
@@ -94,14 +90,70 @@ router.get('/partners', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * @desc    Get single user by ID
- * @route   GET /api/admin/users/:id
- * @access  Private/Admin
- */
+router.post('/users', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password, firstName, lastName, role } = req.body;
+
+    if (!email || !password || !firstName || !lastName || !role) {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide email, password, firstName, lastName, and role',
+      });
+      return;
+    }
+
+    const validRoles = ['super_admin', 'admin', 'manager', 'agent', 'viewer'];
+    if (!validRoles.includes(role)) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid role. Must be one of: ${validRoles.join(', ')}`,
+      });
+      return;
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+    if (existingUser) {
+      res.status(400).json({
+        success: false,
+        message: 'A user with this email already exists',
+      });
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role,
+        isActive: true,
+        isEmailVerified: true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: { user },
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+});
+
 router.get('/users/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const id = String(req.params.id);
+    const user = await prisma.user.findUnique({ where: { id } });
 
     if (!user) {
       res.status(404).json({
@@ -124,17 +176,13 @@ router.get('/users/:id', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * @desc    Update user by ID
- * @route   PUT /api/admin/users/:id
- * @access  Private/Admin
- */
 router.put('/users/:id', async (req: Request, res: Response): Promise<void> => {
   try {
+    const id = String(req.params.id);
     const { firstName, lastName, phone, role, isActive, isEmailVerified, isPhoneVerified } = req.body;
 
     const updateData: Record<string, unknown> = {};
-    
+
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
     if (phone !== undefined) updateData.phone = phone;
@@ -143,18 +191,21 @@ router.put('/users/:id', async (req: Request, res: Response): Promise<void> => {
     if (isEmailVerified !== undefined) updateData.isEmailVerified = isEmailVerified;
     if (isPhoneVerified !== undefined) updateData.isPhoneVerified = isPhoneVerified;
 
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).select('-password');
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'User not found',
+    let user;
+    try {
+      user = await prisma.user.update({
+        where: { id },
+        data: updateData,
       });
-      return;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+        return;
+      }
+      throw err;
     }
 
     res.status(200).json({
@@ -171,14 +222,10 @@ router.put('/users/:id', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * @desc    Delete user by ID
- * @route   DELETE /api/admin/users/:id
- * @access  Private/Admin
- */
 router.delete('/users/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.params.id);
+    const id = String(req.params.id);
+    const user = await prisma.user.findUnique({ where: { id } });
 
     if (!user) {
       res.status(404).json({
@@ -188,8 +235,7 @@ router.delete('/users/:id', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Prevent admin from deleting themselves
-    if (req.user && user._id.toString() === req.user._id.toString()) {
+    if (req.user && user.id === req.user.id) {
       res.status(400).json({
         success: false,
         message: 'You cannot delete your own account from here',
@@ -197,7 +243,7 @@ router.delete('/users/:id', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    await User.findByIdAndDelete(req.params.id);
+    await prisma.user.delete({ where: { id } });
 
     res.status(200).json({
       success: true,
@@ -212,24 +258,18 @@ router.delete('/users/:id', async (req: Request, res: Response): Promise<void> =
   }
 });
 
-/**
- * @desc    Get admin dashboard stats
- * @route   GET /api/admin/stats
- * @access  Private/Admin
- */
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ isActive: true });
-    const partners = await User.countDocuments({ role: 'partner' });
-    const admins = await User.countDocuments({ role: 'admin' });
-    const verifiedUsers = await User.countDocuments({ isEmailVerified: true });
+    const totalUsers = await prisma.user.count();
+    const activeUsers = await prisma.user.count({ where: { isActive: true } });
+    const partners = await prisma.user.count({ where: { role: 'partner' } });
+    const admins = await prisma.user.count({ where: { role: 'admin' } });
+    const verifiedUsers = await prisma.user.count({ where: { isEmailVerified: true } });
 
-    // Get users registered in last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const newUsersThisWeek = await User.countDocuments({
-      createdAt: { $gte: sevenDaysAgo },
+    const newUsersThisWeek = await prisma.user.count({
+      where: { createdAt: { gte: sevenDaysAgo } },
     });
 
     res.status(200).json({
@@ -254,27 +294,124 @@ router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * Lead Management Routes for Admins
- * Admins have full access to all leads
- */
+router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      event,
+      userId,
+      dateFrom,
+      dateTo,
+      search,
+      page = '1',
+      limit = '50',
+    } = req.query;
 
-// Get lead statistics (must be before /:id route)
+    const where: Prisma.AuditLogWhereInput = {};
+
+    if (event && typeof event === 'string') {
+      where.event = event as any;
+    }
+
+    if (userId && typeof userId === 'string') {
+      where.userId = userId;
+    }
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom && typeof dateFrom === 'string') {
+        (where.createdAt as any).gte = new Date(dateFrom);
+      }
+      if (dateTo && typeof dateTo === 'string') {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        (where.createdAt as any).lte = toDate;
+      }
+    }
+
+    if (search && typeof search === 'string') {
+      where.OR = [
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+        { ip: { contains: search } },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum,
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    const formattedLogs = logs.map((log) => ({
+      id: log.id,
+      event: log.event,
+      userName: log.user
+        ? `${log.user.firstName} ${log.user.lastName}`
+        : 'System',
+      userRole: log.user?.role || 'unknown',
+      ip: log.ip,
+      userAgent: log.userAgent,
+      success: log.success,
+      failureReason: log.failureReason,
+      metadata: log.metadata,
+      createdAt: log.createdAt.toISOString(),
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: total,
+      data: {
+        logs: formattedLogs,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get audit logs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+});
+
 router.get('/leads/stats', getLeadStats);
 
-// Lead CRUD operations
 router.route('/leads')
-  .get(getLeads);      // GET /api/admin/leads - Get all leads
+  .get(getLeads)
+  .post(createLead);
 
 router.route('/leads/:id')
-  .get(getLeadById)    // GET /api/admin/leads/:id - Get single lead
-  .put(updateLead)     // PUT /api/admin/leads/:id - Update lead
-  .delete(deleteLead); // DELETE /api/admin/leads/:id - Delete lead
+  .get(getLeadById)
+  .put(updateLead)
+  .delete(deleteLead);
 
-// Update lead status with timeline entry
 router.patch('/leads/:id/status', updateLeadStatus);
 
-// Assign bank to a lead
 router.patch('/leads/:id/assign-bank', assignBank);
 
 export default router;

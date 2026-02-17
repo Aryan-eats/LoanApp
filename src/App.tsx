@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Outlet } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ApplicationForm from './components/ApplicationForm';
@@ -15,6 +15,7 @@ const Contact = lazy(() => import('./pages/Contact'));
 const Calculator = lazy(() => import('./pages/Calculator'));
 const PartnerOnboarding = lazy(() => import('./pages/PartnerOnboarding'));
 const LogIn = lazy(() => import('./pages/LogIn'));
+const BestOffers = lazy(() => import('./pages/BestOffers'));
 
 // Lazy load admin pages
 const AdminDashboard = lazy(() => import('./admin/pages/AdminDashboard'));
@@ -36,6 +37,7 @@ const CreditCheckPage = lazy(() => import('./partner/pages/CreditCheckPage'));
 const PartnerDocumentsPage = lazy(() => import('./partner/pages/DocumentsPage'));
 const PartnerCommissionsPage = lazy(() => import('./partner/pages/CommissionsPage'));
 const BankOffersPage = lazy(() => import('./partner/pages/BankOffersPage'));
+const BankLoanTypesPage = lazy(() => import('./partner/pages/BankLoanTypesPage'));
 const ProfilePage = lazy(() => import('./partner/pages/ProfilePage'));
 const SupportPage = lazy(() => import('./partner/pages/SupportPage'));
 
@@ -73,7 +75,7 @@ function App() {
       <Router>
         <AppLayout>
           <Suspense fallback={<PageLoader />}>
-            <Routes>
+            <Routes> 
               {/* Public routes */}
               <Route path="/" element={<Home />} />
               <Route path="/why-us" element={<WhyUs />} />
@@ -84,18 +86,21 @@ function App() {
               <Route path="/apply" element={<div className="pt-24 pb-12 px-4"><ApplicationForm /></div>} />
               <Route path="/onboarding" element={<PartnerOnboarding />} />
               <Route path="/login" element={<LogIn />} />
+              <Route path="/best-offers" element={<BestOffers />} />
 
-              {/* Admin routes */}
-              <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-              <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-              <Route path="/admin/partners" element={<ProtectedRoute allowedRoles={['admin']}><PartnersPage /></ProtectedRoute>} />
-              <Route path="/admin/leads" element={<ProtectedRoute allowedRoles={['admin']}><LeadsPage /></ProtectedRoute>} />
-              <Route path="/admin/documents" element={<ProtectedRoute allowedRoles={['admin']}><DocumentsPage /></ProtectedRoute>} />
-              <Route path="/admin/banks" element={<ProtectedRoute allowedRoles={['admin']}><BanksPage /></ProtectedRoute>} />
-              <Route path="/admin/commissions" element={<ProtectedRoute allowedRoles={['admin']}><CommissionsPage /></ProtectedRoute>} />
-              <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><UsersPage /></ProtectedRoute>} />
-              <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></ProtectedRoute>} />
-              <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={['admin']}><SettingsPage /></ProtectedRoute>} />
+              {/* Admin routes - single ProtectedRoute wrapper, no remount on route change */}
+              <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><Outlet /></ProtectedRoute>}>
+                <Route index element={<AdminDashboard />} />
+                <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="partners" element={<PartnersPage />} />
+                <Route path="leads" element={<LeadsPage />} />
+                <Route path="documents" element={<DocumentsPage />} />
+                <Route path="banks" element={<BanksPage />} />
+                <Route path="commissions" element={<CommissionsPage />} />
+                <Route path="users" element={<UsersPage />} />
+                <Route path="audit-logs" element={<AuditLogsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
 
               {/* Partner Dashboard routes */}
               <Route path="/partner" element={<ProtectedRoute allowedRoles={['partner']}><PartnerLayout /></ProtectedRoute>}>
@@ -106,6 +111,7 @@ function App() {
                 <Route path="documents" element={<PartnerDocumentsPage />} />
                 <Route path="commissions" element={<PartnerCommissionsPage />} />
                 <Route path="bank-offers" element={<BankOffersPage />} />
+                <Route path="bank-offers/:bankId" element={<BankLoanTypesPage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="support" element={<SupportPage />} />
               </Route>

@@ -301,6 +301,11 @@ export const validatePartnerRegister = [
     .withMessage('Privacy policy consent must be a boolean')
     .equals('true')
     .withMessage('You must agree to the privacy policy'),
+  body('phoneVerificationToken')
+    .optional()
+    .trim()
+    .isLength({ min: 16 })
+    .withMessage('Invalid phone verification token'),
   
   handleValidationErrors,
 ];

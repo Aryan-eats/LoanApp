@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import StatsCard from '../components/StatsCard';
 import StatusBadge from '../components/StatusBadge';
-import { dashboardStats, leads } from '../data/placeholderData';
+import { getAdminStats } from '../../api/adminApi';
+import { getLeads } from '../../api/leadsApi';
+import type { LeadStatus } from '../types/admin';
 
 const formatCurrency = (amount: number): string => {
   if (amount >= 10000000) {
@@ -13,34 +16,149 @@ const formatCurrency = (amount: number): string => {
   return `₹${amount.toLocaleString('en-IN')}`;
 };
 
+interface DashboardStats {
+  leadsToday: number;
+  leadsMTD: number;
+  activePartners: number;
+  loansApprovedMTD: number;
+  loansDisbursedMTD: number;
+  totalCommissionMTD: number;
+  pendingReview: number;
+  leadsByLoanType: { type: string; count: number }[];
+}
+
+interface RecentLead {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  loanType: string;
+  loanAmount: number;
+  partnerName: string;
+  status: LeadStatus;
+  createdAt: string;
+}
+
 const AdminDashboard: React.FC = () => {
-  const recentLeads = leads.slice(0, 5);
+  const [stats, setStats] = useState<DashboardStats>({
+    leadsToday: 0,
+    leadsMTD: 0,
+    activePartners: 0,
+    loansApprovedMTD: 0,
+    loansDisbursedMTD: 0,
+    totalCommissionMTD: 0,
+    pendingReview: 0,
+    leadsByLoanType: [],
+  });
+  const [recentLeads, setRecentLeads] = useState<RecentLead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
+        setDashboardError(null);
+        
+        const statsResponse = await getAdminStats();
+        if (statsResponse.success && statsResponse.data) {
+          const apiStats = statsResponse.data.stats;
+          setStats({
+            leadsToday: apiStats.newUsersThisWeek || 0,
+            leadsMTD: apiStats.totalUsers || 0,
+            activePartners: apiStats.partners || 0,
+            loansApprovedMTD: apiStats.verifiedUsers || 0,
+            loansDisbursedMTD: apiStats.activeUsers || 0,
+            totalCommissionMTD: 0,
+            pendingReview: 0,
+            leadsByLoanType: [],
+          });
+        }
+
+        const leadsResponse = await getLeads({ limit: 5 }, true);
+        if (leadsResponse.success && leadsResponse.data) {
+          const apiLeads: RecentLead[] = [];
+          let skippedLeads = 0;
+
+          for (const lead of leadsResponse.data.leads) {
+            try {
+              const createdAt = lead.createdAt ? new Date(lead.createdAt) : null;
+              const createdAtValue =
+                createdAt && !Number.isNaN(createdAt.getTime())
+                  ? createdAt.toISOString().split('T')[0]
+                  : 'Unknown';
+
+              apiLeads.push({
+                id: lead.id,
+                customerName: lead.client?.fullName || 'Unknown',
+                customerPhone: lead.client?.phone || '',
+                loanType: lead.loanType ?? '',
+                loanAmount: lead.loanAmount,
+                partnerName: lead.partnerName || 'Direct',
+                status: lead.status,
+                createdAt: createdAtValue,
+              });
+            } catch (leadError) {
+              skippedLeads += 1;
+              console.warn('Skipping invalid lead entry:', leadError);
+            }
+          }
+
+          if (skippedLeads > 0) {
+            console.warn(`Skipped ${skippedLeads} lead(s) due to invalid data.`);
+          }
+
+          setRecentLeads(apiLeads);
+
+          const loanTypeCounts: Record<string, number> = {};
+          leadsResponse.data.leads.forEach((lead) => {
+            const type = lead.loanType || 'Other';
+            loanTypeCounts[type] = (loanTypeCounts[type] || 0) + 1;
+          });
+          
+          const leadsByType = Object.entries(loanTypeCounts)
+            .map(([type, count]) => ({
+              type: type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+              count,
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 6);
+          
+          setStats(prev => ({ ...prev, leadsByLoanType: leadsByType }));
+        }
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Unknown error';
+        setDashboardError(
+          `Unable to load dashboard data. Please try again. (${message})`
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">Overview of your loan distribution business</p>
       </div>
 
-      {/* KPI Cards */}
+      {dashboardError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {dashboardError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <StatsCard
-          title="Leads Today"
-          value={dashboardStats.leadsToday}
-          subtitle="MTD: 1,284"
-          trend={{ value: 12, isPositive: true }}
-          color="blue"
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-        />
-        <StatsCard
           title="Active Partners"
-          value={dashboardStats.activePartners}
+          value={stats.activePartners}
           trend={{ value: 8, isPositive: true }}
           color="green"
           icon={
@@ -50,19 +168,19 @@ const AdminDashboard: React.FC = () => {
           }
         />
         <StatsCard
-          title="Approved (MTD)"
-          value={dashboardStats.loansApprovedMTD}
+          title="Total Users"
+          value={stats.leadsMTD}
           trend={{ value: 5, isPositive: true }}
-          color="amber"
+          color="blue"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
           }
         />
         <StatsCard
-          title="Disbursed (MTD)"
-          value={dashboardStats.loansDisbursedMTD}
+          title="Active Users"
+          value={stats.loansDisbursedMTD}
           trend={{ value: 15, isPositive: true }}
           color="green"
           icon={
@@ -72,20 +190,32 @@ const AdminDashboard: React.FC = () => {
           }
         />
         <StatsCard
-          title="Commission (MTD)"
-          value={formatCurrency(dashboardStats.totalCommissionMTD)}
-          trend={{ value: 18, isPositive: true }}
-          color="default"
+          title="Verified Users"
+          value={stats.loansApprovedMTD}
+          trend={{ value: 5, isPositive: true }}
+          color="amber"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
         />
         <StatsCard
-          title="Pending Review"
-          value={23}
-          subtitle="Partners & Leads"
+          title="New This Week"
+          value={stats.leadsToday}
+          subtitle="Users"
+          trend={{ value: 12, isPositive: true }}
+          color="default"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          }
+        />
+        <StatsCard
+          title="Leads"
+          value={recentLeads.length}
+          subtitle="Recent"
           color="red"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,66 +225,65 @@ const AdminDashboard: React.FC = () => {
         />
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Leads by Loan Type */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Leads by Loan Type (MTD)</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Leads by Loan Type</h3>
           <div className="space-y-3">
-            {dashboardStats.leadsByLoanType.map((item, index) => {
-              const maxCount = Math.max(...dashboardStats.leadsByLoanType.map(i => i.count));
-              const percentage = (item.count / maxCount) * 100;
-              
-              return (
-                <div key={index}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-600">{item.type}</span>
-                    <span className="text-sm font-medium text-gray-900">{item.count}</span>
+            {stats.leadsByLoanType.length > 0 ? (
+              stats.leadsByLoanType.map((item, index) => {
+                const maxCount = Math.max(...stats.leadsByLoanType.map(i => i.count));
+                const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                
+                return (
+                  <div key={index}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-600">{item.type}</span>
+                      <span className="text-sm font-medium text-gray-900">{item.count}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gray-900 rounded-full transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gray-900 rounded-full transition-all duration-500"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-4">No lead data available</p>
+            )}
           </div>
         </div>
 
-        {/* Disbursement Trend */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Disbursement Trend</h3>
-          <div className="flex items-end justify-between h-40 gap-2">
-            {dashboardStats.disbursementTrend.map((item, index) => {
-              const maxAmount = Math.max(...dashboardStats.disbursementTrend.map(i => i.amount));
-              const height = (item.amount / maxAmount) * 100;
-              
-              return (
-                <div key={index} className="flex-1 flex flex-col items-center">
-                  <div className="w-full flex flex-col items-center justify-end h-32">
-                    <span className="text-xs text-gray-500 mb-1">{formatCurrency(item.amount)}</span>
-                    <div 
-                      className="w-full bg-gray-900 rounded-t transition-all duration-500"
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-500 mt-2">{item.date}</span>
-                </div>
-              );
-            })}
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">System Overview</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Total Partners</span>
+              <span className="text-lg font-semibold text-gray-900">{stats.activePartners}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Total Users</span>
+              <span className="text-lg font-semibold text-gray-900">{stats.leadsMTD}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Active Users</span>
+              <span className="text-lg font-semibold text-green-600">{stats.loansDisbursedMTD}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Recent Leads</span>
+              <span className="text-lg font-semibold text-gray-900">{recentLeads.length}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Recent Leads Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">Recent Leads</h3>
-          <a href="/admin/leads" className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+          <Link to="/admin/leads" className="text-sm text-gray-600 hover:text-gray-900 font-medium">
             View All →
-          </a>
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -170,24 +299,32 @@ const AdminDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {recentLeads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50 cursor-pointer transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{lead.id}</td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{lead.customerName}</p>
-                      <p className="text-xs text-gray-500">{lead.customerPhone}</p>
-                    </div>
+              {recentLeads.length > 0 ? (
+                recentLeads.map((lead) => (
+                  <tr key={lead.id} className="hover:bg-gray-50 cursor-pointer transition-colors">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{lead.id.slice(-6)}</td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{lead.customerName}</p>
+                        <p className="text-xs text-gray-500">{lead.customerPhone}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 capitalize">{lead.loanType.replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lead.loanAmount)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{lead.partnerName}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={lead.status} size="sm" />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{lead.createdAt}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                    {isLoading ? 'Loading...' : 'No leads found'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 capitalize">{lead.loanType.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lead.loanAmount)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{lead.partnerName}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={lead.status} size="sm" />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{lead.createdAt}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                     String            @id @default(uuid())
+  email                  String            @unique
+  password               String?
+  firstName              String            @map("first_name")
+  lastName               String            @map("last_name")
+  phone                  String?
+  role                   UserRole          @default(partner)
+  isActive               Boolean           @default(true) @map("is_active")
+  isEmailVerified        Boolean           @default(false) @map("is_email_verified")
+  isPhoneVerified        Boolean           @default(false) @map("is_phone_verified")
+  lastLogin              DateTime?         @map("last_login")
+  resetPasswordToken     String?           @map("reset_password_token")
+  resetPasswordExpires   DateTime?         @map("reset_password_expires")
+  otpHash                 String?           @map("otp")
+  otpExpires             DateTime?         @map("otp_expires")
+  failedLoginAttempts    Int               @default(0) @map("failed_login_attempts")
+  lockUntil              DateTime?         @map("lock_until")
+  refreshToken           String?           @map("refresh_token")
+  refreshTokenExpires    DateTime?         @map("refresh_token_expires")
+  partnerType            PartnerType?      @map("partner_type")
+  city                   String?
+  state                  String?
+  pincode                String?
+  aadhaarNumber          String?           @map("aadhaar_number")
+  businessName           String?           @map("business_name")
+  businessAddress        String?           @map("business_address")
+  yearsInOperation       String?           @map("years_in_operation")
+  panNumber              String?           @map("pan_number")
+  gstNumber              String?           @map("gst_number")
+  hasExperience          String?           @map("has_experience")
+  expectedLeads          String?           @map("expected_leads")
+  accountHolderName      String?           @map("account_holder_name")
+  bankName               String?           @map("bank_name")
+  accountNumber          String?           @map("account_number")
+  ifscCode               String?           @map("ifsc_code")
+  upiId                  String?           @map("upi_id")
+  consentDataShare       Boolean           @default(false) @map("consent_data_share")
+  consentCommission      Boolean           @default(false) @map("consent_commission")
+  declarationNotEmployed Boolean           @default(false) @map("declaration_not_employed")
+  consentPrivacyPolicy   Boolean           @default(false) @map("consent_privacy_policy")
+  onboardingStatus       OnboardingStatus? @default(pending) @map("onboarding_status")
+  onboardingCompletedAt  DateTime?         @map("onboarding_completed_at")
+  kycStatus              KycStatus?        @default(pending) @map("kyc_status")
+  kycRejectionReason     String?           @map("kyc_rejection_reason")
+  internalNotes          String?           @map("internal_notes")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+  activeSessions         ActiveSession[]
+  auditLogs              AuditLog[]
+  leads                  Lead[]
+  passwordHistory        PasswordHistory[]
+
+  @@index([role])
+  @@index([phone])
+  @@map("users")
+}
+
+model PasswordHistory {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  hash      String
+  changedAt DateTime @default(now()) @map("changed_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, changedAt])
+  @@map("password_history")
+}
+
+model ActiveSession {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  deviceFingerprint String   @map("device_fingerprint")
+  lastActive        DateTime @default(now()) @map("last_active")
+  userAgent         String?  @map("user_agent")
+  ip                String?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+  @@index([deviceFingerprint])
+  @@map("active_sessions")
+}
+
+model Lead {
+  id                   String            @id @default(uuid())
+  clientFullName       String            @map("client_full_name")
+  clientPhone          String            @map("client_phone")
+  clientEmail          String            @map("client_email")
+  clientDateOfBirth    String?           @map("client_date_of_birth")
+  clientPanNumber      String?           @map("client_pan_number")
+  clientAadhaar        String?           @map("client_aadhaar")
+  clientEmployment     EmploymentType?   @map("client_employment")
+  clientIncome         Decimal?          @map("client_income") @db.Decimal(15, 2)
+  clientCompany        String?           @map("client_company")
+  clientExperience     Int?              @map("client_experience")
+  clientCity           String?           @map("client_city")
+  clientPincode        String?           @map("client_pincode")
+  loanType             String            @map("loan_type")
+  loanAmount           Decimal           @map("loan_amount") @db.Decimal(15, 2)
+  tenure               Int?
+  sanctionedAmount     Decimal?          @map("sanctioned_amount") @db.Decimal(15, 2)
+  disbursedAmount      Decimal?          @map("disbursed_amount") @db.Decimal(15, 2)
+  interestRate         Decimal?          @map("interest_rate") @db.Decimal(5, 2)
+  emi                  Decimal?          @db.Decimal(15, 2)
+  status               LeadStatus        @default(submitted)
+  bankAssigned         String?           @map("bank_assigned")
+  bankLogo             String?           @map("bank_logo")
+  preferredBank        String?           @map("preferred_bank")
+  partnerId            String?           @map("partner_id")
+  partnerName          String            @map("partner_name")
+  isEligible           Boolean?          @map("is_eligible")
+  maxLoanAmount        Decimal?          @map("max_loan_amount") @db.Decimal(15, 2)
+  minLoanAmount        Decimal?          @map("min_loan_amount") @db.Decimal(15, 2)
+  estimatedEMI         Decimal?          @map("estimated_emi") @db.Decimal(15, 2)
+  eligibilityCheckedAt DateTime?         @map("eligibility_checked_at")
+  commissionAmount     Decimal?          @map("commission_amount") @db.Decimal(15, 2)
+  commissionRate       Decimal?          @map("commission_rate") @db.Decimal(5, 2)
+  commissionStatus     CommissionStatus? @map("commission_status")
+  commissionPaidAt     DateTime?         @map("commission_paid_at")
+  internalNotes        String?           @map("internal_notes")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  documents            LeadDocument[]
+  timeline             LeadTimeline[]
+  partner              User?             @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([partnerId, status])
+  @@index([clientPhone])
+  @@index([createdAt(sort: Desc)])
+  @@map("leads")
+}
+
+model LeadDocument {
+  id              String         @id @default(uuid())
+  leadId          String         @map("lead_id")
+  type            String
+  fileName        String         @map("file_name")
+  fileSize        String?        @map("file_size")
+  fileUrl         String?        @map("file_url")
+  r2ObjectKey     String?        @map("r2_object_key")
+  mimeType        String?        @map("mime_type")
+  uploadedBy      String?        @map("uploaded_by")
+  uploadedAt      DateTime       @default(now()) @map("uploaded_at")
+  status          DocumentStatus @default(pending)
+  rejectionReason String?        @map("rejection_reason")
+  lead            Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_documents")
+}
+
+model LeadTimeline {
+  id        String     @id @default(uuid())
+  leadId    String     @map("lead_id")
+  status    LeadStatus
+  timestamp DateTime   @default(now())
+  note      String?
+  updatedBy String     @map("updated_by")
+  lead      Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_timeline")
+}
+
+model AuditLog {
+  id                String         @id @default(uuid())
+  event             AuditEventType
+  userId            String?        @map("user_id")
+  hashedEmail       String?        @map("hashed_email")
+  ip                String?
+  userAgent         String?        @map("user_agent")
+  deviceFingerprint String?        @map("device_fingerprint")
+  metadata          Json?
+  success           Boolean        @default(true)
+  failureReason     String?        @map("failure_reason")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  user              User?          @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([event, createdAt(sort: Desc)])
+  @@index([ip, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model OtpChallenge {
+  id                       String   @id @default(uuid())
+  phone                    String   @unique
+  otpHash                  String   @map("otp_hash")
+  otpExpiresAt             DateTime @map("otp_expires_at")
+  verificationToken        String?  @unique @map("verification_token")
+  verificationTokenExpires DateTime? @map("verification_token_expires")
+  verifiedAt               DateTime? @map("verified_at")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@index([phone])
+  @@map("otp_challenges")
+}
+
+enum UserRole {
+  super_admin
+  admin
+  manager
+  agent
+  viewer
+  partner
+}
+
+enum PartnerType {
+  freelancer
+  used_car_dealer
+  property_dealer
+  builder
+  sub_dsa
+}
+
+enum OnboardingStatus {
+  pending
+  approved
+  rejected
+}
+
+enum KycStatus {
+  pending
+  verified
+  rejected
+}
+
+enum LeadStatus {
+  draft
+  submitted
+  docs_pending
+  docs_uploaded
+  bank_processing
+  approved
+  disbursed
+  rejected
+}
+
+enum EmploymentType {
+  salaried
+  self_employed
+  business_owner
+  professional
+}
+
+enum DocumentStatus {
+  pending
+  uploaded
+  verified
+  rejected
+}
+
+enum CommissionStatus {
+  pending
+  processing
+  paid
+}
+
+enum AuditEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  REGISTER
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_SUCCESS
+  PASSWORD_CHANGE
+  OTP_SENT
+  OTP_VERIFIED
+  ACCOUNT_LOCKED
+  TOKEN_REFRESH
+  SUSPICIOUS_ACTIVITY
+}

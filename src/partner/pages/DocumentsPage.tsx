@@ -34,7 +34,6 @@ const documentStatusConfig: Record<DocumentStatus, { icon: React.ReactNode; colo
   rejected: { icon: <XCircle size={14} />, color: 'text-red-600', bg: 'bg-red-100' },
 };
 
-// Get leads that have documents
 const leadsWithDocs = recentLeads.filter((lead) => lead.documents && lead.documents.length > 0);
 
 export default function DocumentsPage() {
@@ -64,7 +63,6 @@ export default function DocumentsPage() {
     if (!selectedFile) return;
     
     setUploadingDoc(docId);
-    // Simulate upload
     await new Promise((resolve) => setTimeout(resolve, 1500));
     setUploadingDoc(null);
     setSelectedFile(null);
@@ -93,7 +91,6 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Documents</h1>
@@ -101,7 +98,6 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Info Banner */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
         <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
         <div>
@@ -113,7 +109,6 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Search */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex items-center gap-4">
           <div className="flex-1 relative">
@@ -129,7 +124,6 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Document Lists by Lead */}
       {filteredLeads.length > 0 ? (
         <div className="space-y-4">
           {filteredLeads.map((lead) => {
@@ -143,7 +137,6 @@ export default function DocumentsPage() {
                 key={lead.id}
                 className="bg-white rounded-xl border border-slate-200 overflow-hidden"
               >
-                {/* Lead Header */}
                 <div
                   className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
                   onClick={() => toggleExpand(lead.id)}
@@ -168,7 +161,6 @@ export default function DocumentsPage() {
                   </div>
 
                   <div className="flex items-center gap-6">
-                    {/* Status Indicators */}
                     <div className="hidden md:flex items-center gap-4">
                       {pendingCount > 0 && (
                         <span className="flex items-center gap-1.5 text-sm text-amber-600">
@@ -184,7 +176,6 @@ export default function DocumentsPage() {
                       )}
                     </div>
 
-                    {/* Progress */}
                     <div className="w-32">
                       <ProgressBar
                         value={completionRate}
@@ -197,7 +188,6 @@ export default function DocumentsPage() {
                   </div>
                 </div>
 
-                {/* Documents List */}
                 {isExpanded && (
                   <div className="border-t border-slate-100">
                     <div className="p-4 bg-slate-50">
@@ -236,7 +226,6 @@ export default function DocumentsPage() {
                               </div>
 
                               <div className="flex items-center gap-3">
-                                {/* Status Badge */}
                                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${statusConfig.bg}`}>
                                   {statusConfig.icon}
                                   <span className={`text-xs font-medium capitalize ${statusConfig.color}`}>
@@ -244,7 +233,6 @@ export default function DocumentsPage() {
                                   </span>
                                 </div>
 
-                                {/* Actions */}
                                 <div className="flex items-center gap-1">
                                   {doc.status === 'pending' || doc.status === 'rejected' ? (
                                     <label className="relative">
@@ -297,7 +285,6 @@ export default function DocumentsPage() {
                         })}
                       </div>
 
-                      {/* Quick Actions */}
                       {lead.documents.some((d) => d.status === 'pending') && (
                         <div className="mt-4 flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
                           <div className="flex items-center gap-2">
@@ -345,7 +332,6 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Document Requirements Guide */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Document Requirements by Loan Type</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

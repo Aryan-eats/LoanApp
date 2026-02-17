@@ -11,6 +11,9 @@ import type { Lead, LeadStatus, LeadsQueryParams, LeadStatsResponse, CreateLeadD
 
 export type { Lead, LeadStatus, CreateLeadData };
 
+/** How long cached leads remain fresh (ms) */
+const LEADS_CACHE_TTL = 30_000;
+
 interface LeadsState {
   leads: Lead[];
   selectedLead: Lead | null;
@@ -24,16 +27,19 @@ interface LeadsState {
   isLoading: boolean;
   error: string | null;
   filters: LeadsQueryParams;
+  /** Timestamp of the last successful fetchLeads call */
+  lastFetchedAt: number;
 }
 
 interface LeadsActions {
   // Fetch actions
-  fetchLeads: (params?: LeadsQueryParams, isAdmin?: boolean) => Promise<void>;
+  /** Fetch leads. Skips network when cache is fresh unless `force` is true. */
+  fetchLeads: (params?: LeadsQueryParams, isAdmin?: boolean, force?: boolean) => Promise<void>;
   fetchLeadById: (id: string, isAdmin?: boolean) => Promise<Lead | null>;
   fetchStats: (isAdmin?: boolean) => Promise<void>;
   
   // CRUD actions
-  createLead: (data: CreateLeadData) => Promise<Lead | null>;
+  createLead: (data: CreateLeadData, isPartner?: boolean) => Promise<Lead | null>;
   updateLead: (id: string, data: Partial<Lead>, isAdmin?: boolean) => Promise<Lead | null>;
   deleteLead: (id: string) => Promise<boolean>;
   
@@ -63,33 +69,56 @@ const initialState: LeadsState = {
   isLoading: false,
   error: null,
   filters: {},
+  lastFetchedAt: 0,
 };
+
+/** In-flight promise so concurrent callers share the same request */
+let inflight: Promise<void> | null = null;
 
 export const useLeadsStore = create<LeadsStore>()((set, get) => ({
   ...initialState,
 
-  // Fetch leads from API
-  fetchLeads: async (params = {}, isAdmin = false) => {
-    set({ isLoading: true, error: null });
-    try {
-      const mergedParams = { ...get().filters, ...params };
-      const response = await leadsApi.getLeads(mergedParams, isAdmin);
-      
-      if (response.success && response.data) {
+  // Fetch leads from API (with TTL cache + dedup)
+  fetchLeads: async (params = {}, isAdmin = false, force = false) => {
+    // Skip fetch if cache is still fresh and no explicit force
+    const { lastFetchedAt, leads } = get();
+    if (!force && leads.length > 0 && Date.now() - lastFetchedAt < LEADS_CACHE_TTL) {
+      return;
+    }
+
+    // If a request is already in-flight, wait for it instead of firing another
+    if (inflight) {
+      return inflight;
+    }
+
+    const run = async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const mergedParams = { ...get().filters, ...params };
+        const response = await leadsApi.getLeads(mergedParams, isAdmin);
+        
+        if (response.success && response.data) {
+          set({
+            leads: response.data.leads,
+            pagination: response.data.pagination,
+            isLoading: false,
+            lastFetchedAt: Date.now(),
+          });
+        } else {
+          set({ error: 'Failed to fetch leads', isLoading: false });
+        }
+      } catch (error) {
         set({
-          leads: response.data.leads,
-          pagination: response.data.pagination,
+          error: error instanceof Error ? error.message : 'Failed to fetch leads',
           isLoading: false,
         });
-      } else {
-        set({ error: 'Failed to fetch leads', isLoading: false });
+      } finally {
+        inflight = null;
       }
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : 'Failed to fetch leads',
-        isLoading: false,
-      });
-    }
+    };
+
+    inflight = run();
+    return inflight;
   },
 
   // Fetch single lead
@@ -127,10 +156,10 @@ export const useLeadsStore = create<LeadsStore>()((set, get) => ({
   },
 
   // Create new lead
-  createLead: async (data) => {
+  createLead: async (data, isPartner = true) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await leadsApi.createLead(data);
+      const response = await leadsApi.createLead(data, isPartner);
       
       if (response.success && response.data) {
         // Add to local state

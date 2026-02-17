@@ -1,64 +1,99 @@
 import { Request, Response } from 'express';
-import Lead, { ILead, LeadStatus } from '../models/Lead.js';
+import { Prisma } from '@prisma/client';
+import type { Lead, LeadDocument, LeadTimeline, LeadStatus } from '@prisma/client';
+import prisma from '../config/prisma.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
-import mongoose from 'mongoose';
 
-// Format lead response for API - matching frontend Lead type
-const formatLeadResponse = (lead: ILead) => ({
-  id: lead._id.toString(),
-  client: {
-    id: lead._id.toString(),
-    fullName: lead.client.fullName,
-    phone: lead.client.phone,
-    email: lead.client.email,
-    dateOfBirth: lead.client.dateOfBirth,
-    panNumber: lead.client.panNumber,
-    aadhaarNumber: lead.client.aadhaarNumber,
-    employmentType: lead.client.employmentType,
-    monthlyIncome: lead.client.monthlyIncome,
-    companyName: lead.client.companyName,
-    workExperience: lead.client.workExperience,
-    city: lead.client.city,
-    pincode: lead.client.pincode,
-  },
-  loanType: lead.loanType,
-  loanAmount: lead.loanAmount,
-  tenure: lead.tenure,
-  sanctionedAmount: lead.sanctionedAmount,
-  disbursedAmount: lead.disbursedAmount,
-  interestRate: lead.interestRate,
-  emi: lead.emi,
-  status: lead.status,
-  bankAssigned: lead.bankAssigned,
-  bankLogo: lead.bankLogo,
-  partnerId: lead.partnerId,
-  partnerName: lead.partnerName,
-  documents: lead.documents.map((doc) => ({
-    id: doc._id?.toString() || doc.type,
-    type: doc.type,
-    fileName: doc.fileName,
-    fileSize: doc.fileSize,
-    uploadedAt: doc.uploadedAt?.toISOString(),
-    status: doc.status,
-    rejectionReason: doc.rejectionReason,
-  })),
-  timeline: lead.timeline.map((event) => ({
-    id: event._id?.toString() || event.status,
-    status: event.status,
-    timestamp: event.timestamp.toISOString(),
-    note: event.note,
-    updatedBy: event.updatedBy,
-  })),
-  eligibilityResult: lead.eligibilityResult,
-  commission: lead.commission ? {
-    amount: lead.commission.amount,
-    rate: lead.commission.rate,
-    status: lead.commission.status,
-    paidAt: lead.commission.paidAt?.toISOString(),
-  } : undefined,
-  createdAt: lead.createdAt.toISOString().split('T')[0],
-  updatedAt: lead.updatedAt.toISOString().split('T')[0],
-});
+type LeadWithRelations = Lead & {
+  documents: LeadDocument[];
+  timeline: LeadTimeline[];
+};
+
+const formatLeadResponse = (lead: LeadWithRelations) => {
+  const eligibilityResult =
+    lead.isEligible !== null ||
+    lead.maxLoanAmount !== null ||
+    lead.minLoanAmount !== null ||
+    lead.estimatedEMI !== null ||
+    lead.eligibilityCheckedAt !== null
+      ? {
+          isEligible: lead.isEligible ?? false,
+          maxLoanAmount: lead.maxLoanAmount ? Number(lead.maxLoanAmount) : undefined,
+          minLoanAmount: lead.minLoanAmount ? Number(lead.minLoanAmount) : undefined,
+          estimatedEMI: lead.estimatedEMI ? Number(lead.estimatedEMI) : undefined,
+          checkedAt: lead.eligibilityCheckedAt?.toISOString(),
+        }
+      : undefined;
+
+  const commission =
+    lead.commissionAmount !== null ||
+    lead.commissionRate !== null ||
+    lead.commissionStatus !== null ||
+    lead.commissionPaidAt !== null
+      ? {
+          amount: lead.commissionAmount ? Number(lead.commissionAmount) : undefined,
+          rate: lead.commissionRate ? Number(lead.commissionRate) : undefined,
+          status: lead.commissionStatus || undefined,
+          paidAt: lead.commissionPaidAt?.toISOString(),
+        }
+      : undefined;
+
+  return {
+    id: lead.id,
+    client: {
+      id: lead.id,
+      fullName: lead.clientFullName || 'Unknown',
+      phone: lead.clientPhone || '',
+      email: lead.clientEmail || '',
+      dateOfBirth: lead.clientDateOfBirth || undefined,
+      panNumber: lead.clientPanNumber || undefined,
+      aadhaarNumber: lead.clientAadhaar || undefined,
+      employmentType: lead.clientEmployment || undefined,
+      monthlyIncome: lead.clientIncome ? Number(lead.clientIncome) : undefined,
+      companyName: lead.clientCompany || undefined,
+      workExperience: lead.clientExperience || undefined,
+      city: lead.clientCity || undefined,
+      pincode: lead.clientPincode || undefined,
+    },
+    loanType: lead.loanType,
+    loanAmount: Number(lead.loanAmount),
+    tenure: lead.tenure || undefined,
+    sanctionedAmount: lead.sanctionedAmount ? Number(lead.sanctionedAmount) : undefined,
+    disbursedAmount: lead.disbursedAmount ? Number(lead.disbursedAmount) : undefined,
+    interestRate: lead.interestRate ? Number(lead.interestRate) : undefined,
+    emi: lead.emi ? Number(lead.emi) : undefined,
+    status: lead.status,
+    bankAssigned: lead.bankAssigned || undefined,
+    bankLogo: lead.bankLogo || undefined,
+    preferredBank: lead.preferredBank || undefined,
+    partnerId: lead.partnerId || 'SYSTEM',
+    partnerName: lead.partnerName || 'Website Direct',
+    documents: (lead.documents || []).map((doc: LeadDocument) => ({
+      id: doc.id,
+      type: doc.type,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize || undefined,
+      fileUrl: doc.fileUrl || undefined,
+      mimeType: doc.mimeType || undefined,
+      uploadedBy: doc.uploadedBy || undefined,
+      r2ObjectKey: doc.r2ObjectKey || undefined,
+      uploadedAt: doc.uploadedAt?.toISOString(),
+      status: doc.status,
+      rejectionReason: doc.rejectionReason || undefined,
+    })),
+    timeline: (lead.timeline || []).map((event: LeadTimeline) => ({
+      id: event.id,
+      status: event.status,
+      timestamp: event.timestamp?.toISOString(),
+      note: event.note || undefined,
+      updatedBy: event.updatedBy,
+    })),
+    eligibilityResult,
+    commission,
+    createdAt: lead.createdAt?.toISOString().split('T')[0] || '',
+    updatedAt: lead.updatedAt?.toISOString().split('T')[0] || '',
+  };
+};
 
 /**
  * @desc    Create a new lead
@@ -73,7 +108,6 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
     }
 
     const {
-      // Client details
       fullName,
       phone,
       email,
@@ -85,13 +119,16 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       workExperience,
       city,
       pincode,
-      // Loan details
       loanType,
       loanAmount,
       tenure,
     } = req.body;
 
-    // Validate required fields
+    const firstName = req.user.firstName ?? '';
+    const lastName = req.user.lastName ?? '';
+    const combinedName = `${firstName} ${lastName}`.trim();
+    const partnerName = combinedName || req.user.email || 'Unknown';
+
     if (!fullName || !phone || !email || !loanType || !loanAmount) {
       res.status(400).json({
         success: false,
@@ -100,33 +137,41 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Create lead with client nested object
-    const lead = await Lead.create({
-      client: {
-        fullName,
-        phone,
-        email,
-        dateOfBirth,
-        panNumber,
-        employmentType,
-        monthlyIncome,
-        companyName,
-        workExperience,
-        city,
-        pincode,
+    const lead = await prisma.lead.create({
+      data: {
+        clientFullName: fullName,
+        clientPhone: phone,
+        clientEmail: email,
+        clientDateOfBirth: dateOfBirth || null,
+        clientPanNumber: panNumber || null,
+        clientAadhaar: req.body.aadhaarNumber || null,
+        clientEmployment: employmentType || null,
+        clientIncome: monthlyIncome ?? null,
+        clientCompany: companyName || null,
+        clientExperience: workExperience ?? null,
+        clientCity: city || null,
+        clientPincode: pincode || null,
+        loanType,
+        loanAmount,
+        tenure: tenure ?? null,
+        partnerId: req.user.id,
+        partnerName,
+        status: 'submitted',
+        timeline: {
+          create: {
+            status: 'submitted',
+            timestamp: new Date(),
+            updatedBy: 'System',
+            note: 'Lead submitted',
+          },
+        },
       },
-      loanType,
-      loanAmount,
-      tenure,
-      partnerId: req.user._id,
-      partnerName: `${req.user.firstName} ${req.user.lastName}`,
-      status: 'submitted',
+      include: { documents: true, timeline: true },
     });
 
-    // Log audit event
     await logAuditEvent('REGISTER', req, {
-      userId: req.user._id.toString(),
-      metadata: { action: 'CREATE_LEAD', leadId: lead._id.toString() },
+      userId: req.user.id,
+      metadata: { action: 'CREATE_LEAD', leadId: lead.id },
     });
 
     res.status(201).json({
@@ -136,12 +181,6 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error) {
     console.error('Create lead error:', error);
-    
-    if (error instanceof Error && error.name === 'ValidationError') {
-      res.status(400).json({ success: false, message: error.message });
-      return;
-    }
-
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -158,49 +197,54 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Build query based on role
-    const query: Record<string, unknown> = {};
-    
-    // Partners can only see their own leads
+    const where: Record<string, unknown> = {};
     if (req.user.role === 'partner') {
-      query.partnerId = req.user._id;
+      where.partnerId = req.user.id;
     }
 
-    // Filter by status if provided
     if (req.query.status) {
-      query.status = req.query.status;
+      where.status = req.query.status;
     }
 
-    // Filter by loan type if provided
     if (req.query.loanType) {
-      query.loanType = req.query.loanType;
+      where.loanType = req.query.loanType;
     }
 
-    // Search by client name or phone
     if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
-      query.$or = [
-        { 'client.fullName': searchRegex },
-        { 'client.phone': searchRegex },
-        { 'client.email': searchRegex },
+      const search = req.query.search as string;
+      where.OR = [
+        { clientFullName: { contains: search, mode: 'insensitive' } },
+        { clientPhone: { contains: search, mode: 'insensitive' } },
+        { clientEmail: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    // Pagination
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
 
-    // Sort
-    const sortField = (req.query.sortBy as string) || 'createdAt';
-    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const allowedSortFields = new Set([
+      'createdAt',
+      'updatedAt',
+      'loanAmount',
+      'status',
+      'loanType',
+    ]);
+
+    const sortField = allowedSortFields.has(req.query.sortBy as string)
+      ? (req.query.sortBy as string)
+      : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
 
     const [leads, total] = await Promise.all([
-      Lead.find(query)
-        .sort({ [sortField]: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      Lead.countDocuments(query),
+      prisma.lead.findMany({
+        where,
+        orderBy: { [sortField]: sortOrder },
+        skip,
+        take: limit,
+        include: { documents: true, timeline: true },
+      }),
+      prisma.lead.count({ where }),
     ]);
 
     res.status(200).json({
@@ -234,20 +278,17 @@ export const getLeadById = async (req: Request, res: Response): Promise<void> =>
     }
 
     const leadId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      res.status(400).json({ success: false, message: 'Invalid lead ID' });
-      return;
-    }
-
-    const lead = await Lead.findById(leadId);
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: { documents: true, timeline: true },
+    });
 
     if (!lead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
       return;
     }
 
-    // Partners can only access their own leads
-    if (req.user.role === 'partner' && lead.partnerId.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'partner' && lead.partnerId !== req.user.id) {
       res.status(403).json({ success: false, message: 'Not authorized to access this lead' });
       return;
     }
@@ -275,28 +316,19 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
     }
 
     const leadId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      res.status(400).json({ success: false, message: 'Invalid lead ID' });
-      return;
-    }
-
-    const lead = await Lead.findById(leadId);
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
     if (!lead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
       return;
     }
 
-    // Partners can only update their own leads
-    if (req.user.role === 'partner' && lead.partnerId.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'partner' && lead.partnerId !== req.user.id) {
       res.status(403).json({ success: false, message: 'Not authorized to update this lead' });
       return;
     }
 
-    // Fields partners can update
     const partnerAllowedFields = ['loanAmount', 'tenure'];
-    
-    // Fields admins can additionally update
     const adminAllowedFields = [
       ...partnerAllowedFields,
       'status',
@@ -318,33 +350,41 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
       }
     }
 
-    // If status is being changed, add timeline event
-    if (updateData.status && updateData.status !== lead.status) {
-      const newStatus = updateData.status as LeadStatus;
-      lead.timeline.push({
-        status: newStatus,
-        timestamp: new Date(),
-        updatedBy: `${req.user.firstName} ${req.user.lastName}`,
-        note: req.body.statusNote || `Status changed to ${newStatus}`,
-      });
-      updateData.timeline = lead.timeline;
-    }
+    const statusChanged = updateData.status && updateData.status !== lead.status;
 
-    const updatedLead = await Lead.findByIdAndUpdate(
-      leadId,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: updateData,
+      });
+
+      if (statusChanged) {
+        const newStatus = updateData.status as LeadStatus;
+        await tx.leadTimeline.create({
+          data: {
+            leadId,
+            status: newStatus,
+            timestamp: new Date(),
+            updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
+            note: req.body.statusNote || `Status changed to ${newStatus}`,
+          },
+        });
+      }
+    });
+
+    const updatedLead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: { documents: true, timeline: true },
+    });
 
     if (!updatedLead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
       return;
     }
 
-    // Log audit event
     await logAuditEvent('REGISTER', req, {
-      userId: req.user._id.toString(),
-      metadata: { action: 'UPDATE_LEAD', leadId: lead._id.toString(), changes: Object.keys(updateData) },
+      userId: req.user.id,
+      metadata: { action: 'UPDATE_LEAD', leadId: leadId, changes: Object.keys(updateData) },
     });
 
     res.status(200).json({
@@ -370,28 +410,25 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Only admins can delete leads
     if (req.user.role !== 'admin') {
       res.status(403).json({ success: false, message: 'Only admins can delete leads' });
       return;
     }
 
     const leadId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      res.status(400).json({ success: false, message: 'Invalid lead ID' });
-      return;
+
+    try {
+      await prisma.lead.delete({ where: { id: leadId } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        res.status(404).json({ success: false, message: 'Lead not found' });
+        return;
+      }
+      throw error;
     }
 
-    const lead = await Lead.findByIdAndDelete(leadId);
-
-    if (!lead) {
-      res.status(404).json({ success: false, message: 'Lead not found' });
-      return;
-    }
-
-    // Log audit event
     await logAuditEvent('REGISTER', req, {
-      userId: req.user._id.toString(),
+      userId: req.user.id,
       metadata: { action: 'DELETE_LEAD', leadId: leadId },
     });
 
@@ -417,55 +454,41 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Build match query based on role
-    const matchQuery: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {};
     if (req.user.role === 'partner') {
-      matchQuery.partnerId = req.user._id;
+      where.partnerId = req.user.id;
     }
 
-    // Get counts by status
-    const statusCounts = await Lead.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$loanAmount' },
-        },
-      },
-    ]);
+    const statusCounts = await prisma.lead.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      _sum: { loanAmount: true },
+    });
 
-    // Get counts by loan type
-    const loanTypeCounts = await Lead.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: '$loanType',
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 10 },
-    ]);
+    const loanTypeCounts = await prisma.lead.groupBy({
+      by: ['loanType'],
+      where,
+      _count: { _all: true },
+      orderBy: { _count: { loanType: 'desc' } },
+      take: 10,
+    });
 
-    // Get recent activity (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const recentLeads = await Lead.countDocuments({
-      ...matchQuery,
-      createdAt: { $gte: sevenDaysAgo },
+    const recentLeads = await prisma.lead.count({
+      where: { ...where, createdAt: { gte: sevenDaysAgo } },
     });
 
-    // Format status counts
     const stats: Record<string, number> = {};
     let totalLeads = 0;
     let totalAmount = 0;
 
-    statusCounts.forEach((item) => {
-      stats[item._id] = item.count;
-      totalLeads += item.count;
-      totalAmount += item.totalAmount;
+    statusCounts.forEach((item: any) => {
+      stats[item.status] = item._count._all;
+      totalLeads += item._count._all;
+      totalAmount += Number(item._sum.loanAmount || 0);
     });
 
     res.status(200).json({
@@ -475,9 +498,9 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
           total: totalLeads,
           totalAmount,
           byStatus: stats,
-          byLoanType: loanTypeCounts.map((item) => ({
-            type: item._id,
-            count: item.count,
+          byLoanType: loanTypeCounts.map((item: any) => ({
+            type: item.loanType,
+            count: item._count._all,
           })),
           recentLeads,
         },
@@ -508,53 +531,69 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const validStatuses: LeadStatus[] = ['draft', 'submitted', 'docs_pending', 'docs_uploaded', 'bank_processing', 'approved', 'disbursed', 'rejected'];
+    const validStatuses: LeadStatus[] = [
+      'draft',
+      'submitted',
+      'docs_pending',
+      'docs_uploaded',
+      'bank_processing',
+      'approved',
+      'disbursed',
+      'rejected',
+    ];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ success: false, message: 'Invalid status' });
       return;
     }
 
     const leadId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      res.status(400).json({ success: false, message: 'Invalid lead ID' });
-      return;
-    }
-
-    const lead = await Lead.findById(leadId);
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
     if (!lead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
       return;
     }
 
-    // Partners can only update their own leads and only certain statuses
     if (req.user.role === 'partner') {
-      if (lead.partnerId.toString() !== req.user._id.toString()) {
+      if (lead.partnerId !== req.user.id) {
         res.status(403).json({ success: false, message: 'Not authorized to update this lead' });
         return;
       }
-      // Partners can only update to docs_uploaded
       if (status !== 'docs_uploaded' && status !== 'submitted' && status !== 'docs_pending') {
-        res.status(403).json({ success: false, message: 'Partners can only update status to docs_pending or docs_uploaded' });
+        res.status(403).json({
+          success: false,
+          message: 'Partners can only update status to docs_pending, submitted, or docs_uploaded',
+        });
         return;
       }
     }
 
-    // Add timeline event
-    lead.timeline.push({
-      status,
-      timestamp: new Date(),
-      updatedBy: `${req.user.firstName} ${req.user.lastName}`,
-      note: note || `Status updated to ${status}`,
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: { status },
+      });
+
+      await tx.leadTimeline.create({
+        data: {
+          leadId,
+          status,
+          timestamp: new Date(),
+          updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
+          note: note || `Status updated to ${status}`,
+        },
+      });
     });
 
-    lead.status = status;
-    await lead.save();
+    const updatedLead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: { documents: true, timeline: true },
+    });
 
     res.status(200).json({
       success: true,
       message: 'Lead status updated successfully',
-      data: { lead: formatLeadResponse(lead) },
+      data: { lead: updatedLead ? formatLeadResponse(updatedLead) : undefined },
     });
   } catch (error) {
     console.error('Update lead status error:', error);
@@ -574,7 +613,6 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Only admins can assign banks
     if (req.user.role !== 'admin') {
       res.status(403).json({ success: false, message: 'Only admins can assign banks to leads' });
       return;
@@ -588,54 +626,68 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
     }
 
     const leadId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      res.status(400).json({ success: false, message: 'Invalid lead ID' });
-      return;
-    }
-
-    const lead = await Lead.findById(leadId);
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
     if (!lead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
       return;
     }
 
-    // Update bank assignment
     const previousBank = lead.bankAssigned;
-    lead.bankAssigned = bankName;
-    if (bankLogo) lead.bankLogo = bankLogo;
+    const timelineEntries: { status: LeadStatus; note: string }[] = [
+      {
+        status: lead.status,
+        note: note ||
+          `Bank assigned: ${bankName}${previousBank ? ` (previously: ${previousBank})` : ''}`,
+      },
+    ];
 
-    // Add timeline event
-    lead.timeline.push({
-      status: lead.status,
-      timestamp: new Date(),
-      updatedBy: `${req.user.firstName} ${req.user.lastName}`,
-      note: note || `Bank assigned: ${bankName}${previousBank ? ` (previously: ${previousBank})` : ''}`,
-    });
-
-    // If status is still 'submitted' or 'docs_uploaded', move to 'bank_processing'
+    let newStatus: LeadStatus | undefined;
     if (lead.status === 'submitted' || lead.status === 'docs_uploaded' || lead.status === 'docs_pending') {
-      lead.status = 'bank_processing';
-      lead.timeline.push({
+      newStatus = 'bank_processing';
+      timelineEntries.push({
         status: 'bank_processing',
-        timestamp: new Date(),
-        updatedBy: `${req.user.firstName} ${req.user.lastName}`,
         note: 'Status updated to bank_processing after bank assignment',
       });
     }
 
-    await lead.save();
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          bankAssigned: bankName,
+          bankLogo: bankLogo || null,
+          status: newStatus || lead.status,
+        },
+      });
 
-    // Log audit event
+      for (const entry of timelineEntries) {
+        await tx.leadTimeline.create({
+          data: {
+            leadId,
+            status: entry.status,
+            timestamp: new Date(),
+            updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
+            note: entry.note,
+          },
+        });
+      }
+    });
+
+    const updatedLead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: { documents: true, timeline: true },
+    });
+
     await logAuditEvent('REGISTER', req, {
-      userId: req.user._id.toString(),
+      userId: req.user.id,
       metadata: { action: 'ASSIGN_BANK', leadId: leadId, bank: bankName },
     });
 
     res.status(200).json({
       success: true,
       message: `Bank "${bankName}" assigned to lead successfully`,
-      data: { lead: formatLeadResponse(lead) },
+      data: { lead: updatedLead ? formatLeadResponse(updatedLead) : undefined },
     });
   } catch (error) {
     console.error('Assign bank error:', error);

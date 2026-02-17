@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import useAuthStore from '../stores/authStore';
+import { getAccessToken } from '../api/apiClient';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -21,7 +22,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
 
   useEffect(() => {
     const validateAuth = async () => {
-      if (!isAuthenticated) {
+      // Re-check auth if persisted state says authenticated but in-memory token is missing.
+      if (!isAuthenticated || !getAccessToken()) {
         await checkAuth();
       }
       setIsChecking(false);
@@ -42,15 +44,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
 
   // Check if user role is allowed
   if (!allowedRoles.includes(user.role)) {
-    // Redirect to appropriate dashboard based on role
-    if (user.role === 'admin') {
-      return <Navigate to="/admin" replace />;
-    }
-    if (user.role === 'partner') {
-      return <Navigate to="/partner" replace />;
-    }
-    // Fallback to login if role is unknown
-    return <Navigate to="/login" replace />;
+    // User is authenticated but doesn't have permission for this route
+    // Redirect to login so they can log in with an appropriate account
+    // Pass the intended destination so they can be redirected after login
+    return <Navigate to="/login" state={{ from: location, roleRequired: allowedRoles }} replace />;
   }
 
   return <>{children}</>;

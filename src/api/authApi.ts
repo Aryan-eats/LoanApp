@@ -1,10 +1,12 @@
 /**
  * Authentication API functions
  * 
- * Uses the apiClient for consistent token handling.
+ * Uses the apiClient for consistent token handling with JWT authentication.
+ * Refresh tokens are managed via httpOnly cookies (set by the server).
+ * Access tokens are kept in memory via apiClient's setAccessToken.
  */
 
-import apiClient, { setAccessToken } from './apiClient';
+import apiClient, { setAccessToken, getAccessToken } from './apiClient';
 
 export interface PartnerRegistrationData {
   // Step 1: Basic Identity
@@ -14,6 +16,7 @@ export interface PartnerRegistrationData {
   password: string;
   partnerType: string;
   city: string;
+  phoneVerificationToken?: string;
   // Step 2: Business Details
   businessName: string;
   businessAddress: string;
@@ -40,6 +43,7 @@ export interface ApiResponse<T = unknown> {
   message: string;
   data?: T;
   errors?: Array<{ field: string; message: string }>;
+  code?: string;
 }
 
 export interface AuthUser {
@@ -58,25 +62,34 @@ export interface AuthUser {
 export interface AuthResponse {
   user: AuthUser;
   accessToken: string;
-  refreshToken: string;
+  expiresIn: number;
 }
+
+export interface RegistrationResponse {
+  user: AuthUser;
+}
+
+/**
+ * Register a new user
+ */
+export const register = async (data: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+}): Promise<ApiResponse<RegistrationResponse>> => {
+  const response = await apiClient.post('/auth/register', data);
+  return response.data;
+};
 
 /**
  * Register a new partner with onboarding data
  */
 export const registerPartner = async (
   data: PartnerRegistrationData
-): Promise<ApiResponse<AuthResponse>> => {
+): Promise<ApiResponse<RegistrationResponse>> => {
   const response = await apiClient.post('/auth/register-partner', data);
-  
-  // Store tokens
-  if (response.data.data?.accessToken) {
-    setAccessToken(response.data.data.accessToken);
-  }
-  if (response.data.data?.refreshToken) {
-    localStorage.setItem('refreshToken', response.data.data.refreshToken);
-  }
-
   return response.data;
 };
 
@@ -89,12 +102,12 @@ export const login = async (
 ): Promise<ApiResponse<AuthResponse>> => {
   const response = await apiClient.post('/auth/login', { email, password });
   
-  // Store tokens
-  if (response.data.data?.accessToken) {
-    setAccessToken(response.data.data.accessToken);
-  }
-  if (response.data.data?.refreshToken) {
-    localStorage.setItem('refreshToken', response.data.data.refreshToken);
+  // Store access token in memory if login successful
+  if (response.data.success && response.data.data) {
+    const data = response.data.data as AuthResponse;
+    if (data.accessToken) {
+      setAccessToken(data.accessToken);
+    }
   }
 
   return response.data;
@@ -112,18 +125,23 @@ export const getMe = async (): Promise<ApiResponse<{ user: AuthUser }>> => {
  * Logout user
  */
 export const logout = async (): Promise<ApiResponse> => {
-  const response = await apiClient.post('/auth/logout');
-  return response.data;
+  try {
+    const response = await apiClient.post('/auth/logout');
+    return response.data;
+  } finally {
+    // Always clear in-memory token on logout attempt
+    setAccessToken(null);
+  }
 };
 
 /**
- * Refresh access token
+ * Refresh access token (cookie-based — no body needed)
  */
-export const refreshToken = async (): Promise<ApiResponse<{ accessToken: string }>> => {
-  const storedRefreshToken = localStorage.getItem('refreshToken');
-  const response = await apiClient.post('/auth/refresh-token', {
-    refreshToken: storedRefreshToken,
-  });
+export const refreshToken = async (): Promise<ApiResponse<{ 
+  accessToken: string;
+  expiresIn: number;
+}>> => {
+  const response = await apiClient.post('/auth/refresh-token');
   
   if (response.data.data?.accessToken) {
     setAccessToken(response.data.data.accessToken);
@@ -141,17 +159,115 @@ export const forgotPassword = async (email: string): Promise<ApiResponse> => {
 };
 
 /**
- * Reset password with token
+ * Reset password with code
  */
 export const resetPassword = async (
-  token: string,
+  email: string,
+  code: string,
   password: string
 ): Promise<ApiResponse> => {
-  const response = await apiClient.post('/auth/reset-password', { token, password });
+  const response = await apiClient.post('/auth/reset-password', { email, code, password });
+  return response.data;
+};
+
+/**
+ * Send OTP for verification
+ */
+type OtpRecipient =
+  | { phone: string; email?: never }
+  | { email: string; phone?: never };
+
+export const sendOTP = async (params: OtpRecipient): Promise<ApiResponse> => {
+  if (!params.phone && !params.email) {
+    return {
+      success: false,
+      message: 'Phone or email is required to send OTP',
+    };
+  }
+  const response = await apiClient.post('/auth/send-otp', params);
+  return response.data;
+};
+
+/**
+ * Verify OTP
+ */
+export const verifyOTP = async (
+  params: OtpRecipient & { otp: string }
+): Promise<ApiResponse<{ user?: AuthUser; verificationToken?: string }>> => {
+  if (!params.phone && !params.email) {
+    return {
+      success: false,
+      message: 'Phone or email is required to verify OTP',
+    };
+  }
+  const response = await apiClient.post('/auth/verify-otp', params);
+  return response.data;
+};
+
+/**
+ * Verify OTP using MSG91 token
+ */
+export const verifyMsg91OTP = async (params: {
+  token: string;
+  type: 'phone' | 'email';
+  userId: string;
+}): Promise<ApiResponse<{ user: AuthUser }>> => {
+  const response = await apiClient.post('/auth/verify-msg91', params);
+  return response.data;
+};
+
+/**
+ * Check if user is authenticated (has in-memory access token)
+ */
+export const isAuthenticated = (): boolean => {
+  return !!getAccessToken();
+};
+
+/**
+ * Initialize auth state from in-memory token
+ * (no-op now since tokens are only in memory, but kept for API compatibility)
+ */
+export const initializeAuth = (): void => {
+  // Access token is already in memory via apiClient module scope.
+  // Refresh token is managed by httpOnly cookie.
+};
+
+// =========================================
+// MSG91 REST API Functions (New)
+// =========================================
+
+/**
+ * Send OTP via MSG91 REST API
+ */
+export const sendOTPApi = async (mobile: string): Promise<ApiResponse<{ requestId?: string }>> => {
+  const response = await apiClient.post('/auth/otp/send', { mobile });
+  return response.data;
+};
+
+/**
+ * Verify OTP via MSG91 REST API
+ */
+export const verifyOTPApi = async (
+  mobile: string,
+  otp: string
+): Promise<ApiResponse<{ verificationToken?: string }>> => {
+  const response = await apiClient.post('/auth/otp/verify', { mobile, otp });
+  return response.data;
+};
+
+/**
+ * Resend OTP via MSG91 REST API
+ */
+export const resendOTPApi = async (
+  mobile: string,
+  retryType: 'text' | 'voice' = 'text'
+): Promise<ApiResponse<{ requestId?: string }>> => {
+  const response = await apiClient.post('/auth/otp/resend', { mobile, retryType });
   return response.data;
 };
 
 export default {
+  register,
   registerPartner,
   login,
   getMe,
@@ -159,4 +275,13 @@ export default {
   refreshToken,
   forgotPassword,
   resetPassword,
+  sendOTP,
+  verifyOTP,
+  verifyMsg91OTP,
+  isAuthenticated,
+  initializeAuth,
+  // New MSG91 REST API functions
+  sendOTPApi,
+  verifyOTPApi,
+  resendOTPApi,
 };

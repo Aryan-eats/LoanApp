@@ -8,26 +8,38 @@ const Navbar: React.FC = () => {
   const lastScrollY = useRef(0);
 
   useEffect(() => {
-    const handleScroll = () => {
+    let rafId = 0;
+    let ticking = false;
+
+    const updateVisibility = () => {
       const currentScrollY = window.scrollY;
-      
-      if (currentScrollY > lastScrollY.current) {
-        // Scrolling down
+      const goingDown = currentScrollY > lastScrollY.current;
+
+      // Only update state when scroll direction actually changes
+      if (goingDown && isVisible) {
         setIsVisible(false);
-      } else {
-        // Scrolling up
+      } else if (!goingDown && !isVisible) {
         setIsVisible(true);
       }
-      
+
       lastScrollY.current = currentScrollY;
+      ticking = false;
+    };
+
+    const handleScroll = () => {
+      if (!ticking) {
+        rafId = requestAnimationFrame(updateVisibility);
+        ticking = true;
+      }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [isVisible]);
 
   const toggleMenu = () => {
     setIsOpen(!isOpen);

@@ -1,29 +1,29 @@
 /**
  * Token Blacklist for logout functionality.
- * 
- * Uses Redis for production (distributed cache for multiple server instances).
- * Falls back to in-memory storage for development.
+ *
+ * Uses the shared Redis client when REDIS_URL is set, otherwise
+ * falls back to an in-memory store (development only).
  */
 
-import { Redis } from 'ioredis';
+import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 interface BlacklistStorage {
   add(token: string, expiresAt: number): Promise<void>;
   isBlacklisted(token: string): Promise<boolean>;
   size(): Promise<number>;
-  destroy(): Promise<void>;
 }
 
-// In-memory fallback for development
+const PREFIX = 'token_blacklist:';
+
+// ─── In-memory fallback ────────────────────────────────────
+
 class InMemoryBlacklist implements BlacklistStorage {
   private blacklist: Map<string, number> = new Map();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 15 * 60 * 1000);
-    console.log('⚠️ Using in-memory token blacklist (development only)');
+    this.cleanupInterval = setInterval(() => this.cleanup(), 15 * 60 * 1000);
+    console.log('⚠️  Using in-memory token blacklist (development only)');
   }
 
   async add(token: string, expiresAt: number): Promise<void> {
@@ -37,86 +37,56 @@ class InMemoryBlacklist implements BlacklistStorage {
   private cleanup(): void {
     const now = Date.now();
     for (const [token, expiresAt] of this.blacklist.entries()) {
-      if (expiresAt < now) {
-        this.blacklist.delete(token);
-      }
+      if (expiresAt < now) this.blacklist.delete(token);
     }
   }
 
   async size(): Promise<number> {
     return this.blacklist.size;
   }
-
-  async destroy(): Promise<void> {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-    }
-    this.blacklist.clear();
-  }
 }
 
-// Redis-based blacklist for production
+// ─── Redis-backed blacklist ────────────────────────────────
+
 class RedisBlacklist implements BlacklistStorage {
-  private redis: Redis;
-  private prefix = 'token_blacklist:';
-
-  constructor(redisUrl: string) {
-    this.redis = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-    });
-
-    this.redis.on('connect', () => {
-      console.log('✅ Redis token blacklist connected');
-    });
-
-    this.redis.on('error', (err: Error) => {
-      console.error('❌ Redis connection error:', err.message);
-    });
-
-    this.redis.connect().catch((err: Error) => {
-      console.error('❌ Failed to connect to Redis:', err.message);
-    });
-  }
-
   async add(token: string, expiresAt: number): Promise<void> {
     const ttl = Math.ceil((expiresAt - Date.now()) / 1000);
     if (ttl > 0) {
-      await this.redis.set(`${this.prefix}${token}`, '1', 'EX', ttl);
+      await getRedisClient().set(`${PREFIX}${token}`, '1', 'EX', ttl);
     }
   }
 
   async isBlacklisted(token: string): Promise<boolean> {
-    const result = await this.redis.exists(`${this.prefix}${token}`);
+    const result = await getRedisClient().exists(`${PREFIX}${token}`);
     return result === 1;
   }
 
   async size(): Promise<number> {
-    const keys = await this.redis.keys(`${this.prefix}*`);
-    return keys.length;
-  }
-
-  async destroy(): Promise<void> {
-    await this.redis.quit();
+    let count = 0;
+    let cursor = '0';
+    const redis = getRedisClient();
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${PREFIX}*`, 'COUNT', 100);
+      cursor = nextCursor;
+      count += keys.length;
+    } while (cursor !== '0');
+    return count;
   }
 }
 
-// Factory function to create appropriate blacklist
-const createTokenBlacklist = (): BlacklistStorage => {
-  const redisUrl = process.env.REDIS_URL;
-  const isProduction = process.env.NODE_ENV === 'production';
+// ─── Factory & singleton ───────────────────────────────────
 
-  if (redisUrl) {
-    return new RedisBlacklist(redisUrl);
+const createTokenBlacklist = (): BlacklistStorage => {
+  if (isRedisAvailable()) {
+    return new RedisBlacklist();
   }
 
-  if (isProduction) {
-    console.warn('⚠️ SECURITY WARNING: No REDIS_URL configured in production!');
-    console.warn('⚠️ Token blacklist will not persist across server restarts.');
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('⚠️  SECURITY WARNING: No REDIS_URL configured in production!');
+    console.warn('⚠️  Token blacklist will not persist across server restarts.');
   }
 
   return new InMemoryBlacklist();
 };
 
-// Export singleton instance
 export const tokenBlacklist = createTokenBlacklist();

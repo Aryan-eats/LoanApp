@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   Percent,
@@ -11,11 +12,10 @@ import {
   Info,
   TrendingUp,
 } from 'lucide-react';
-import { bankOffers } from '../data/placeholderData';
-import type { LoanType } from '../types/partner-dashboard';
+import { consolidatedBanks } from '../../data/mockBanks'; // Updated import
+import type { LoanType } from '../../partner/types/partner-dashboard'; // Correct path
 import { buildLoanTypeLabels, getLoanIcon, legacyLoanTypes } from '../../data/loanProducts';
 
-// Dynamic labels with icons from registry
 const loanTypeLabelsMap = buildLoanTypeLabels(true);
 const loanTypeLabels: Record<string, { label: string; icon: React.ReactNode }> = Object.fromEntries(
   Object.entries(loanTypeLabelsMap).map(([code, label]) => [code, { label, icon: getLoanIcon(code) }])
@@ -31,12 +31,14 @@ export default function BankOffersPage() {
   const [selectedLoanType, setSelectedLoanType] = useState<LoanType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'interest' | 'amount' | 'time'>('interest');
+  const navigate = useNavigate();
 
-  const filteredOffers = bankOffers
+  const filteredOffers = consolidatedBanks
+    .filter((bank) => bank.status === 'active') // Filter only active
     .filter((offer) => {
       const matchesLoanType =
-        selectedLoanType === 'all' || offer.loanTypes.includes(selectedLoanType as LoanType);
-      const matchesSearch = offer.bankName.toLowerCase().includes(searchQuery.toLowerCase());
+        selectedLoanType === 'all' || offer.supportedLoanTypes.includes(selectedLoanType as LoanType);
+      const matchesSearch = offer.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesLoanType && matchesSearch;
     })
     .sort((a, b) => {
@@ -46,19 +48,17 @@ export default function BankOffersPage() {
         case 'amount':
           return b.maxAmount - a.maxAmount;
         case 'time':
+          // Simply parsing processingTime roughly for sorting
           return parseInt(a.processingTime) - parseInt(b.processingTime);
         default:
           return 0;
       }
     });
 
-  // Use legacy loan types for filter chips (most common products)
-  // Additional loan types will still show in offers that support them
   const loanTypeOptions: (LoanType | 'all')[] = ['all', ...legacyLoanTypes] as (LoanType | 'all')[];
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Bank Offers</h1>
@@ -66,10 +66,8 @@ export default function BankOffersPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
           <div className="relative flex-1">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -81,7 +79,6 @@ export default function BankOffersPage() {
             />
           </div>
 
-          {/* Loan Type Filter */}
           <div className="flex flex-wrap items-center gap-2">
             {loanTypeOptions.map((type) => (
               <button
@@ -99,7 +96,6 @@ export default function BankOffersPage() {
           </div>
         </div>
 
-        {/* Sort Options */}
         <div className="mt-4 flex items-center gap-2">
           <span className="text-sm text-slate-500">Sort by:</span>
           <div className="flex items-center gap-2">
@@ -124,28 +120,29 @@ export default function BankOffersPage() {
         </div>
       </div>
 
-      {/* Results Count */}
       <div className="text-sm text-slate-500">
         Showing <span className="font-medium text-slate-700">{filteredOffers.length}</span> bank offers
       </div>
 
-      {/* Bank Offer Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {filteredOffers.map((offer) => (
           <div
             key={offer.id}
             className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
           >
-            {/* Card Header */}
             <div className="p-5 border-b border-slate-100">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center">
-                    <Building2 size={28} className="text-slate-600" />
+                  <div className="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                     {offer.logo ? (
+                        <img src={offer.logo} alt={offer.name} className="w-full h-full object-contain" />
+                     ) : (
+                        <Building2 size={28} className="text-slate-600" />
+                     )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-slate-800 text-lg">{offer.bankName}</h3>
+                      <h3 className="font-semibold text-slate-800 text-lg">{offer.name}</h3>
                       {offer.isPopular && (
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full inline-flex items-center gap-1">
                           <Star size={10} fill="currentColor" />
@@ -154,7 +151,7 @@ export default function BankOffersPage() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {offer.loanTypes.slice(0, 3).map((type) => (
+                      {offer.supportedLoanTypes.slice(0, 3).map((type) => (
                         <span
                           key={type}
                           className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full"
@@ -162,26 +159,24 @@ export default function BankOffersPage() {
                           {loanTypeLabels[type].label}
                         </span>
                       ))}
-                      {offer.loanTypes.length > 3 && (
+                      {offer.supportedLoanTypes.length > 3 && (
                         <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">
-                          +{offer.loanTypes.length - 3} more
+                          +{offer.supportedLoanTypes.length - 3} more
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Commission Badge */}
                 <div className="text-right">
                   <p className="text-xs text-slate-500">Commission</p>
-                  <p className="text-lg font-bold text-green-600">1.0%</p>
+                  <p className="text-lg font-bold text-green-600">Up to 2.5%</p> 
+                  {/* Note: Commission varies by loan type, showing static "Up to" for now or could take max */}
                 </div>
               </div>
             </div>
 
-            {/* Card Body */}
             <div className="p-5">
-              {/* Key Metrics */}
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="text-center p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center justify-center gap-1 text-slate-400 mb-1">
@@ -210,7 +205,6 @@ export default function BankOffersPage() {
                 </div>
               </div>
 
-              {/* Additional Info */}
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500">Processing Fee</span>
@@ -226,7 +220,6 @@ export default function BankOffersPage() {
                 </div>
               </div>
 
-              {/* Features */}
               <div className="mb-4">
                 <p className="text-xs font-medium text-slate-500 mb-2">Key Features</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -242,9 +235,11 @@ export default function BankOffersPage() {
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors inline-flex items-center justify-center gap-2">
-                Apply with this Bank
+              <button 
+                onClick={() => navigate(`/partner/bank-offers/${offer.id}`)}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors inline-flex items-center justify-center gap-2"
+              >
+                Explore Loan types
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -252,7 +247,6 @@ export default function BankOffersPage() {
         ))}
       </div>
 
-      {/* Commission Rates Info */}
       <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl p-6 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
@@ -278,7 +272,6 @@ export default function BankOffersPage() {
         </div>
       </div>
 
-      {/* Quick Comparison */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
           <TrendingUp size={20} className="text-blue-600" />
@@ -296,26 +289,26 @@ export default function BankOffersPage() {
               </tr>
             </thead>
             <tbody>
-              {bankOffers.slice(0, 5).map((offer) => (
+              {filteredOffers.slice(0, 5).map((offer) => (
                 <tr key={offer.id} className="border-b border-slate-100">
-                  <td className="py-3 font-medium text-slate-800">{offer.bankName}</td>
+                  <td className="py-3 font-medium text-slate-800">{offer.name}</td>
                   <td className="py-3 text-center text-sm text-slate-600">
-                    {offer.loanTypes.includes('personal_loan')
+                    {offer.supportedLoanTypes.includes('personal_loan')
                       ? `${offer.interestRateMin}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
-                    {offer.loanTypes.includes('home_loan')
+                    {offer.supportedLoanTypes.includes('home_loan')
                       ? `${Math.max(offer.interestRateMin - 2, 8)}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
-                    {offer.loanTypes.includes('business_loan')
+                    {offer.supportedLoanTypes.includes('business_loan')
                       ? `${offer.interestRateMin + 1}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
-                    {offer.loanTypes.includes('car_loan')
+                    {offer.supportedLoanTypes.includes('car_loan')
                       ? `${offer.interestRateMin - 1}%`
                       : '—'}
                   </td>

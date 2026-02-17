@@ -1,9 +1,16 @@
 import { Request, Response } from 'express';
-import User, { IUser } from '../models/User.js';
+import type { User } from '@prisma/client';
+import prisma from '../config/prisma.js';
+import {
+  comparePassword,
+  hashPassword,
+  isPasswordReused,
+  addToPasswordHistory,
+} from '../services/userService.js';
 
 // Format user response (exclude sensitive data)
-const formatUserResponse = (user: IUser) => ({
-  id: user._id,
+const formatUserResponse = (user: User) => ({
+  id: user.id,
   email: user.email,
   firstName: user.firstName,
   lastName: user.lastName,
@@ -31,8 +38,7 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Get fresh user data from database
-    const user = await User.findById(req.user._id);
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
 
     if (!user) {
       res.status(404).json({
@@ -74,9 +80,8 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     const { firstName, lastName, phone } = req.body;
 
-    // Build update object with only allowed fields
     const updateData: Partial<{ firstName: string; lastName: string; phone: string }> = {};
-    
+
     if (firstName !== undefined) {
       if (firstName.length > 50) {
         res.status(400).json({
@@ -110,20 +115,10 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       updateData.phone = phone;
     }
 
-    // Update user
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-      return;
-    }
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+    });
 
     res.status(200).json({
       success: true,
@@ -134,15 +129,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     });
   } catch (error) {
     console.error('Update profile error:', error);
-    
-    if (error instanceof Error && error.name === 'ValidationError') {
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -183,10 +169,11 @@ export const updatePassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Get user with password and password history
-    const user = await User.findById(req.user._id).select('+password +passwordHistory');
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
 
-    if (!user) {
+    if (!user || !user.password) {
       res.status(404).json({
         success: false,
         message: 'User not found',
@@ -194,8 +181,7 @@ export const updatePassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Check current password
-    const isMatch = await user.comparePassword(currentPassword);
+    const isMatch = await comparePassword(currentPassword, user.password);
 
     if (!isMatch) {
       res.status(400).json({
@@ -205,9 +191,8 @@ export const updatePassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Check if new password was used before (password history)
-    const isReused = await user.isPasswordReused(newPassword);
-    if (isReused) {
+    const reused = await isPasswordReused(user.id, newPassword);
+    if (reused) {
       res.status(400).json({
         success: false,
         message: 'Cannot reuse a recent password. Please choose a different password.',
@@ -215,12 +200,13 @@ export const updatePassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Add current password to history before changing
-    await user.addToPasswordHistory(user.password);
+    await addToPasswordHistory(user.id, user.password);
 
-    // Update password
-    user.password = newPassword;
-    await user.save();
+    const newHashed = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: newHashed },
+    });
 
     res.status(200).json({
       success: true,
@@ -260,10 +246,11 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Get user with password
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
 
-    if (!user) {
+    if (!user || !user.password) {
       res.status(404).json({
         success: false,
         message: 'User not found',
@@ -271,8 +258,7 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Verify password
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await comparePassword(password, user.password);
 
     if (!isMatch) {
       res.status(400).json({
@@ -282,12 +268,10 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Soft delete - deactivate account instead of removing
-    user.isActive = false;
-    await user.save();
-
-    // Or hard delete:
-    // await User.findByIdAndDelete(req.user._id);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { isActive: false },
+    });
 
     res.status(200).json({
       success: true,

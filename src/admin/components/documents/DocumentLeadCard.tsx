@@ -1,6 +1,7 @@
+import { useRef } from 'react';
 import StatusBadge from '../StatusBadge';
 import type { Lead, LeadDocument } from '../../types/admin';
-import { getLoanTypeLabel } from '@/data/loanProducts';
+import { getLoanTypeLabel } from '@/data/loanProductsData';
 import {
   ChevronDown,
   ChevronRight,
@@ -12,6 +13,8 @@ import {
   Bell,
   Share2,
   FileText,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 
 interface DocumentLeadCardProps {
@@ -23,6 +26,9 @@ interface DocumentLeadCardProps {
   onReject: (docId: string) => void;
   onNotifyPartner: (doc: LeadDocument) => void;
   onSendUploadLink: (doc: LeadDocument) => void;
+  onUploadFile?: (leadId: string, docId: string, file: File) => void;
+  onDownloadFile?: (docId: string) => void;
+  uploadingDocId?: string | null;
 }
 
 const isPartnerUpload = (uploadedBy: string) => {
@@ -44,17 +50,35 @@ export default function DocumentLeadCard({
   onReject,
   onNotifyPartner,
   onSendUploadLink,
+  onUploadFile,
+  onDownloadFile,
+  uploadingDocId,
 }: DocumentLeadCardProps) {
   const completionRate = calculateCompletionRate(lead.documents);
   const pendingCount = lead.documents.filter((d) => d.status === 'pending').length;
   const rejectedCount = lead.documents.filter((d) => d.status === 'rejected').length;
   const verifiedCount = lead.documents.filter((d) => d.status === 'verified').length;
 
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
   const statusColors: Record<string, { bg: string; text: string; icon: string }> = {
     pending: { bg: 'bg-yellow-50', text: 'text-yellow-600', icon: 'bg-yellow-100' },
     uploaded: { bg: 'bg-blue-50', text: 'text-blue-600', icon: 'bg-blue-100' },
     verified: { bg: 'bg-green-50', text: 'text-green-600', icon: 'bg-green-100' },
     rejected: { bg: 'bg-red-50', text: 'text-red-600', icon: 'bg-red-100' },
+  };
+
+  const handleFileSelect = (docId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && onUploadFile) {
+      onUploadFile(lead.id, docId, file);
+    }
+    // Reset input so the same file can be re-selected
+    event.target.value = '';
+  };
+
+  const triggerFileInput = (docId: string) => {
+    fileInputRefs.current[docId]?.click();
   };
 
   return (
@@ -144,6 +168,9 @@ export default function DocumentLeadCard({
             <div className="grid grid-cols-1 gap-3">
               {lead.documents.map((doc) => {
                 const colors = statusColors[doc.status];
+                const isUploading = uploadingDocId === doc.id;
+                const canUpload = (doc.status === 'pending' || doc.status === 'rejected') && onUploadFile;
+                const hasFile = doc.fileName && doc.fileName.length > 0;
 
                 return (
                   <div
@@ -157,7 +184,15 @@ export default function DocumentLeadCard({
                       <div>
                         <h4 className="font-medium text-gray-900">{doc.type}</h4>
                         <p className="text-xs text-gray-500">
-                          {doc.fileName} • Uploaded by {doc.uploadedBy} • {doc.uploadedAt}
+                          {hasFile ? (
+                            <>
+                              {doc.fileName}
+                              {doc.uploadedBy ? ` • Uploaded by ${doc.uploadedBy}` : ''}
+                              {doc.uploadedAt ? ` • ${doc.uploadedAt}` : ''}
+                            </>
+                          ) : (
+                            <span className="text-gray-400 italic">No file uploaded yet</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -168,6 +203,35 @@ export default function DocumentLeadCard({
 
                       {/* Actions */}
                       <div className="flex items-center gap-0.5 p-1 bg-gray-50 rounded-xl border border-gray-100">
+                        {/* Upload button for pending/rejected docs */}
+                        {canUpload && (
+                          <>
+                            <input
+                              type="file"
+                              ref={(el) => { fileInputRefs.current[doc.id] = el; }}
+                              onChange={(e) => handleFileSelect(doc.id, e)}
+                              accept=".pdf,.jpg,.jpeg,.png,.webp,.gif"
+                              className="hidden"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerFileInput(doc.id);
+                              }}
+                              disabled={isUploading}
+                              className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:shadow-sm disabled:opacity-50"
+                              title="Upload document"
+                            >
+                              {isUploading ? (
+                                <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                              ) : (
+                                <Upload className="w-[18px] h-[18px]" />
+                              )}
+                            </button>
+                            <div className="w-px h-5 bg-gray-200 mx-0.5" />
+                          </>
+                        )}
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -179,6 +243,12 @@ export default function DocumentLeadCard({
                           <Eye className="w-[18px] h-[18px]" />
                         </button>
                         <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDownloadFile) {
+                              onDownloadFile(doc.id);
+                            }
+                          }}
                           className="p-2 text-slate-500 hover:text-slate-700 hover:bg-white rounded-lg transition-all duration-200 hover:shadow-sm"
                           title="Download"
                         >

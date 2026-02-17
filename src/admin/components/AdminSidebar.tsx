@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import PrefetchLink from '../../components/PrefetchLink';
 
 interface MenuItem {
   path: string;
@@ -145,7 +146,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle }) =>
             <ul className="space-y-1 px-2">
               {menuItems.map((item) => (
                 <li key={item.path}>
-                  <Link
+                  <PrefetchLink
                     to={item.path}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                       isActive(item.path)
@@ -156,7 +157,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle }) =>
                   >
                     {item.icon}
                     {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-                  </Link>
+                  </PrefetchLink>
                 </li>
               ))}
             </ul>

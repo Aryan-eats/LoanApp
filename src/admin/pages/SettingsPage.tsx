@@ -20,7 +20,6 @@ const SettingsPage: React.FC = () => {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Placeholder: Would call API to save settings
     setTimeout(() => setIsSaving(false), 1000);
   };
 
@@ -75,14 +74,12 @@ const SettingsPage: React.FC = () => {
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-1">Manage system configuration and preferences</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar Navigation */}
         <div className="lg:w-64 flex-shrink-0">
           <nav className="bg-white rounded-xl border border-gray-200 p-2">
             {tabs.map((tab) => (
@@ -102,9 +99,7 @@ const SettingsPage: React.FC = () => {
           </nav>
         </div>
 
-        {/* Content */}
         <div className="flex-1">
-          {/* General Settings */}
           {activeTab === 'general' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">General Settings</h2>
@@ -181,7 +176,6 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Commission Slabs */}
           {activeTab === 'commission' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-6">
@@ -233,7 +227,6 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Notifications */}
           {activeTab === 'notifications' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Notification Settings</h2>
@@ -297,7 +290,6 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Security */}
           {activeTab === 'security' && (
             <div className="space-y-6">
               <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -391,7 +383,6 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Integrations */}
           {activeTab === 'integrations' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Integrations</h2>
