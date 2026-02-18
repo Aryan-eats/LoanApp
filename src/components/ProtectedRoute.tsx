@@ -45,9 +45,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   // Check if user role is allowed
   if (!allowedRoles.includes(user.role)) {
     // User is authenticated but doesn't have permission for this route
-    // Redirect to login so they can log in with an appropriate account
-    // Pass the intended destination so they can be redirected after login
-    return <Navigate to="/login" state={{ from: location, roleRequired: allowedRoles }} replace />;
+    // Redirect to a dedicated forbidden page to avoid redirect loops
+    return <Navigate to="/forbidden" state={{ from: location, roleRequired: allowedRoles }} replace />;
   }
 
   return <>{children}</>;

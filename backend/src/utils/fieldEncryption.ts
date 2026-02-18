@@ -20,9 +20,7 @@ const getEncryptionKey = (): Buffer => {
 
 const isEncrypted = (value: string): boolean => value.startsWith(`${ENCRYPTION_PREFIX}:`);
 
-const deriveIv = (plaintext: string, key: Buffer): Buffer => {
-  return crypto.createHmac('sha256', key).update(plaintext).digest().subarray(0, 12);
-};
+const generateIv = (): Buffer => crypto.randomBytes(12);
 
 export const encryptString = (value: string | null | undefined): string | null | undefined => {
   if (value === null || value === undefined) return value;
@@ -30,7 +28,7 @@ export const encryptString = (value: string | null | undefined): string | null |
   if (isEncrypted(value)) return value;
 
   const key = getEncryptionKey();
-  const iv = deriveIv(value, key);
+  const iv = generateIv();
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -70,12 +68,32 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
   User: [
     'aadhaarNumber',
     'panNumber',
+    'gstNumber',
     'accountNumber',
+    'ifscCode',
+    'upiId',
     'otpHash',
     'resetPasswordToken',
     'refreshToken',
   ],
-  Lead: ['clientAadhaar', 'clientPanNumber'],
+  Lead: ['clientAadhaar', 'clientPanNumber', 'clientDateOfBirth'],
+};
+
+const throwOnUnsupportedSubstringFilters = (
+  model: string,
+  field: string,
+  filter: Record<string, unknown>,
+  location: 'filter' | 'not'
+) => {
+  const unsupported = ['contains', 'startsWith', 'endsWith'].find(
+    (op) => filter[op] !== undefined && filter[op] !== null
+  );
+
+  if (unsupported) {
+    throw new Error(
+      `Unsupported ${unsupported} filter on encrypted field "${model}.${field}" (${location}).`
+    );
+  }
 };
 
 const shouldHandleModel = (model?: string): model is keyof typeof ENCRYPTED_FIELDS =>
@@ -122,6 +140,8 @@ const encryptWhere = (model: string, where: Record<string, unknown> | undefined 
 
     if (value && typeof value === 'object') {
       const filter = value as Record<string, unknown>;
+      throwOnUnsupportedSubstringFilters(model, key, filter, 'filter');
+
       if (typeof filter.equals === 'string') {
         filter.equals = encryptString(filter.equals) as string;
       }
@@ -139,6 +159,8 @@ const encryptWhere = (model: string, where: Record<string, unknown> | undefined 
         filter.not = encryptString(filter.not) as string;
       } else if (filter.not && typeof filter.not === 'object') {
         const notFilter = filter.not as Record<string, unknown>;
+        throwOnUnsupportedSubstringFilters(model, key, notFilter, 'not');
+
         if (typeof notFilter.equals === 'string') {
           notFilter.equals = encryptString(notFilter.equals) as string;
         }
@@ -207,14 +229,14 @@ export const fieldEncryptionExtension = Prisma.defineExtension({
 
         const actionsWithResults = new Set([
           'findUnique',
+          'findUniqueOrThrow',
           'findFirst',
+          'findFirstOrThrow',
           'findMany',
           'create',
           'update',
           'upsert',
           'delete',
-          'deleteMany',
-          'updateMany',
         ]);
 
         if (actionsWithResults.has(operation)) {

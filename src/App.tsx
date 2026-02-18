@@ -16,6 +16,7 @@ const Calculator = lazy(() => import('./pages/Calculator'));
 const PartnerOnboarding = lazy(() => import('./pages/PartnerOnboarding'));
 const LogIn = lazy(() => import('./pages/LogIn'));
 const BestOffers = lazy(() => import('./pages/BestOffers'));
+const Forbidden = lazy(() => import('./pages/Forbidden'));
 
 // Lazy load admin pages
 const AdminDashboard = lazy(() => import('./admin/pages/AdminDashboard'));
@@ -86,6 +87,7 @@ function App() {
               <Route path="/apply" element={<div className="pt-24 pb-12 px-4"><ApplicationForm /></div>} />
               <Route path="/onboarding" element={<PartnerOnboarding />} />
               <Route path="/login" element={<LogIn />} />
+              <Route path="/forbidden" element={<Forbidden />} />
               <Route path="/best-offers" element={<BestOffers />} />
 
               {/* Admin routes - single ProtectedRoute wrapper, no remount on route change */}

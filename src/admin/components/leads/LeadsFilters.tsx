@@ -4,6 +4,17 @@ import { buildLoanTypeLabels } from '../../../data/loanProductsData';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
 
+const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  docs_pending: 'Docs Pending',
+  docs_uploaded: 'Docs Uploaded',
+  bank_processing: 'Bank Processing',
+  approved: 'Approved',
+  disbursed: 'Disbursed',
+  rejected: 'Rejected',
+};
+
 interface LeadsFiltersProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -32,12 +43,15 @@ const LeadsFilters: React.FC<LeadsFiltersProps> = ({
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
               placeholder="Search by name, phone, lead ID..."
+              aria-label="Search leads by name, phone, or ID"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
@@ -47,6 +61,7 @@ const LeadsFilters: React.FC<LeadsFiltersProps> = ({
 
         {/* Loan Type Filter */}
         <select
+          aria-label="Filter by loan type"
           value={loanTypeFilter}
           onChange={(e) => setLoanTypeFilter(e.target.value as LoanType | '')}
           className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
@@ -59,18 +74,15 @@ const LeadsFilters: React.FC<LeadsFiltersProps> = ({
 
         {/* Status Filter */}
         <select
+          aria-label="Filter by lead status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as LeadStatus | '')}
           className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
         >
           <option value="">All Status</option>
-          <option value="submitted">Submitted</option>
-          <option value="docs_pending">Docs Pending</option>
-          <option value="docs_uploaded">Docs Uploaded</option>
-          <option value="bank_processing">Bank Processing</option>
-          <option value="approved">Approved</option>
-          <option value="disbursed">Disbursed</option>
-          <option value="rejected">Rejected</option>
+          {Object.entries(LEAD_STATUS_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
 
         {/* Date Filter — disabled until wired to state */}

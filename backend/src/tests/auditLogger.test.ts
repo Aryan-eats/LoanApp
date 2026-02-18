@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateDeviceFingerprint, getClientIP } from '../utils/auditLogger.js';
+import { generateDeviceFingerprint, getClientIP, redactPhone } from '../utils/auditLogger.js';
 import type { Request } from 'express';
 
 function fakeReq(overrides: Partial<Request> = {}): Request {
@@ -85,5 +85,27 @@ describe('generateDeviceFingerprint', () => {
     const fp = generateDeviceFingerprint(fakeReq({ headers: {} }));
     expect(fp).toHaveLength(16);
     expect(fp).toMatch(/^[0-9a-f]+$/);
+  });
+});
+
+describe('redactPhone', () => {
+  it('masks all but last 4 digits of a 10-digit number', () => {
+    expect(redactPhone('9876543210')).toBe('******3210');
+  });
+
+  it('masks international numbers', () => {
+    expect(redactPhone('+919876543210')).toBe('*********3210');
+  });
+
+  it('returns **** for a 4-digit input', () => {
+    expect(redactPhone('1234')).toBe('****');
+  });
+
+  it('returns **** for very short inputs', () => {
+    expect(redactPhone('12')).toBe('****');
+  });
+
+  it('handles a 5-digit number (masks first digit)', () => {
+    expect(redactPhone('12345')).toBe('*2345');
   });
 });

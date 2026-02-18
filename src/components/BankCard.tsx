@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock, ChevronDown } from "lucide-react";
+import { Clock } from "lucide-react";
 
 interface BankCardProps {
   id: string;
@@ -68,9 +68,8 @@ const BankCard: React.FC<BankCardProps> = ({
 
       {/* Footer */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="bg-[#EFF4FF] w-full sm:w-auto px-4 py-3 rounded-xl flex items-center justify-between gap-3 text-sm font-medium text-gray-800 cursor-pointer min-w-[200px]">
+        <div className="bg-[#EFF4FF] w-full sm:w-auto px-4 py-3 rounded-xl flex items-center justify-between gap-3 text-sm font-medium text-gray-800 min-w-[200px]">
           <span>{processingFeeText}</span>
-          <ChevronDown className="w-4 h-4 text-gray-500" />
         </div>
 
         <button

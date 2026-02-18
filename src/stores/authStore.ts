@@ -145,7 +145,8 @@ export const useAuthStore = create<AuthStore>()(
           // Allow limited grace retries only when a token existed in memory.
           // If we had no token/cookie, mark user as logged out immediately.
           if (hadInMemoryToken && wasAuthenticated && refreshCount < 3) {
-            set({ isLoading: false, refreshCount: refreshCount + 1 });
+            // Mark as unauthenticated during retry to avoid stale auth state
+            set({ isAuthenticated: false, isLoading: false, refreshCount: refreshCount + 1 });
             return;
           }
 

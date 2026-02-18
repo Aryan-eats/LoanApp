@@ -17,11 +17,11 @@ const formatCurrency = (amount: number): string => {
 };
 
 interface DashboardStats {
-  leadsToday: number;
-  leadsMTD: number;
+  newUsersThisWeek: number;
+  totalUsers: number;
   activePartners: number;
-  loansApprovedMTD: number;
-  loansDisbursedMTD: number;
+  verifiedUsers: number;
+  activeUsers: number;
   totalCommissionMTD: number;
   pendingReview: number;
   leadsByLoanType: { type: string; count: number }[];
@@ -40,11 +40,11 @@ interface RecentLead {
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>({
-    leadsToday: 0,
-    leadsMTD: 0,
+    newUsersThisWeek: 0,
+    totalUsers: 0,
     activePartners: 0,
-    loansApprovedMTD: 0,
-    loansDisbursedMTD: 0,
+    verifiedUsers: 0,
+    activeUsers: 0,
     totalCommissionMTD: 0,
     pendingReview: 0,
     leadsByLoanType: [],
@@ -63,11 +63,11 @@ const AdminDashboard: React.FC = () => {
         if (statsResponse.success && statsResponse.data) {
           const apiStats = statsResponse.data.stats;
           setStats({
-            leadsToday: apiStats.newUsersThisWeek || 0,
-            leadsMTD: apiStats.totalUsers || 0,
+            newUsersThisWeek: apiStats.newUsersThisWeek || 0,
+            totalUsers: apiStats.totalUsers || 0,
             activePartners: apiStats.partners || 0,
-            loansApprovedMTD: apiStats.verifiedUsers || 0,
-            loansDisbursedMTD: apiStats.activeUsers || 0,
+            verifiedUsers: apiStats.verifiedUsers || 0,
+            activeUsers: apiStats.activeUsers || 0,
             totalCommissionMTD: 0,
             pendingReview: 0,
             leadsByLoanType: [],
@@ -92,7 +92,7 @@ const AdminDashboard: React.FC = () => {
                 customerName: lead.client?.fullName || 'Unknown',
                 customerPhone: lead.client?.phone || '',
                 loanType: lead.loanType ?? '',
-                loanAmount: lead.loanAmount,
+                loanAmount: Number.isFinite(lead.loanAmount) ? lead.loanAmount : 0,
                 partnerName: lead.partnerName || 'Direct',
                 status: lead.status,
                 createdAt: createdAtValue,
@@ -169,7 +169,7 @@ const AdminDashboard: React.FC = () => {
         />
         <StatsCard
           title="Total Users"
-          value={stats.leadsMTD}
+          value={stats.totalUsers}
           trend={{ value: 5, isPositive: true }}
           color="blue"
           icon={
@@ -180,7 +180,7 @@ const AdminDashboard: React.FC = () => {
         />
         <StatsCard
           title="Active Users"
-          value={stats.loansDisbursedMTD}
+          value={stats.activeUsers}
           trend={{ value: 15, isPositive: true }}
           color="green"
           icon={
@@ -191,7 +191,7 @@ const AdminDashboard: React.FC = () => {
         />
         <StatsCard
           title="Verified Users"
-          value={stats.loansApprovedMTD}
+          value={stats.verifiedUsers}
           trend={{ value: 5, isPositive: true }}
           color="amber"
           icon={
@@ -202,7 +202,7 @@ const AdminDashboard: React.FC = () => {
         />
         <StatsCard
           title="New This Week"
-          value={stats.leadsToday}
+          value={stats.newUsersThisWeek}
           subtitle="Users"
           trend={{ value: 12, isPositive: true }}
           color="default"
@@ -213,9 +213,9 @@ const AdminDashboard: React.FC = () => {
           }
         />
         <StatsCard
-          title="Leads"
+          title="Recent Leads"
           value={recentLeads.length}
-          subtitle="Recent"
+          subtitle="Loaded"
           color="red"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,11 +264,11 @@ const AdminDashboard: React.FC = () => {
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-600">Total Users</span>
-              <span className="text-lg font-semibold text-gray-900">{stats.leadsMTD}</span>
+              <span className="text-lg font-semibold text-gray-900">{stats.totalUsers}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-600">Active Users</span>
-              <span className="text-lg font-semibold text-green-600">{stats.loansDisbursedMTD}</span>
+              <span className="text-lg font-semibold text-green-600">{stats.activeUsers}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-600">Recent Leads</span>

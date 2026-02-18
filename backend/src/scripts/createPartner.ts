@@ -6,19 +6,26 @@ dotenv.config();
 
 const createPartner = async () => {
   try {
+    const partnerEmail = process.env.PARTNER_EMAIL || 'partner@loanapp.com';
+    const partnerPassword = process.env.PARTNER_PASSWORD;
+
+    if (!partnerPassword) {
+      throw new Error('PARTNER_PASSWORD is required');
+    }
+
     const existingPartner = await prisma.user.findUnique({
-      where: { email: 'partner@loanapp.com' },
+      where: { email: partnerEmail },
     });
     if (existingPartner) {
       console.log('Partner user already exists!');
-      console.log('Email: partner@loanapp.com');
-      process.exit(0);
+      console.log(`Email: ${partnerEmail}`);
+      return;
     }
 
     await prisma.user.create({
       data: {
-        email: 'partner@loanapp.com',
-        password: await hashPassword('Partner@123456'),
+        email: partnerEmail,
+        password: await hashPassword(partnerPassword),
         firstName: 'Demo',
         lastName: 'Partner',
         phone: '8888888888',
@@ -29,14 +36,11 @@ const createPartner = async () => {
     });
 
     console.log('Partner user created successfully.');
-    console.log('Email: partner@loanapp.com');
-    console.log('Password: Partner@123456');
-    console.log('\nPlease change the password after first login.');
-
-    process.exit(0);
+    console.log(`Email: ${partnerEmail}`);
+    console.log('Password configured from PARTNER_PASSWORD.');
   } catch (error) {
     console.error('Error creating partner:', error);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
   }

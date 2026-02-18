@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Building2,
@@ -76,6 +77,7 @@ export default function BankLoanTypesPage() {
         <button
           onClick={() => navigate('/partner/bank-offers')}
           className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          aria-label="Go back to bank offers"
         >
           <ChevronLeft size={24} className="text-slate-600" />
         </button>
@@ -287,8 +289,8 @@ export default function BankLoanTypesPage() {
             </thead>
             <tbody>
               {Object.entries(loanTypesByCategory).map(([category, loanTypes]) => (
-                <>
-                  <tr key={`cat-${category}`} className="bg-slate-100">
+                <Fragment key={`cat-${category}`}>
+                  <tr className="bg-slate-100">
                     <td colSpan={6} className="py-2 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wide">
                       {categoryLabels[category as keyof typeof categoryLabels] || category}
                     </td>
@@ -344,7 +346,7 @@ export default function BankLoanTypesPage() {
                       </tr>
                     );
                   })}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

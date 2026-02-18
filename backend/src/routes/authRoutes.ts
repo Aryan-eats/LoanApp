@@ -43,7 +43,7 @@ router.post('/forgot-password', passwordResetLimiter, validateForgotPassword, fo
 router.post('/reset-password', passwordResetLimiter, validateResetPassword, resetPassword);
 router.post('/send-otp', otpLimiter, validateSendOTP, sendOTP);
 router.post('/verify-otp', otpLimiter, validateVerifyOTP, verifyOTP);
-router.post('/verify-msg91', otpLimiter, verifyMsg91OTP);
+router.post('/verify-msg91', otpLimiter, protect, verifyMsg91OTP);
 
 // NEW: MSG91 REST API OTP routes (no widget dependency)
 router.post('/otp/send', otpLimiter, msg91SendOTP);
@@ -58,4 +58,3 @@ router.get('/me', protect, getMe);
 router.post('/logout', protect, logout);
 
 export default router;
-

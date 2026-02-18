@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface SuccessPopupProps {
   show: boolean;
@@ -9,15 +9,29 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [internalClosed, setInternalClosed] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else {
+      setInternalClosed(true);
+    }
+  }, [onClose]);
+
+  // Reset internal closed state when show changes
+  useEffect(() => {
+    if (show) setInternalClosed(false);
+  }, [show]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      onClose?.();
+      handleClose();
       return;
     }
     if (e.key === 'Tab' && modalRef.current) {
       const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
       );
       if (focusableElements.length === 0) return;
       const first = focusableElements[0];
@@ -34,7 +48,7 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
         }
       }
     }
-  }, [onClose]);
+  }, [handleClose]);
 
   useEffect(() => {
     if (!show) return;
@@ -50,7 +64,7 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
     };
   }, [show, handleKeyDown]);
 
-  if (!show) return null;
+  if (!show || internalClosed) return null;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -61,12 +75,23 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
         aria-labelledby="success-popup-title"
         className="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full text-center mx-4 transform transition-all scale-100 animate-scale-in relative"
       >
-        {onClose && (
+        {onClose ? (
           <button
             ref={closeButtonRef}
             onClick={onClose}
             aria-label="Close"
             className="absolute top-3 right-3 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            ref={closeButtonRef}
+            onClick={handleClose}
+            className="absolute top-3 right-3 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Close"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

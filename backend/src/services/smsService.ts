@@ -58,14 +58,6 @@ export const sendOTP = async (mobile: string): Promise<OTPResult> => {
   const authKey = getAuthKey();
   const templateId = getTemplateId();
 
-  // TEMP DEBUG - remove after fixing
-  console.log('MSG91 Config Check:', {
-    hasAuthKey: !!authKey,
-    authKeyLength: authKey.length,
-    templateId: templateId,
-    templateIdLength: templateId.length,
-  });
-
   if (!authKey || !templateId) {
     return {
       success: false,
@@ -91,14 +83,6 @@ export const sendOTP = async (mobile: string): Promise<OTPResult> => {
     });
 
     const data = (await response.json()) as Msg91Response;
-    
-    // Debug: Log the full response from MSG91
-    console.log('MSG91 sendOTP Response:', {
-      status: response.status,
-      data,
-      templateId,
-      mobile: formattedMobile,
-    });
 
     if (data.type === 'success') {
       return {
@@ -193,12 +177,14 @@ export const resendOTP = async (
   try {
     const formattedMobile = formatIndianNumber(mobile);
     const url = new URL('https://control.msg91.com/api/v5/otp/retry');
-    url.searchParams.append('authkey', authKey);
     url.searchParams.append('mobile', formattedMobile);
     url.searchParams.append('retrytype', retryType);
 
     const response = await fetch(url.toString(), {
       method: 'GET',
+      headers: {
+        authkey: authKey,
+      },
     });
 
     const data = (await response.json()) as Msg91Response;

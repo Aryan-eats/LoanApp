@@ -3,14 +3,42 @@ import crypto from 'crypto';
 import type { AuditEventType } from '@prisma/client';
 import prisma from '../config/prisma.js';
 
+const EMAIL_HASH_KEY_ENV = 'EMAIL_HASH_KEY';
+
+const getEmailHashKey = (): string => {
+  const key = process.env[EMAIL_HASH_KEY_ENV];
+  if (!key) {
+    throw new Error(`${EMAIL_HASH_KEY_ENV} is not configured`);
+  }
+  return key;
+};
+
+const normalizeHeaderValue = (
+  value: string | string[] | undefined
+): string | null => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return null;
+};
+
 /**
  * Generate a device fingerprint from request headers
  */
 export const generateDeviceFingerprint = (req: Request): string => {
+  const userAgent = normalizeHeaderValue(req.headers['user-agent']) ?? '';
+  const acceptLanguage = normalizeHeaderValue(req.headers['accept-language']) ?? '';
+  const acceptEncoding = normalizeHeaderValue(req.headers['accept-encoding']) ?? '';
+
   const components = [
-    req.headers['user-agent'] || '',
-    req.headers['accept-language'] || '',
-    req.headers['accept-encoding'] || '',
+    userAgent,
+    acceptLanguage,
+    acceptEncoding,
   ].join('|');
 
   return crypto.createHash('sha256').update(components).digest('hex').substring(0, 16);
@@ -27,8 +55,19 @@ export const getClientIP = (req: Request): string => {
   return req.ip || req.socket.remoteAddress || 'unknown';
 };
 
+/**
+ * Redact a phone number for safe logging — keeps only the last 4 digits.
+ */
+export const redactPhone = (phone: string): string => {
+  if (phone.length <= 4) return '****';
+  return '*'.repeat(phone.length - 4) + phone.slice(-4);
+};
+
 const hashEmail = (email: string): string =>
-  crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+  crypto
+    .createHmac('sha256', getEmailHashKey())
+    .update(email.trim().toLowerCase())
+    .digest('hex');
 
 /**
  * Log an audit event
@@ -46,13 +85,15 @@ export const logAuditEvent = async (
 ): Promise<void> => {
   try {
     const hashedEmail = options.email ? hashEmail(options.email) : null;
+    const userAgent = normalizeHeaderValue(req.headers['user-agent']);
+
     await prisma.auditLog.create({
       data: {
         event,
         userId: options.userId,
         hashedEmail,
         ip: getClientIP(req),
-        userAgent: req.headers['user-agent'],
+        userAgent,
         deviceFingerprint: generateDeviceFingerprint(req),
         success: options.success ?? true,
         failureReason: options.failureReason,

@@ -51,11 +51,11 @@ export const signRefreshToken = (user: User): string => {
 };
 
 export const verifyAccessToken = (token: string): AccessTokenPayload => {
-  return jwt.verify(token, getAccessSecret()) as AccessTokenPayload;
+  return jwt.verify(token, getAccessSecret(), { algorithms: ['HS256'] }) as AccessTokenPayload;
 };
 
 export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
-  return jwt.verify(token, getRefreshSecret()) as RefreshTokenPayload;
+  return jwt.verify(token, getRefreshSecret(), { algorithms: ['HS256'] }) as RefreshTokenPayload;
 };
 
 export const getTokenExpirationMs = (token: string): number | null => {
@@ -80,10 +80,15 @@ export const extractTokenFromHeader = (authHeader: string | undefined): string |
 };
 
 export const parseExpiresInToSeconds = (value: string): number => {
-  const match = value.match(/^(\d+)(s|m|h|d)$/);
-  if (!match) {
-    return 0;
+  if (/^\d+$/.test(value)) {
+    return parseInt(value, 10);
   }
+
+  const match = value.match(/^(\d+)(s|m|h|d|w)$/);
+  if (!match) {
+    throw new Error(`Invalid expiresIn format "${value}". Use plain seconds or Ns/Nm/Nh/Nd/Nw.`);
+  }
+
   const amount = parseInt(match[1], 10);
   const unit = match[2];
   switch (unit) {
@@ -95,8 +100,10 @@ export const parseExpiresInToSeconds = (value: string): number => {
       return amount * 60 * 60;
     case 'd':
       return amount * 60 * 60 * 24;
+    case 'w':
+      return amount * 60 * 60 * 24 * 7;
     default:
-      return 0;
+      throw new Error(`Unsupported expiresIn unit "${unit}" in "${value}"`);
   }
 };
 

@@ -34,6 +34,7 @@ const formatCurrency = (amount: number): string => {
 
 // Helper to calculate EMI
 const calculateEMI = (principal: number, annualRate: number, tenureMonths: number): string => {
+  if (!tenureMonths || tenureMonths <= 0) return '₹0';
   const r = annualRate / 12 / 100;
   if (r === 0) return formatCurrency(Math.round(principal / tenureMonths));
   const emi = (principal * r * Math.pow(1 + r, tenureMonths)) / (Math.pow(1 + r, tenureMonths) - 1);
@@ -89,7 +90,8 @@ const BestOffers = () => {
         alert(`Your preference for ${bankName} has been recorded. Our team will contact you soon!`);
       } catch (error) {
         console.error('Failed to update preferred bank:', error);
-        alert(`Application started for ${bankName}. Our team will contact you soon!`);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        alert(`Failed to record your preference for ${bankName} — please try again. (${message})`);
       }
     } else {
       alert(`Application started for ${bankName}. Our team will contact you soon!`);

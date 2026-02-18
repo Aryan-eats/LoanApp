@@ -51,19 +51,19 @@ export default function ProfilePage() {
         lastName: user.lastName,
         email: user.email,
       });
+      fetchLeads();
     }
-    fetchLeads();
-  }, [user, fetchProfile, fetchLeads]);
+  }, [user?.id, fetchProfile, fetchLeads]);
 
   const partnerProfile = partnerInfo?.profile ?? null;
   const isLoading = profileLoading && !partnerProfile;
 
-  // Sync editData when profile loads
+  // Sync editData when profile loads, but only if user is not currently editing
   useEffect(() => {
-    if (partnerProfile) {
+    if (partnerProfile && !isEditing) {
       setEditData(partnerProfile);
     }
-  }, [partnerProfile]);
+  }, [partnerProfile, isEditing]);
   
   const totalLeads = leads.length;
   const approvedLeads = leads.filter(l => l.status === 'approved' || l.status === 'disbursed').length;

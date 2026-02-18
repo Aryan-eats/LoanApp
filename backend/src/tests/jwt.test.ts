@@ -69,20 +69,20 @@ describe('parseExpiresInToSeconds', () => {
     expect(parseExpiresInToSeconds('7d')).toBe(604800);
   });
 
-  it('returns 0 for invalid format', () => {
-    expect(parseExpiresInToSeconds('invalid')).toBe(0);
+  it('throws for invalid format', () => {
+    expect(() => parseExpiresInToSeconds('invalid')).toThrow();
   });
 
-  it('returns 0 for empty string', () => {
-    expect(parseExpiresInToSeconds('')).toBe(0);
+  it('throws for empty string', () => {
+    expect(() => parseExpiresInToSeconds('')).toThrow();
   });
 
-  it('returns 0 for no unit', () => {
-    expect(parseExpiresInToSeconds('100')).toBe(0);
+  it('parses plain numeric string as seconds', () => {
+    expect(parseExpiresInToSeconds('100')).toBe(100);
   });
 
-  it('returns 0 for unsupported unit', () => {
-    expect(parseExpiresInToSeconds('1w')).toBe(0);
+  it('parses week unit', () => {
+    expect(parseExpiresInToSeconds('1w')).toBe(604800);
   });
 });
 

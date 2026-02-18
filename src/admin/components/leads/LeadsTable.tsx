@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Lead, LeadStatus } from '../../types/admin';
 import StatusBadge from '../StatusBadge';
@@ -8,6 +8,10 @@ const loanTypeLabels = buildLoanTypeLabels(true);
 
 // Helper to format currency
 const formatCurrency = (amount: number): string => {
+  if (amount == null || typeof amount !== 'number' || !Number.isFinite(amount)) {
+    console.warn('formatCurrency received invalid value:', amount);
+    return '₹—';
+  }
   try {
     if (amount >= 10000000) {
       return `₹${(amount / 10000000).toFixed(2)} Cr`;
@@ -16,8 +20,8 @@ const formatCurrency = (amount: number): string => {
     }
     return `₹${amount.toLocaleString('en-IN')}`;
   } catch (e) {
-    console.warn("Currency formatting failed for value:", amount);
-    return "₹0.00";
+    console.warn('Currency formatting failed for value:', amount, e);
+    return '₹—';
   }
 };
 
@@ -54,6 +58,18 @@ interface LeadsTableProps {
 
 const LeadsTable: React.FC<LeadsTableProps> = ({ leads, onLeadClick, onStatusUpdate }) => {
   const [showStatusDropdown, setShowStatusDropdown] = useState<string | null>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showStatusDropdown) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showStatusDropdown]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -97,7 +113,7 @@ const LeadsTable: React.FC<LeadsTableProps> = ({ leads, onLeadClick, onStatusUpd
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="relative">
+                  <div className="relative" ref={showStatusDropdown === lead.id ? statusDropdownRef : undefined}>
                     <button
                       onClick={() => setShowStatusDropdown(showStatusDropdown === lead.id ? null : lead.id)}
                       className="flex items-center gap-1 group"

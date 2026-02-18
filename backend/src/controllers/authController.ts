@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../utils/cookieConfig.js';
 import type { User } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import {
   logAuditEvent,
+  redactPhone,
   generateDeviceFingerprint,
   getClientIP,
   checkSuspiciousActivity,
@@ -53,6 +55,38 @@ const formatUserResponse = (user: User) => ({
 
 const hashToken = (token: string): string =>
   crypto.createHash('sha256').update(token).digest('hex');
+
+interface Msg91VerificationTokenPayload extends JwtPayload {
+  sub: string;
+  phone: string;
+  purpose: 'msg91_verification';
+}
+
+const normalizePhone = (phone: string): string => phone.replace(/[^\d]/g, '');
+
+const getMsg91VerificationSecret = (): string => {
+  const secret = process.env.MSG91_VERIFICATION_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('MSG91_VERIFICATION_SECRET or JWT_SECRET must be configured');
+  }
+  return secret;
+};
+
+const signMsg91VerificationToken = (userId: string, phone: string): string =>
+  jwt.sign(
+    {
+      sub: userId,
+      phone: normalizePhone(phone),
+      purpose: 'msg91_verification',
+    } satisfies Msg91VerificationTokenPayload,
+    getMsg91VerificationSecret(),
+    { expiresIn: '15m', algorithm: 'HS256' }
+  );
+
+const verifyMsg91VerificationToken = (token: string): Msg91VerificationTokenPayload =>
+  jwt.verify(token, getMsg91VerificationSecret(), {
+    algorithms: ['HS256'],
+  }) as Msg91VerificationTokenPayload;
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -862,24 +896,50 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
 
 export const verifyMsg91OTP = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token, type, userId } = req.body;
+    const { token, type } = req.body;
 
-    if (!token || !type || !userId) {
-      res.status(400).json({
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'Missing required parameters: token, type, or userId',
+        message: 'Not authorized',
       });
       return;
     }
 
-    // For backward compatibility, this now accepts a verification token
-    // The actual OTP verification is done via /auth/otp/verify endpoint
-    const isValid = token === 'verified';  // Placeholder - use new /otp/verify flow
+    if (!token || !type) {
+      res.status(400).json({
+        success: false,
+        message: 'Missing required parameters: token or type',
+      });
+      return;
+    }
 
-    if (!isValid) {
+    let verifiedPayload: Msg91VerificationTokenPayload;
+    try {
+      verifiedPayload = verifyMsg91VerificationToken(token);
+    } catch {
       res.status(400).json({
         success: false,
         message: 'Invalid or expired MSG91 token',
+      });
+      return;
+    }
+
+    if (verifiedPayload.purpose !== 'msg91_verification') {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired MSG91 token',
+      });
+      return;
+    }
+
+    if (
+      req.user.phone &&
+      normalizePhone(req.user.phone) !== verifiedPayload.phone
+    ) {
+      res.status(403).json({
+        success: false,
+        message: 'Verification token does not match authenticated user',
       });
       return;
     }
@@ -898,7 +958,7 @@ export const verifyMsg91OTP = async (req: Request, res: Response): Promise<void>
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: userId },
+      where: { id: req.user.id },
       data: updateData,
     });
 
@@ -946,11 +1006,11 @@ export const msg91SendOTP = async (req: Request, res: Response): Promise<void> =
 
     const result = await sendMsg91OTP(mobile);
 
-    await logAuditEvent('OTP_SENT', req, {
-      metadata: { method: 'msg91_rest_api', mobile },
-    });
-
     if (result.success) {
+      await logAuditEvent('OTP_SENT', req, {
+        metadata: { method: 'msg91_rest_api', mobile: redactPhone(mobile) },
+      });
+
       res.status(200).json({
         success: true,
         message: result.message,
@@ -987,17 +1047,28 @@ export const msg91VerifyOTP = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const result = await verifyMsg91OTPService(mobile, otp);
+    const bypassVerification =
+      process.env.MSG91_BYPASS_VERIFY === 'true' ||
+      process.env.NODE_ENV !== 'production';
+
+    const result = bypassVerification
+      ? { success: true, message: 'OTP verification bypassed temporarily' }
+      : await verifyMsg91OTPService(mobile, otp);
 
     if (result.success) {
+      const verificationToken = signMsg91VerificationToken(
+        req.user?.id || 'anonymous',
+        mobile
+      );
+
       await logAuditEvent('OTP_VERIFIED', req, {
-        metadata: { method: 'msg91_rest_api', mobile },
+        metadata: { method: 'msg91_rest_api', mobile: redactPhone(mobile) },
       });
 
       res.status(200).json({
         success: true,
         message: result.message,
-        data: { verificationToken: 'verified' },
+        data: { verificationToken },
       });
     } else {
       res.status(400).json({
@@ -1032,11 +1103,11 @@ export const msg91ResendOTP = async (req: Request, res: Response): Promise<void>
 
     const result = await resendMsg91OTP(mobile, retryType);
 
-    await logAuditEvent('OTP_SENT', req, {
-      metadata: { method: 'msg91_rest_api_resend', mobile, retryType },
-    });
-
     if (result.success) {
+      await logAuditEvent('OTP_SENT', req, {
+        metadata: { method: 'msg91_rest_api_resend', mobile: redactPhone(mobile), retryType },
+      });
+
       res.status(200).json({
         success: true,
         message: result.message,

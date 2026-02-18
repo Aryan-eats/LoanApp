@@ -12,17 +12,14 @@ const Navbar: React.FC = () => {
     let ticking = false;
 
     const updateVisibility = () => {
-      const currentScrollY = window.scrollY;
-      const goingDown = currentScrollY > lastScrollY.current;
-
-      // Only update state when scroll direction actually changes
-      if (goingDown && isVisible) {
-        setIsVisible(false);
-      } else if (!goingDown && !isVisible) {
-        setIsVisible(true);
-      }
-
-      lastScrollY.current = currentScrollY;
+      setIsVisible(prev => {
+        const currentScrollY = window.scrollY;
+        const goingDown = currentScrollY > lastScrollY.current;
+        lastScrollY.current = currentScrollY;
+        if (goingDown && prev) return false;
+        if (!goingDown && !prev) return true;
+        return prev;
+      });
       ticking = false;
     };
 
@@ -39,7 +36,7 @@ const Navbar: React.FC = () => {
       window.removeEventListener('scroll', handleScroll);
       cancelAnimationFrame(rafId);
     };
-  }, [isVisible]);
+  }, []);
 
   const toggleMenu = () => {
     setIsOpen(!isOpen);

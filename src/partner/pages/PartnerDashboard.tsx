@@ -30,7 +30,7 @@ export default function PartnerDashboard() {
   }, [fetchLeads, fetchStats]);
 
   const dashboardStats = useMemo(() => {
-    const totalLeads = stats?.total || leads.length;
+    const totalLeads = stats?.total ?? leads.length;
     const approvedLoans = leads.filter(l => l.status === 'approved' || l.status === 'disbursed').length;
     const disbursedLeads = leads.filter(l => l.status === 'disbursed');
     const disbursedAmount = disbursedLeads.reduce((sum, l) => sum + (l.disbursedAmount || l.loanAmount), 0);

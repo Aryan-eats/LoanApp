@@ -17,6 +17,8 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
@@ -26,4 +28,42 @@ dist-ssr
 .vercel
 .env*.local
 .env
+
+# Secrets & certificates
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+*.jks
+
+# Docker
+docker-compose.override.yml
+
+# Test coverage
+coverage/
+backend/coverage/
+.nyc_output/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated artifacts
+git-history.txt
+
+# Production documentation (internal only)
+.agent/
+.gemini/
+.cursor/
+.cursorignore
+.cursorindexingignore
+.cursorrules
+.copilot/
+.github/copilot-instructions.md
+.aider*
+.claude/
+CLAUDE.md
+productions/
 

@@ -47,14 +47,19 @@ apiClient.interceptors.request.use(
 
 // Response interceptor - handle token refresh
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: { resolve: (token: string) => void; reject: (error: unknown) => void }[] = [];
 
-const subscribeTokenRefresh = (callback: (token: string) => void) => {
-  refreshSubscribers.push(callback);
+const subscribeTokenRefresh = (resolve: (token: string) => void, reject: (error: unknown) => void) => {
+  refreshSubscribers.push({ resolve, reject });
 };
 
 const onTokenRefreshed = (token: string) => {
-  refreshSubscribers.forEach((callback) => callback(token));
+  refreshSubscribers.forEach((subscriber) => subscriber.resolve(token));
+  refreshSubscribers = [];
+};
+
+const onTokenRefreshFailed = (error: unknown) => {
+  refreshSubscribers.forEach((subscriber) => subscriber.reject(error));
   refreshSubscribers = [];
 };
 
@@ -74,12 +79,16 @@ apiClient.interceptors.response.use(
 
       if (isRefreshing) {
         // Wait for token refresh to complete
-        return new Promise((resolve, _reject) => {
-          subscribeTokenRefresh((token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(apiClient(originalRequest));
-          });
-          // If refresh fails, the catch block below will reject all subscribers
+        return new Promise((resolve, reject) => {
+          subscribeTokenRefresh(
+            (token: string) => {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              resolve(apiClient(originalRequest));
+            },
+            (err: unknown) => {
+              reject(err);
+            }
+          );
         });
       }
 
@@ -105,10 +114,9 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - clear in-memory token and let calling code decide
-        // (the auth store's grace period logic handles logout decisions)
+        // Refresh failed - reject all queued requests and clear tokens
         clearTokens();
-        refreshSubscribers = [];
+        onTokenRefreshFailed(refreshError);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

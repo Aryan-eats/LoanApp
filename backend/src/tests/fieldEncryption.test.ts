@@ -15,11 +15,13 @@ describe('field encryption', () => {
     expect(decryptString(encrypted)).toBe(plaintext);
   });
 
-  it('uses deterministic encryption for the same input', () => {
+  it('uses randomized encryption for the same input', () => {
     const plaintext = 'RepeatValue';
     const encryptedA = encryptString(plaintext);
     const encryptedB = encryptString(plaintext);
-    expect(encryptedA).toBe(encryptedB);
+    expect(encryptedA).not.toBe(encryptedB);
+    expect(decryptString(encryptedA)).toBe(plaintext);
+    expect(decryptString(encryptedB)).toBe(plaintext);
   });
 
   it('returns null for null input', () => {
