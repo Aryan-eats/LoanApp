@@ -1,6 +1,6 @@
 import StatusBadge from '../StatusBadge';
 import type { Lead, LeadDocument } from '../../types/admin';
-import { X, Download, Printer, Bell, Share2, CheckCircle, XCircle } from 'lucide-react';
+import { X, Download, Printer, Bell, Share2, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 
 interface DocumentPreviewModalProps {
   selectedDoc: { doc: LeadDocument; lead: Lead };
@@ -9,6 +9,9 @@ interface DocumentPreviewModalProps {
   onReject: () => void;
   onNotifyPartner: () => void;
   onSendUploadLink: () => void;
+  onDownload: () => void;
+  onDelete: () => void;
+  isProcessing?: boolean;
 }
 
 const isPartnerUpload = (uploadedBy: string) => {
@@ -22,8 +25,24 @@ export default function DocumentPreviewModal({
   onReject,
   onNotifyPartner,
   onSendUploadLink,
+  onDownload,
+  onDelete,
+  isProcessing,
 }: DocumentPreviewModalProps) {
   const { doc, lead } = selectedDoc;
+
+  const handlePrint = () => {
+    if (doc.url) {
+      const win = window.open(doc.url, '_blank');
+      win?.addEventListener('load', () => win.print());
+    }
+  };
+
+  const handleDelete = () => {
+    if (window.confirm(`Delete "${doc.type}" (${doc.fileName})? This cannot be undone.`)) {
+      onDelete();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -107,16 +126,31 @@ export default function DocumentPreviewModal({
         </div>
 
         {/* Modal Actions */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-gray-50 to-slate-50 border-t border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 bg-linear-to-r from-gray-50 to-slate-50 border-t border-gray-200">
           <div className="flex items-center gap-3">
-            <button className="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all duration-200">
+            <button
+              onClick={onDownload}
+              className="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all duration-200"
+            >
               <Download className="w-[18px] h-[18px]" />
               Download
             </button>
-            <button className="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all duration-200">
+            <button
+              onClick={handlePrint}
+              className="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all duration-200"
+            >
               <Printer className="w-[18px] h-[18px]" />
               Print
             </button>
+            {doc.fileName && (
+              <button
+                onClick={handleDelete}
+                className="inline-flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 hover:border-rose-300 shadow-sm transition-all duration-200"
+              >
+                <Trash2 className="w-[18px] h-[18px]" />
+                Delete
+              </button>
+            )}
           </div>
 
           {doc.status === 'pending' && (
@@ -138,16 +172,23 @@ export default function DocumentPreviewModal({
                   Send Upload Link
                 </button>
               )}
+            </div>
+          )}
+
+          {doc.status === 'uploaded' && (
+            <div className="flex items-center gap-3">
               <button
                 onClick={onReject}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 hover:border-rose-300 shadow-sm transition-all duration-200"
+                disabled={isProcessing}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 hover:border-rose-300 shadow-sm transition-all duration-200 disabled:opacity-50"
               >
                 <XCircle className="w-[18px] h-[18px]" />
                 Reject
               </button>
               <button
                 onClick={onApprove}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-200 transition-all duration-200"
+                disabled={isProcessing}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-linear-to-r from-emerald-500 to-emerald-600 rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-200 transition-all duration-200 disabled:opacity-50"
               >
                 <CheckCircle className="w-[18px] h-[18px]" />
                 Verify Document

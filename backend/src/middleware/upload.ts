@@ -9,7 +9,7 @@
 import multer from 'multer';
 import { Request } from 'express';
 
-const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3 MB
+export const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3 MB
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',

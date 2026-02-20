@@ -11,6 +11,8 @@ import {
   listUserDocuments,
   uploadLeadDocument,
   getLeadDocumentDownloadUrl,
+  updateLeadDocumentStatus,
+  bulkUpdateLeadDocumentStatus,
 } from '../services/documentService.js';
 import prisma from '../config/prisma.js';
 
@@ -63,11 +65,18 @@ export const uploadLeadDoc = async (req: Request, res: Response): Promise<void> 
 
     const leadId = String(req.params.leadId);
     const documentId = String(req.params.documentId);
+    const currentUser = req.user!;
 
     // Verify lead exists
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) {
       res.status(404).json({ success: false, message: 'Lead not found' });
+      return;
+    }
+
+    // Authorization: only the lead owner or admin may upload
+    if (lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+      res.status(403).json({ success: false, message: 'Access denied' });
       return;
     }
 
@@ -129,6 +138,21 @@ export const uploadLeadDoc = async (req: Request, res: Response): Promise<void> 
 export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> => {
   try {
     const documentId = String(req.params.documentId);
+    const currentUser = req.user!;
+
+    // Authorization: resolve the document's lead and verify ownership / admin
+    const docRecord = await prisma.leadDocument.findUnique({
+      where: { id: documentId },
+      include: { lead: { select: { partnerId: true } } },
+    });
+    if (!docRecord) {
+      res.status(404).json({ success: false, message: 'Document not found' });
+      return;
+    }
+    if (docRecord.lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+      res.status(403).json({ success: false, message: 'Access denied' });
+      return;
+    }
 
     const result = await getLeadDocumentDownloadUrl(documentId);
 
@@ -145,6 +169,182 @@ export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> 
     const status = message.includes('not found') || message.includes('not been uploaded') ? 404 : 500;
     console.error('Lead document download error:', error);
     res.status(status).json({ success: false, message });
+  }
+};
+
+/**
+ * DELETE /api/documents/lead/:documentId
+ * Clear the uploaded file from a lead document slot (admin or lead owner only).
+ * Resets the slot back to pending without deleting the slot itself.
+ */
+export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { documentId } = req.params;
+    const currentUser = req.user!;
+
+    const docRecord = await prisma.leadDocument.findUnique({
+      where: { id: documentId },
+      include: { lead: { select: { partnerId: true } } },
+    });
+    if (!docRecord) {
+      res.status(404).json({ success: false, message: 'Document not found' });
+      return;
+    }
+    if (docRecord.lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+      res.status(403).json({ success: false, message: 'Access denied' });
+      return;
+    }
+
+    // Delete from R2 if a file was actually uploaded
+    if (docRecord.r2ObjectKey) {
+      try {
+        await deleteDocument(docRecord.r2ObjectKey);
+      } catch {
+        // Non-fatal – object may already be gone
+      }
+    }
+
+    // Reset the slot back to pending
+    await prisma.leadDocument.update({
+      where: { id: documentId },
+      data: {
+        fileName: '',
+        fileSize: null,
+        fileUrl: null,
+        mimeType: null,
+        r2ObjectKey: null,
+        uploadedBy: null,
+        uploadedAt: new Date(0),
+        status: 'pending',
+      },
+    });
+
+    res.status(200).json({ success: true, message: 'Document deleted successfully' });
+  } catch (error) {
+    console.error('Lead document delete error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete document' });
+  }
+};
+
+/**
+ * PATCH /api/documents/lead/:documentId/status
+ * Update the status of a lead document (verify or reject). Admin only.
+ */
+export const updateLeadDocStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const documentId = String(req.params.documentId);
+    const currentUser = req.user!;
+
+    if (currentUser.role !== 'admin') {
+      res.status(403).json({ success: false, message: 'Only admins can verify/reject documents' });
+      return;
+    }
+
+    const { status, rejectionReason } = req.body as {
+      status?: string;
+      rejectionReason?: string;
+    };
+
+    if (!status || !['verified', 'rejected'].includes(status)) {
+      res.status(400).json({
+        success: false,
+        message: "Status must be 'verified' or 'rejected'",
+      });
+      return;
+    }
+
+    if (status === 'rejected' && !rejectionReason) {
+      res.status(400).json({
+        success: false,
+        message: 'Rejection reason is required when rejecting a document',
+      });
+      return;
+    }
+
+    const docRecord = await prisma.leadDocument.findUnique({ where: { id: documentId } });
+    if (!docRecord) {
+      res.status(404).json({ success: false, message: 'Document not found' });
+      return;
+    }
+
+    const updatedDoc = await updateLeadDocumentStatus(
+      documentId,
+      status as 'verified' | 'rejected',
+      rejectionReason,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Document ${status} successfully`,
+      data: {
+        document: {
+          id: updatedDoc.id,
+          type: updatedDoc.type,
+          status: updatedDoc.status,
+          rejectionReason: updatedDoc.rejectionReason,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Lead document status update error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update document status' });
+  }
+};
+
+/**
+ * PATCH /api/documents/lead/bulk-status
+ * Bulk update status of multiple lead documents. Admin only.
+ */
+export const bulkUpdateLeadDocStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const currentUser = req.user!;
+
+    if (currentUser.role !== 'admin') {
+      res.status(403).json({ success: false, message: 'Only admins can verify/reject documents' });
+      return;
+    }
+
+    const { documentIds, status, rejectionReason } = req.body as {
+      documentIds?: string[];
+      status?: string;
+      rejectionReason?: string;
+    };
+
+    if (!documentIds || !Array.isArray(documentIds) || documentIds.length === 0) {
+      res.status(400).json({ success: false, message: 'documentIds array is required' });
+      return;
+    }
+
+    if (!status || !['verified', 'rejected'].includes(status)) {
+      res.status(400).json({
+        success: false,
+        message: "Status must be 'verified' or 'rejected'",
+      });
+      return;
+    }
+
+    if (status === 'rejected' && !rejectionReason) {
+      res.status(400).json({
+        success: false,
+        message: 'Rejection reason is required when rejecting documents',
+      });
+      return;
+    }
+
+    const result = await bulkUpdateLeadDocumentStatus(
+      documentIds,
+      status as 'verified' | 'rejected',
+      rejectionReason,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `${result.count} document(s) ${status} successfully`,
+      data: { count: result.count },
+    });
+  } catch (error) {
+    console.error('Bulk document status update error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update document statuses' });
   }
 };
 

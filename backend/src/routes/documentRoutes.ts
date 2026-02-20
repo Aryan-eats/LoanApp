@@ -5,9 +5,12 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl } from '../controllers/documentController.js';
+import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl, deleteLeadDoc, updateLeadDocStatus, bulkUpdateLeadDocStatus } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
-import { uploadSingle } from '../middleware/upload.js';
+import { uploadSingle, MAX_FILE_SIZE } from '../middleware/upload.js';
+
+/** Human-readable max upload size derived from the shared constant. */
+const MAX_UPLOAD_DISPLAY = `${Math.round(MAX_FILE_SIZE / (1024 * 1024))} MB`;
 
 const router = Router();
 
@@ -28,7 +31,7 @@ const handleMulterErrors = (req: Request, res: Response, next: NextFunction) => 
       if ((err as NodeJS.ErrnoException).code === 'LIMIT_FILE_SIZE') {
         res.status(413).json({
           success: false,
-          message: 'File too large. Maximum size is 3 MB',
+          message: `File too large. Maximum size is ${MAX_UPLOAD_DISPLAY}`,
         });
         return;
       }
@@ -48,6 +51,15 @@ router.post('/lead/:leadId/doc/:documentId/upload', handleMulterErrors, uploadLe
 
 // GET    /api/documents/lead/:documentId/download – get download URL for a lead document
 router.get('/lead/:documentId/download', getLeadDocUrl);
+
+// PATCH  /api/documents/lead/bulk-status – bulk verify/reject lead documents (admin)
+router.patch('/lead/bulk-status', bulkUpdateLeadDocStatus);
+
+// PATCH  /api/documents/lead/:documentId/status – verify or reject a lead document (admin)
+router.patch('/lead/:documentId/status', updateLeadDocStatus);
+
+// DELETE /api/documents/lead/:documentId – delete (clear) a lead document slot
+router.delete('/lead/:documentId', deleteLeadDoc);
 
 // GET    /api/documents          – list user documents
 router.get('/', list);

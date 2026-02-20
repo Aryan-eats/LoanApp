@@ -29,6 +29,9 @@ interface DocumentLeadCardProps {
   onUploadFile?: (leadId: string, docId: string, file: File) => void;
   onDownloadFile?: (docId: string) => void;
   uploadingDocId?: string | null;
+  onBulkVerify?: (docIds: string[]) => void;
+  onBulkReject?: (docIds: string[]) => void;
+  isProcessing?: boolean;
 }
 
 const isPartnerUpload = (uploadedBy: string) => {
@@ -53,9 +56,13 @@ export default function DocumentLeadCard({
   onUploadFile,
   onDownloadFile,
   uploadingDocId,
+  onBulkVerify,
+  onBulkReject,
+  isProcessing,
 }: DocumentLeadCardProps) {
   const completionRate = calculateCompletionRate(lead.documents);
   const pendingCount = lead.documents.filter((d) => d.status === 'pending').length;
+  const uploadedCount = lead.documents.filter((d) => d.status === 'uploaded').length;
   const rejectedCount = lead.documents.filter((d) => d.status === 'rejected').length;
   const verifiedCount = lead.documents.filter((d) => d.status === 'verified').length;
 
@@ -126,6 +133,12 @@ export default function DocumentLeadCard({
               <span className="flex items-center gap-1.5 text-sm text-yellow-600">
                 <Clock className="w-4 h-4" />
                 {pendingCount} pending
+              </span>
+            )}
+            {uploadedCount > 0 && (
+              <span className="flex items-center gap-1.5 text-sm text-blue-600">
+                <FileText className="w-4 h-4" />
+                {uploadedCount} to review
               </span>
             )}
             {rejectedCount > 0 && (
@@ -279,13 +292,18 @@ export default function DocumentLeadCard({
                                 <Share2 className="w-[18px] h-[18px]" />
                               </button>
                             )}
+                          </>
+                        )}
+                        {doc.status === 'uploaded' && (
+                          <>
                             <div className="w-px h-5 bg-gray-200 mx-0.5" />
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onApprove(doc.id);
                               }}
-                              className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:shadow-sm"
+                              disabled={isProcessing}
+                              className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-200 hover:shadow-sm disabled:opacity-50"
                               title="Verify"
                             >
                               <CheckCircle className="w-[18px] h-[18px]" />
@@ -295,7 +313,8 @@ export default function DocumentLeadCard({
                                 e.stopPropagation();
                                 onReject(doc.id);
                               }}
-                              className="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-200 hover:shadow-sm"
+                              disabled={isProcessing}
+                              className="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-200 hover:shadow-sm disabled:opacity-50"
                               title="Reject"
                             >
                               <XCircle className="w-[18px] h-[18px]" />
@@ -309,7 +328,49 @@ export default function DocumentLeadCard({
               })}
             </div>
 
-            {/* Bulk Actions for Pending Documents */}
+            {/* Bulk Actions for Uploaded Documents (awaiting review) */}
+            {lead.documents.some((d) => d.status === 'uploaded') && (
+              <div className="mt-4 flex flex-col gap-3">
+                {/* Verification actions for uploaded docs */}
+                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm text-blue-800">
+                      {lead.documents.filter((d) => d.status === 'uploaded').length} document(s)
+                      uploaded &amp; awaiting review
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const docIds = lead.documents
+                          .filter((d) => d.status === 'uploaded')
+                          .map((d) => d.id);
+                        onBulkReject?.(docIds);
+                      }}
+                      disabled={isProcessing}
+                      className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                    >
+                      Reject All
+                    </button>
+                    <button
+                      onClick={() => {
+                        const docIds = lead.documents
+                          .filter((d) => d.status === 'uploaded')
+                          .map((d) => d.id);
+                        onBulkVerify?.(docIds);
+                      }}
+                      disabled={isProcessing}
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      Verify All
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Pending documents (not yet uploaded) */}
             {lead.documents.some((d) => d.status === 'pending') && (
               <div className="mt-4 flex flex-col gap-3">
                 {/* Partner notification banner */}
@@ -355,7 +416,7 @@ export default function DocumentLeadCard({
                             (d) => d.status === 'pending' && !isPartnerUpload(d.uploadedBy)
                           ).length
                         }{' '}
-                        document(s) pending from customer
+                        document(s) pending upload
                       </span>
                     </div>
                     <button
@@ -372,25 +433,6 @@ export default function DocumentLeadCard({
                     </button>
                   </div>
                 )}
-
-                {/* Verification actions */}
-                <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-yellow-600" />
-                    <span className="text-sm text-yellow-800">
-                      {lead.documents.filter((d) => d.status === 'pending').length} document(s)
-                      pending verification
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                      Reject All
-                    </button>
-                    <button className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
-                      Verify All
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
           </div>

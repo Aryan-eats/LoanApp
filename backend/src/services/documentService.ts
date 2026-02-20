@@ -62,8 +62,11 @@ export const sanitiseFilename = (original: string): string => {
   const timestamp = Date.now();
   // Keep only alphanumerics, dots, hyphens, underscores
   const safe = original.replace(/[^a-zA-Z0-9.\-_]/g, '_').substring(0, 200);
+  // Fallback when the sanitised name is empty or contains no meaningful chars
+  const meaningful = safe.replace(/^_+$/, ''); // all-underscore → empty
+  const name = meaningful.length > 0 ? safe : 'file';
   // Prefix with timestamp to avoid collisions
-  return `${timestamp}-${safe}`;
+  return `${timestamp}-${name}`;
 };
 
 /* ------------------------------------------------------------------ */
@@ -145,16 +148,12 @@ export const uploadLeadDocument = async (
 
   await client.send(new PutObjectCommand(params));
 
-  // 2. Generate a pre-signed download URL
-  const downloadUrl = await getDownloadUrl(key);
-
-  // 3. Update the row in Postgres
+  // 2. Update the row in Postgres (no ephemeral URL stored – generate on demand)
   const updatedDoc = await prisma.leadDocument.update({
     where: { id: documentId },
     data: {
       fileName: originalFilename,
       fileSize: `${(buffer.length / 1024).toFixed(1)} KB`,
-      fileUrl: downloadUrl,
       r2ObjectKey: key,
       mimeType,
       uploadedBy,
@@ -194,6 +193,57 @@ export const getLeadDocumentDownloadUrl = async (
       mimeType: doc.mimeType,
     },
   };
+};
+
+/**
+ * Update the status of a lead document (verify / reject).
+ *
+ * @param documentId     – the LeadDocument row ID
+ * @param status         – new status: 'verified' or 'rejected'
+ * @param rejectionReason – required when rejecting
+ */
+export const updateLeadDocumentStatus = async (
+  documentId: string,
+  status: 'verified' | 'rejected',
+  rejectionReason?: string,
+) => {
+  const data: { status: 'verified' | 'rejected'; rejectionReason?: string | null } = { status };
+  if (status === 'rejected') {
+    data.rejectionReason = rejectionReason || 'Rejected by admin';
+  } else {
+    // Clear any prior rejection reason when verifying
+    data.rejectionReason = null;
+  }
+
+  const updatedDoc = await prisma.leadDocument.update({
+    where: { id: documentId },
+    data,
+  });
+
+  return updatedDoc;
+};
+
+/**
+ * Bulk-update the status of multiple lead documents.
+ */
+export const bulkUpdateLeadDocumentStatus = async (
+  documentIds: string[],
+  status: 'verified' | 'rejected',
+  rejectionReason?: string,
+) => {
+  const data: { status: 'verified' | 'rejected'; rejectionReason?: string | null } = { status };
+  if (status === 'rejected') {
+    data.rejectionReason = rejectionReason || 'Rejected by admin';
+  } else {
+    data.rejectionReason = null;
+  }
+
+  const result = await prisma.leadDocument.updateMany({
+    where: { id: { in: documentIds } },
+    data,
+  });
+
+  return result;
 };
 
 /**
@@ -243,8 +293,15 @@ export const documentExists = async (key: string): Promise<boolean> => {
       }),
     );
     return true;
-  } catch {
-    return false;
+  } catch (err: unknown) {
+    // Only treat NotFound / 404 as "does not exist"
+    const name = (err as { name?: string })?.name;
+    const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    if (name === 'NotFound' || name === 'NoSuchKey' || status === 404) {
+      return false;
+    }
+    // Propagate all other errors (permissions, network, throttling, etc.)
+    throw err;
   }
 };
 
@@ -257,16 +314,26 @@ export const listUserDocuments = async (
   const client = getR2Client();
   const prefix = `users/${userId}/documents/`;
 
-  const response = await client.send(
-    new ListObjectsV2Command({
-      Bucket: R2_BUCKET,
-      Prefix: prefix,
-    }),
-  );
+  const allContents: { Key?: string; Size?: number; LastModified?: Date }[] = [];
+  let continuationToken: string | undefined;
 
-  if (!response.Contents) return [];
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
 
-  return response.Contents.map((obj: { Key?: string; Size?: number; LastModified?: Date }) => ({
+    if (response.Contents) {
+      allContents.push(...response.Contents);
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return allContents.map((obj) => ({
     key: obj.Key!,
     filename: obj.Key!.replace(prefix, ''),
     size: obj.Size ?? 0,

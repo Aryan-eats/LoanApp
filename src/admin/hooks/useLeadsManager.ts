@@ -90,9 +90,6 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
         
         // Helper to update a lead in the list
         const updateLeadInList = (currentLead: Lead) => {
-             // If we have full updated lead from backend, map it? 
-             // Or just update specific fields? Better to trust backend response.
-             // But for now, let's just patch the status and timeline to match UI expectations
              return {
                 ...currentLead,
                 status: updatedLead.status as LeadStatus,
@@ -104,6 +101,24 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
                   updatedBy: event.updatedBy,
                   note: event.note,
                 })) || currentLead.timeline,
+                // Pick up newly created document slots (e.g. when transitioning to docs_pending)
+                documents: updatedLead.documents?.length
+                  ? updatedLead.documents.map((d: any) => ({
+                      id: d.id,
+                      type: d.type,
+                      fileName: d.fileName || '',
+                      fileSize: d.fileSize,
+                      fileUrl: d.fileUrl,
+                      mimeType: d.mimeType,
+                      r2ObjectKey: d.r2ObjectKey,
+                      uploadedBy: d.uploadedBy || 'Partner',
+                      uploadedAt: d.uploadedAt
+                        ? new Date(d.uploadedAt).toLocaleDateString()
+                        : '',
+                      status: d.status,
+                      url: d.fileUrl,
+                    }))
+                  : currentLead.documents,
               };
         };
 

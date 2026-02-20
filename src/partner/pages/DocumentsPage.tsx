@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Upload,
   FileText,
@@ -12,20 +12,14 @@ import {
   ChevronRight,
   Search,
   Info,
+  Loader2,
 } from 'lucide-react';
 import ProgressBar from '../components/ProgressBar';
 import EmptyState from '../components/EmptyState';
-import { recentLeads } from '../data/placeholderData';
-import type { DocumentStatus, LoanType } from '../types/partner-dashboard';
-
-const loanTypeLabels: Record<LoanType, string> = {
-  home_loan: 'Home Loan',
-  personal_loan: 'Personal Loan',
-  business_loan: 'Business Loan',
-  car_loan: 'Car Loan',
-  lap: 'Loan Against Property',
-  education_loan: 'Education Loan',
-};
+import { uploadLeadDocument, getDocumentDownloadUrl } from '../../api/documentsApi';
+import { getLeads } from '../../api/leadsApi';
+import { getLoanTypeLabel } from '../../data/loanProductsData';
+import type { Lead, LeadDocument, DocumentStatus } from '../types/partner-dashboard';
 
 const documentStatusConfig: Record<DocumentStatus, { icon: React.ReactNode; color: string; bg: string }> = {
   pending: { icon: <Clock size={14} />, color: 'text-slate-500', bg: 'bg-slate-100' },
@@ -34,59 +28,169 @@ const documentStatusConfig: Record<DocumentStatus, { icon: React.ReactNode; colo
   rejected: { icon: <XCircle size={14} />, color: 'text-red-600', bg: 'bg-red-100' },
 };
 
-const leadsWithDocs = recentLeads.filter((lead) => lead.documents && lead.documents.length > 0);
+const getDocTypeLabel = (type: string) => {
+  const labels: Record<string, string> = {
+    pan_card: 'PAN Card',
+    aadhaar_front: 'Aadhaar (Front)',
+    aadhaar_back: 'Aadhaar (Back)',
+    photo: 'Passport Photo',
+    salary_slip_1: 'Salary Slip (Latest)',
+    salary_slip_2: 'Salary Slip (2nd Month)',
+    salary_slip_3: 'Salary Slip (3rd Month)',
+    bank_statement: 'Bank Statement (6 months)',
+    itr_1: 'ITR (Latest Year)',
+    itr_2: 'ITR (Previous Year)',
+    form_16: 'Form 16',
+    address_proof: 'Address Proof',
+    property_documents: 'Property Documents',
+    business_proof: 'Business Proof',
+    gst_certificate: 'GST Certificate',
+  };
+  return labels[type] || type;
+};
 
 export default function DocumentsPage() {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedLeads, setExpandedLeads] = useState<string[]>([leadsWithDocs[0]?.id || '']);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+  const hasAutoExpanded = useRef(false);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const filteredLeads = leadsWithDocs.filter(
-    (lead) =>
-      lead.client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // ── Fetch leads from API ──────────────────────────────────────────────────
+  const fetchLeads = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await getLeads({}, false); // isAdmin = false (partner)
+      if (response.success && response.data) {
+        const leadsWithDocs = response.data.leads.filter(
+          (lead) => lead.documents && lead.documents.length > 0
+        );
+        setLeads(leadsWithDocs);
+        if (!hasAutoExpanded.current && leadsWithDocs.length > 0) {
+          setExpandedLeads([leadsWithDocs[0].id]);
+          hasAutoExpanded.current = true;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch leads:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const toggleExpand = (leadId: string) => {
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const filteredLeads = useMemo(() => {
+    return leads.filter(
+      (lead) =>
+        lead.client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.id.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [leads, searchQuery]);
+
+  const toggleExpand = useCallback((leadId: string) => {
     setExpandedLeads((prev) =>
       prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
     );
-  };
+  }, []);
 
-  const calculateCompletionRate = (documents: typeof recentLeads[0]['documents']) => {
+  const calculateCompletionRate = (documents: LeadDocument[]) => {
+    if (documents.length === 0) return 0;
     const completed = documents.filter((d) => d.status === 'verified' || d.status === 'uploaded').length;
     return Math.round((completed / documents.length) * 100);
   };
 
-  const handleFileUpload = async (docId: string) => {
-    if (!selectedFile) return;
-    
-    setUploadingDoc(docId);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setUploadingDoc(null);
-    setSelectedFile(null);
-  };
+  // ── Upload handler (uses actual API) ──────────────────────────────────────
+  const handleFileUpload = useCallback(async (leadId: string, docId: string, file: File) => {
+    setUploadingDocId(docId);
+    try {
+      const response = await uploadLeadDocument(leadId, docId, file);
+      if (response.success && response.data?.document) {
+        const updatedDoc = response.data.document;
 
-  const getDocTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      pan_card: 'PAN Card',
-      aadhaar_front: 'Aadhaar (Front)',
-      aadhaar_back: 'Aadhaar (Back)',
-      photo: 'Passport Photo',
-      salary_slip_1: 'Salary Slip (Latest)',
-      salary_slip_2: 'Salary Slip (2nd Month)',
-      salary_slip_3: 'Salary Slip (3rd Month)',
-      bank_statement: 'Bank Statement (6 months)',
-      itr_1: 'ITR (Latest Year)',
-      itr_2: 'ITR (Previous Year)',
-      form_16: 'Form 16',
-      address_proof: 'Address Proof',
-      property_documents: 'Property Documents',
-      business_proof: 'Business Proof',
-      gst_certificate: 'GST Certificate',
-    };
-    return labels[type] || type;
+        setLeads((prev) =>
+          prev.map((lead) =>
+            lead.id !== leadId
+              ? lead
+              : {
+                  ...lead,
+                  documents: lead.documents.map((d) =>
+                    d.id !== docId
+                      ? d
+                      : {
+                          ...d,
+                          fileName: updatedDoc.fileName,
+                          fileSize: updatedDoc.fileSize || d.fileSize,
+                          uploadedAt: updatedDoc.uploadedAt
+                            ? new Date(updatedDoc.uploadedAt).toLocaleDateString()
+                            : new Date().toLocaleDateString(),
+                          status: (updatedDoc.status as DocumentStatus) || 'uploaded',
+                        },
+                  ),
+                }
+          )
+        );
+      } else {
+        alert(`Upload failed: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      alert(message);
+    } finally {
+      setUploadingDocId(null);
+    }
+  }, []);
+
+  // ── Download handler (uses actual API) ────────────────────────────────────
+  const handleDownload = useCallback(async (docId: string) => {
+    try {
+      const response = await getDocumentDownloadUrl(docId);
+      if (response.success && response.data?.url) {
+        window.open(response.data.url, '_blank');
+      } else {
+        alert(response.message || 'Could not generate download link');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Download failed';
+      alert(message);
+    }
+  }, []);
+
+  // ── View handler (opens download URL in new tab) ──────────────────────────
+  const handleView = useCallback(async (docId: string) => {
+    try {
+      const response = await getDocumentDownloadUrl(docId);
+      if (response.success && response.data?.url) {
+        window.open(response.data.url, '_blank');
+      } else {
+        alert(response.message || 'Could not load document preview');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to load document';
+      alert(message);
+    }
+  }, []);
+
+  // ── File input helpers (ref-based to avoid state race conditions) ─────────
+  const handleFileSelect = useCallback(
+    (leadId: string, docId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        handleFileUpload(leadId, docId, file);
+      }
+      // Reset so the same file can be re-selected
+      event.target.value = '';
+    },
+    [handleFileUpload]
+  );
+
+  const triggerFileInput = (docId: string) => {
+    fileInputRefs.current[docId]?.click();
   };
 
   return (
@@ -124,7 +228,11 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {filteredLeads.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center items-center h-48">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+        </div>
+      ) : filteredLeads.length > 0 ? (
         <div className="space-y-4">
           {filteredLeads.map((lead) => {
             const isExpanded = expandedLeads.includes(lead.id);
@@ -155,7 +263,7 @@ export default function DocumentsPage() {
                         <span className="text-xs text-slate-400 font-mono">{lead.id}</span>
                       </div>
                       <p className="text-sm text-slate-500">
-                        {loanTypeLabels[lead.loanType]} • {lead.status === 'docs_pending' ? 'Documents Required' : 'Documents Submitted'}
+                        {getLoanTypeLabel(lead.loanType)} • {lead.status === 'docs_pending' ? 'Documents Required' : 'Documents Submitted'}
                       </p>
                     </div>
                   </div>
@@ -194,6 +302,8 @@ export default function DocumentsPage() {
                       <div className="grid grid-cols-1 gap-3">
                         {lead.documents.map((doc) => {
                           const statusConfig = documentStatusConfig[doc.status];
+                          const isUploading = uploadingDocId === doc.id;
+                          const canUpload = doc.status === 'pending' || doc.status === 'rejected';
 
                           return (
                             <div
@@ -234,24 +344,26 @@ export default function DocumentsPage() {
                                 </div>
 
                                 <div className="flex items-center gap-1">
-                                  {doc.status === 'pending' || doc.status === 'rejected' ? (
-                                    <label className="relative">
+                                  {canUpload ? (
+                                    <>
                                       <input
                                         type="file"
+                                        ref={(el) => { fileInputRefs.current[doc.id] = el; }}
+                                        onChange={(e) => handleFileSelect(lead.id, doc.id, e)}
                                         accept=".pdf,.jpg,.jpeg,.png"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) {
-                                            setSelectedFile(file);
-                                            handleFileUpload(doc.id);
-                                          }
-                                        }}
                                         className="hidden"
                                       />
-                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-blue-700 transition-colors">
-                                        {uploadingDoc === doc.id ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          triggerFileInput(doc.id);
+                                        }}
+                                        disabled={isUploading}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                      >
+                                        {isUploading ? (
                                           <>
-                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <Loader2 size={14} className="animate-spin" />
                                             Uploading...
                                           </>
                                         ) : (
@@ -260,17 +372,25 @@ export default function DocumentsPage() {
                                             Upload
                                           </>
                                         )}
-                                      </span>
-                                    </label>
+                                      </button>
+                                    </>
                                   ) : (
                                     <>
                                       <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleView(doc.id);
+                                        }}
                                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         title="View document"
                                       >
                                         <Eye size={16} />
                                       </button>
                                       <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownload(doc.id);
+                                        }}
                                         className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                                         title="Download"
                                       >
@@ -293,18 +413,6 @@ export default function DocumentsPage() {
                               {lead.documents.filter((d) => d.status === 'pending').length} document(s) pending upload
                             </span>
                           </div>
-                          <label className="relative">
-                            <input
-                              type="file"
-                              multiple
-                              accept=".pdf,.jpg,.jpeg,.png"
-                              className="hidden"
-                            />
-                            <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-blue-700 transition-colors">
-                              <Upload size={16} />
-                              Upload All
-                            </span>
-                          </label>
                         </div>
                       )}
                     </div>
