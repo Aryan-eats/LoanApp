@@ -9,8 +9,8 @@ const FloatingApplyButton: React.FC = () => {
       className="fixed bottom-8 right-8 bg-gradient-to-r from-gray-800 to-black text-white font-bold py-3 px-6 rounded-full shadow-2xl hover:from-gray-700 hover:to-gray-900 transition duration-300 ease-in-out transform hover:scale-110 z-50 animate-pulse flex items-center gap-2"
       style={{ animationDuration: '2s' }}
     >
-      Apply Now
-      <ArrowUpRight size={20} />
+      Check Eligibility
+      <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
     </Link>
   );
 };

@@ -29,36 +29,9 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   const fetchPriority = priority ? 'high' : 'auto';
 
   useEffect(() => {
-    const compositeSource = avifSrc || webpSrc || src;
-    if (!compositeSource) return;
-
-    // Reset state when sources change
+    // Reset visual state when source set changes.
     setIsLoaded(false);
     setHasError(false);
-
-    let cancelled = false;
-    const img = new Image();
-
-    const onLoad = () => {
-      if (!cancelled) setIsLoaded(true);
-    };
-    const onError = () => {
-      if (!cancelled) {
-        setHasError(true);
-        setIsLoaded(true);
-      }
-    };
-
-    img.addEventListener('load', onLoad);
-    img.addEventListener('error', onError);
-    img.src = compositeSource;
-
-    return () => {
-      cancelled = true;
-      img.removeEventListener('load', onLoad);
-      img.removeEventListener('error', onError);
-      img.src = '';
-    };
   }, [src, webpSrc, avifSrc]);
 
   const handleLoad = () => {
@@ -89,6 +62,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
           onLoad={handleLoad}
           onError={handleError}
           loading={loadingStrategy}
+          decoding="async"
           // @ts-ignore - fetchPriority is a valid attribute but React types might not support it yet
           fetchPriority={fetchPriority}
           className={`transition-all duration-500 ease-in-out ${

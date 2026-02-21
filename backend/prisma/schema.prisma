@@ -211,6 +211,28 @@ model OtpChallenge {
   @@map("otp_challenges")
 }
 
+model LenderDocRequirement {
+  id              String   @id @default(uuid())
+  lenderCode      String   @map("lender_code")
+  lenderName      String   @map("lender_name")
+  loanCode        String   @map("loan_code")
+  docId           String   @map("doc_id")
+  docName         String   @map("doc_name")
+  description     String?
+  mandatory       Boolean  @default(true)
+  acceptedFormats String[] @map("accepted_formats")
+  maxSizeMB       Int      @default(5) @map("max_size_mb")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([lenderCode, loanCode, docId])
+  @@index([lenderCode])
+  @@index([lenderCode, loanCode])
+  @@map("lender_doc_requirements")
+}
+
 enum UserRole {
   super_admin
   admin

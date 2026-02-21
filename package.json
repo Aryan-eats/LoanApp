@@ -17,6 +17,7 @@
     "@mui/icons-material": "^7.3.6",
     "@tailwindcss/vite": "^4.1.17",
     "axios": "^1.13.2",
+    "framer-motion": "^12.34.3",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

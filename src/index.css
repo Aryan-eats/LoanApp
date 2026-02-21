@@ -20,4 +20,17 @@
   .animate-pulse-glow {
     animation: pulse-glow 2.5s infinite ease-in-out;
   }
+
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee 35s linear infinite;
+  }
 }

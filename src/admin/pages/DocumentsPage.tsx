@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import {
   DocumentStatsCards,
@@ -89,6 +90,7 @@ const mapApiLead = (apiLead: any): Lead => ({
 const DOC_RELEVANT_STATUSES: LeadStatus[] = ['docs_pending', 'docs_uploaded', 'bank_processing'];
 
 const DocumentsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [apiLeads, setApiLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -484,7 +486,7 @@ const DocumentsPage: React.FC = () => {
   }, [formData, validateForm, handleCloseAddModal]);
 
   return (
-    <AdminLayout onAddLead={handleOpenAddModal} addButtonLabel="Add Client">
+    <AdminLayout onAddLead={() => navigate('/admin/docs/reqdoc')} addButtonLabel="Documents">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
         <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
