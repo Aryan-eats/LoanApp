@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
 import { Request, Response } from 'express';
 import prisma from '../config/prisma.js';
+import { basePrisma } from '../config/prisma.js';
 import { Prisma } from '@prisma/client';
 import { hashPassword } from '../services/userService.js';
 import {
@@ -414,4 +415,140 @@ router.patch('/leads/:id/status', updateLeadStatus);
 
 router.patch('/leads/:id/assign-bank', assignBank);
 
+// ── Lender Document Requirements ──────────────────────────────────────────────
+
+/**
+ * GET /api/admin/docs/reqdoc
+ * List all lender doc requirements, optionally filtered by lenderCode and/or loanCode.
+ */
+router.get('/docs/reqdoc', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { lenderCode, loanCode } = req.query;
+    const where: Record<string, unknown> = {};
+    if (lenderCode && typeof lenderCode === 'string') where.lenderCode = lenderCode;
+    if (loanCode   && typeof loanCode   === 'string') where.loanCode   = loanCode;
+
+    const docs = await basePrisma.lenderDocRequirement.findMany({
+      where,
+      orderBy: [
+        { lenderCode: 'asc' },
+        { loanCode:   'asc' },
+        { sortOrder:  'asc' },
+      ],
+    });
+
+    res.status(200).json({ success: true, count: docs.length, data: docs });
+  } catch (error) {
+    console.error('Get doc requirements error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/admin/docs/reqdoc
+ * Add a new document requirement for a lender + loan type.
+ */
+router.post('/docs/reqdoc', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      lenderCode, lenderName, loanCode, docId, docName,
+      description, mandatory, acceptedFormats, maxSizeMB,
+    } = req.body as {
+      lenderCode: string; lenderName: string; loanCode: string;
+      docId?: string; docName: string; description?: string;
+      mandatory?: boolean; acceptedFormats?: string[]; maxSizeMB?: number;
+    };
+
+    if (!lenderCode || !lenderName || !loanCode || !docName) {
+      res.status(400).json({ success: false, message: 'lenderCode, lenderName, loanCode and docName are required' });
+      return;
+    }
+
+    const doc = await basePrisma.lenderDocRequirement.create({
+      data: {
+        lenderCode,
+        lenderName,
+        loanCode,
+        docId:           docId ?? `custom_${Date.now()}`,
+        docName,
+        description:     description ?? null,
+        mandatory:       mandatory ?? true,
+        acceptedFormats: acceptedFormats ?? ['pdf', 'jpg', 'png'],
+        maxSizeMB:       maxSizeMB ?? 5,
+        createdBy:       req.user?.id ?? null,
+      },
+    });
+
+    res.status(201).json({ success: true, data: doc });
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code === 'P2002') {
+      res.status(409).json({ success: false, message: 'This document already exists for the selected lender and loan type' });
+      return;
+    }
+    console.error('Create doc requirement error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * PATCH /api/admin/docs/reqdoc/:id
+ * Update an existing document requirement (name, mandatory flag, formats, etc).
+ */
+router.patch('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const { docName, description, mandatory, acceptedFormats, maxSizeMB } = req.body as {
+      docName?: string; description?: string; mandatory?: boolean;
+      acceptedFormats?: string[]; maxSizeMB?: number;
+    };
+
+    const updateData: Record<string, unknown> = {};
+    if (docName         !== undefined) updateData.docName         = docName;
+    if (description     !== undefined) updateData.description     = description;
+    if (mandatory       !== undefined) updateData.mandatory       = mandatory;
+    if (acceptedFormats !== undefined) updateData.acceptedFormats = acceptedFormats;
+    if (maxSizeMB       !== undefined) updateData.maxSizeMB       = maxSizeMB;
+
+    let doc;
+    try {
+      doc = await basePrisma.lenderDocRequirement.update({ where: { id }, data: updateData });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'P2025') {
+        res.status(404).json({ success: false, message: 'Document requirement not found' });
+        return;
+      }
+      throw err;
+    }
+
+    res.status(200).json({ success: true, data: doc });
+  } catch (error) {
+    console.error('Update doc requirement error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/admin/docs/reqdoc/:id
+ * Remove a document requirement.
+ */
+router.delete('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    try {
+      await basePrisma.lenderDocRequirement.delete({ where: { id } });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'P2025') {
+        res.status(404).json({ success: false, message: 'Document requirement not found' });
+        return;
+      }
+      throw err;
+    }
+    res.status(200).json({ success: true, message: 'Document requirement removed' });
+  } catch (error) {
+    console.error('Delete doc requirement error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 export default router;
+

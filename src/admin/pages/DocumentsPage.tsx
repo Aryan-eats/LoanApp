@@ -487,9 +487,18 @@ const DocumentsPage: React.FC = () => {
 
   return (
     <AdminLayout onAddLead={() => navigate('/admin/docs/reqdoc')} addButtonLabel="Documents">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-        <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+          <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
+        </div>
+        <button
+          onClick={handleOpenAddModal}
+          className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Client
+        </button>
       </div>
 
       <DocumentStatsCards stats={documentStats} />
