@@ -8,7 +8,7 @@ import {
   DocumentPreviewModal,
 } from '../components/documents';
 import type { Lead, LeadDocument, DocumentStatus, LeadStatus } from '../types/admin';
-import { FileText, X, Plus, Loader2 } from 'lucide-react';
+import { FileText, X, Plus, Loader2, Link2, Copy, Check, Clock } from 'lucide-react';
 import {
   getProductsByCategory,
   type LoanCategory,
@@ -27,7 +27,7 @@ import {
   FlashOn,
   Construction,
 } from '@mui/icons-material';
-import { uploadLeadDocument, getDocumentDownloadUrl, deleteLeadDocument, updateDocumentStatus, bulkUpdateDocumentStatus } from '../../api/documentsApi';
+import { uploadLeadDocument, getDocumentDownloadUrl, deleteLeadDocument, updateDocumentStatus, bulkUpdateDocumentStatus, generateUploadToken } from '../../api/documentsApi';
 import { getLeads } from '../../api/leadsApi';
 import { getRequiredDocsForLoanCode } from '../../data/DocsReq';
 
@@ -117,6 +117,14 @@ const DocumentsPage: React.FC = () => {
   } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadLinkModal, setUploadLinkModal] = useState<{
+    url: string;
+    docType: string;
+    customerName: string;
+    customerEmail: string;
+    expiresAt: string;
+  } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // ── API fetch ─────────────────────────────────────────────────────────────
   const fetchDocLeads = useCallback(async () => {
@@ -320,9 +328,25 @@ const DocumentsPage: React.FC = () => {
     );
   }, []);
 
-  const handleSendUploadLink = useCallback((lead: Lead, doc: LeadDocument) => {
-    console.log('Sending upload link to customer:', lead.customerEmail, 'for document:', doc.type);
-    alert(`Upload link sent to ${lead.customerEmail} for uploading ${doc.type}`);
+  const handleSendUploadLink = useCallback(async (_lead: Lead, doc: LeadDocument) => {
+    try {
+      const response = await generateUploadToken(doc.id);
+      if (response.success && response.data) {
+        setUploadLinkModal({
+          url: response.data.uploadUrl,
+          docType: response.data.document.type,
+          customerName: response.data.customer.name,
+          customerEmail: response.data.customer.email,
+          expiresAt: response.data.expiresAt,
+        });
+        setLinkCopied(false);
+      } else {
+        alert(`Failed to generate link: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to generate upload link';
+      alert(`Error: ${message}`);
+    }
   }, []);
 
   const handleViewDocument = useCallback((doc: LeadDocument, lead: Lead) => {
@@ -357,13 +381,13 @@ const DocumentsPage: React.FC = () => {
         setAddedClients((prev) => prev.map(patchLead));
         setApiLeads((prev) => prev.map(patchLead));
 
-        alert(`✅ "${file.name}" uploaded successfully for ${updatedDoc.type || 'document'}`);
+        alert(`"${file.name}" uploaded successfully for ${updatedDoc.type || 'document'}`);
       } else {
-        alert(`❌ Upload failed: ${response.message || 'Unknown error'}`);
+        alert(`Error: ${response.message || 'Upload failed'}`);
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
-      alert(`❌ ${message}`);
+      alert(`Error: ${message}`);
     } finally {
       setUploadingDocId(null);
     }
@@ -380,7 +404,7 @@ const DocumentsPage: React.FC = () => {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Download failed';
-      alert(`❌ ${message}`);
+      alert(`Error: ${message}`);
     }
   }, []);
 
@@ -399,13 +423,13 @@ const DocumentsPage: React.FC = () => {
         setApiLeads((prev) => prev.map(patchLead));
         setAddedClients((prev) => prev.map(patchLead));
         setSelectedDoc(null);
-        alert('✅ Document deleted successfully');
+        alert('Document deleted successfully');
       } else {
-        alert(`❌ ${response.message || 'Delete failed'}`);
+        alert(`Error: ${response.message || 'Delete failed'}`);
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Delete failed';
-      alert(`❌ ${message}`);
+      alert(`Error: ${message}`);
     }
   }, []);
 
@@ -562,6 +586,89 @@ const DocumentsPage: React.FC = () => {
           onDelete={() => handleDeleteDocument(selectedDoc.lead.id, selectedDoc.doc.id)}
           isProcessing={isProcessing}
         />
+      )}
+
+      {/* Upload Link Modal */}
+      {uploadLinkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Link2 className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Upload Link Generated</h2>
+                  <p className="text-sm text-gray-500">{uploadLinkModal.docType}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUploadLinkModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                <p className="text-sm text-gray-900">{uploadLinkModal.customerName}</p>
+                {uploadLinkModal.customerEmail && (
+                  <p className="text-xs text-gray-500">{uploadLinkModal.customerEmail}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Link</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={uploadLinkModal.url}
+                    className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-mono truncate"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(uploadLinkModal.url);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      linkCopied
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                  >
+                    {linkCopied ? (
+                      <><Check className="w-4 h-4" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-4 h-4" /> Copy</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800">
+                  <Clock className="w-3.5 h-3.5 inline -mt-0.5" /> This link expires on{' '}
+                  <strong>{new Date(uploadLinkModal.expiresAt).toLocaleString()}</strong>
+                  {' '}and can only be used once.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setUploadLinkModal(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showAddModal && (

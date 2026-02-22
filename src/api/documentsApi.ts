@@ -144,10 +144,69 @@ export const bulkUpdateDocumentStatus = async (
   return response.data;
 };
 
+// ── Lender Doc Requirements (partner-accessible) ─────────────────────────────
+
+export interface ReqDocRow {
+  id: string;
+  lenderCode: string;
+  lenderName: string;
+  loanCode: string;
+  docId: string;
+  docName: string;
+  description: string | null;
+  mandatory: boolean;
+  acceptedFormats: string[];
+  maxSizeMB: number;
+  sortOrder: number;
+}
+
+export interface ReqDocLender {
+  lenderCode: string;
+  lenderName: string;
+  loanCodes: string[];
+  docs: ReqDocRow[];
+}
+
+/**
+ * GET /api/documents/req-docs?loanCode=home_loan
+ * Returns required documents grouped by lender for the given loan type.
+ */
+export const getReqDocs = async (loanCode: string): Promise<{ success: boolean; data?: ReqDocLender[] }> => {
+  const response = await apiClient.get('/documents/req-docs', { params: { loanCode } });
+  return response.data;
+};
+
+
+/**
+ * POST /api/documents/lead/:documentId/upload-token
+ * Generate a secure, time-limited upload link for a customer to upload a specific document.
+ * Admin only.
+ */
+export interface UploadTokenResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    uploadUrl: string;
+    token: string;
+    expiresAt: string;
+    document: { id: string; type: string };
+    customer: { name: string; email: string };
+  };
+}
+
+export const generateUploadToken = async (
+  documentId: string,
+): Promise<UploadTokenResponse> => {
+  const response = await apiClient.post(`/documents/lead/${documentId}/upload-token`);
+  return response.data;
+};
+
+
 export default {
   uploadLeadDocument,
   getDocumentDownloadUrl,
   deleteLeadDocument,
   updateDocumentStatus,
   bulkUpdateDocumentStatus,
+  generateUploadToken,
 };

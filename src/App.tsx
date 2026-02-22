@@ -25,6 +25,7 @@ const LogIn = lazy(preloadLogIn);
 const BestOffers = lazy(preloadBestOffers);
 const Forbidden = lazy(preloadForbidden);
 const ApplicationForm = lazy(preloadApply);
+const CustomerUploadPage = lazy(() => import('./pages/CustomerUploadPage'));
 
 // Lazy load admin pages
 const AdminDashboard = lazy(() => import('./admin/pages/AdminDashboard'));
@@ -58,8 +59,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const isPartnerDashboard = location.pathname.startsWith('/partner');
   const isLoginPage = location.pathname === '/login';
 
-  if (isAdminRoute || isPartnerDashboard || isLoginPage) {
-    // Admin and Partner Dashboard routes have their own layout
+  const isUploadPage = location.pathname.startsWith('/upload');
+
+  if (isAdminRoute || isPartnerDashboard || isLoginPage || isUploadPage) {
+    // Admin, Partner, Login, and Upload pages have their own layout
     return <>{children}</>;
   }
 
@@ -89,6 +92,7 @@ const AnimatedRoutes = () => {
         <Route path="/login" element={<PageTransition><LogIn /></PageTransition>} />
         <Route path="/forbidden" element={<PageTransition><Forbidden /></PageTransition>} />
         <Route path="/best-offers" element={<PageTransition><BestOffers /></PageTransition>} />
+        <Route path="/upload/:token" element={<CustomerUploadPage />} />
 
         {/* Admin routes - single ProtectedRoute wrapper, no remount on route change */}
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><Outlet /></ProtectedRoute>}>

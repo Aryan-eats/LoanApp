@@ -144,22 +144,38 @@ model Lead {
 }
 
 model LeadDocument {
-  id              String         @id @default(uuid())
-  leadId          String         @map("lead_id")
+  id              String                  @id @default(uuid())
+  leadId          String                  @map("lead_id")
   type            String
-  fileName        String         @map("file_name")
-  fileSize        String?        @map("file_size")
-  fileUrl         String?        @map("file_url")
-  r2ObjectKey     String?        @map("r2_object_key")
-  mimeType        String?        @map("mime_type")
-  uploadedBy      String?        @map("uploaded_by")
-  uploadedAt      DateTime       @default(now()) @map("uploaded_at")
-  status          DocumentStatus @default(pending)
-  rejectionReason String?        @map("rejection_reason")
-  lead            Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fileName        String                  @map("file_name")
+  fileSize        String?                 @map("file_size")
+  fileUrl         String?                 @map("file_url")
+  r2ObjectKey     String?                 @map("r2_object_key")
+  mimeType        String?                 @map("mime_type")
+  uploadedBy      String?                 @map("uploaded_by")
+  uploadedAt      DateTime                @default(now()) @map("uploaded_at")
+  status          DocumentStatus          @default(pending)
+  rejectionReason String?                 @map("rejection_reason")
+  lead            Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploadTokens    DocumentUploadToken[]
 
   @@index([leadId])
   @@map("lead_documents")
+}
+
+model DocumentUploadToken {
+  id         String       @id @default(uuid())
+  token      String       @unique @default(uuid())
+  documentId String       @map("document_id")
+  leadId     String       @map("lead_id")
+  expiresAt  DateTime     @map("expires_at")
+  usedAt     DateTime?    @map("used_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  document   LeadDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([documentId])
+  @@map("document_upload_tokens")
 }
 
 model LeadTimeline {

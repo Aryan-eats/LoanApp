@@ -15,6 +15,7 @@ import {
   bulkUpdateLeadDocumentStatus,
 } from '../services/documentService.js';
 import prisma from '../config/prisma.js';
+import crypto from 'crypto';
 
 /**
  * POST /api/documents/upload
@@ -179,7 +180,7 @@ export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> 
  */
 export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const currentUser = req.user!;
 
     const docRecord = await prisma.leadDocument.findUnique({
@@ -206,7 +207,7 @@ export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> 
 
     // Reset the slot back to pending
     await prisma.leadDocument.update({
-      where: { id: documentId },
+      where: { id: documentId as string },
       data: {
         fileName: '',
         fileSize: null,
@@ -448,5 +449,209 @@ export const remove = async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: 'Failed to delete document',
     });
+  }
+};
+
+/**
+ * POST /api/documents/lead/:documentId/upload-token
+ * Generate a secure, time-limited upload token for a customer.
+ * Admin only.
+ */
+export const generateUploadToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const currentUser = req.user!;
+    if (currentUser.role !== 'admin' && currentUser.role !== 'partner') {
+      res.status(403).json({ success: false, message: 'Only admins and partners can generate upload links' });
+      return;
+    }
+
+    const documentId = String(req.params.documentId);
+
+    // Look up the document and its parent lead
+    const docRecord = await prisma.leadDocument.findUnique({
+      where: { id: documentId },
+      include: { lead: { select: { id: true, clientFullName: true, clientEmail: true } } },
+    });
+
+    if (!docRecord) {
+      res.status(404).json({ success: false, message: 'Document not found' });
+      return;
+    }
+
+    // Create a token that expires in 48 hours
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    const uploadToken = await prisma.documentUploadToken.create({
+      data: {
+        documentId,
+        leadId: docRecord.leadId,
+        expiresAt,
+      },
+    });
+
+    // The frontend URL the customer will visit
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const uploadUrl = `${baseUrl}/upload/${uploadToken.token}`;
+
+    res.status(201).json({
+      success: true,
+      message: 'Upload link generated',
+      data: {
+        uploadUrl,
+        token: uploadToken.token,
+        expiresAt: expiresAt.toISOString(),
+        document: {
+          id: docRecord.id,
+          type: docRecord.type,
+        },
+        customer: {
+          name: docRecord.lead.clientFullName,
+          email: docRecord.lead.clientEmail,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Generate upload token error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate upload link' });
+  }
+};
+
+/**
+ * GET /api/documents/upload-via-token/:token
+ * Public (no auth). Validates a token and returns ALL pending/rejected
+ * documents for the lead so the customer can upload everything from one page.
+ */
+export const validateUploadToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = String(req.params.token);
+
+    const tokenRecord = await prisma.documentUploadToken.findUnique({
+      where: { token },
+    });
+
+    if (!tokenRecord) {
+      res.status(404).json({ success: false, message: 'Invalid upload link' });
+      return;
+    }
+
+    if (new Date() > tokenRecord.expiresAt) {
+      res.status(410).json({ success: false, message: 'This upload link has expired', code: 'EXPIRED' });
+      return;
+    }
+
+    // Get ALL documents for this lead + lead info
+    const lead = await prisma.lead.findUnique({
+      where: { id: tokenRecord.leadId },
+      select: {
+        clientFullName: true,
+        loanType: true,
+        documents: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            fileName: true,
+          },
+          orderBy: { type: 'asc' },
+        },
+      },
+    });
+
+    if (!lead) {
+      res.status(404).json({ success: false, message: 'Lead not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        customerName: lead.clientFullName,
+        loanType: lead.loanType,
+        expiresAt: tokenRecord.expiresAt.toISOString(),
+        documents: lead.documents.map((d) => ({
+          id: d.id,
+          type: d.type,
+          status: d.status,
+          fileName: d.fileName || null,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Validate upload token error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * POST /api/documents/upload-via-token/:token
+ * Public (no auth required). Customer uploads a file for any document
+ * belonging to the token's lead. The documentId is passed in the URL as a query param.
+ */
+export const uploadViaToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = String(req.params.token);
+    const documentId = String(req.query.documentId || '');
+
+    if (!documentId) {
+      res.status(400).json({ success: false, message: 'documentId query parameter is required' });
+      return;
+    }
+
+    // Find the token
+    const tokenRecord = await prisma.documentUploadToken.findUnique({
+      where: { token },
+    });
+
+    if (!tokenRecord) {
+      res.status(404).json({ success: false, message: 'Invalid or expired upload link' });
+      return;
+    }
+
+    if (new Date() > tokenRecord.expiresAt) {
+      res.status(410).json({ success: false, message: 'This upload link has expired' });
+      return;
+    }
+
+    // Verify the document belongs to the same lead as the token
+    const docRecord = await prisma.leadDocument.findFirst({
+      where: { id: documentId, leadId: tokenRecord.leadId },
+    });
+
+    if (!docRecord) {
+      res.status(403).json({ success: false, message: 'Document does not belong to this upload link' });
+      return;
+    }
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (!file) {
+      res.status(400).json({ success: false, message: 'No file provided' });
+      return;
+    }
+
+    // Upload the file
+    const updatedDoc = await uploadLeadDocument(
+      tokenRecord.leadId,
+      documentId,
+      file.originalname,
+      file.buffer,
+      file.mimetype,
+      'Customer (via link)',
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Document uploaded successfully',
+      data: {
+        document: {
+          id: updatedDoc.id,
+          type: updatedDoc.type,
+          fileName: updatedDoc.fileName,
+          status: updatedDoc.status,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Upload via token error:', error);
+    res.status(500).json({ success: false, message: 'Failed to upload document' });
   }
 };
