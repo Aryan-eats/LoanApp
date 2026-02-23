@@ -3,6 +3,8 @@
 @/admin/lead.tsx - import preffered bank (if)  from @Bestoffers.tsx
 searchbars 
 
+add warnings in admin for unactive partners
+
 
 ## Done (mostly)
 - [x] Express 5/TS setup (finally)

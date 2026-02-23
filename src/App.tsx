@@ -33,6 +33,7 @@ const PartnersPage = lazy(() => import('./admin/pages/PartnersPage'));
 const LeadsPage = lazy(() => import('./admin/pages/LeadsPage'));
 const DocumentsPage = lazy(() => import('./admin/pages/DocumentsPage'));
 const BanksPage = lazy(() => import('./admin/pages/BanksPage'));
+const BankManagePage = lazy(() => import('./admin/pages/BankManagePage'));
 const CommissionsPage = lazy(() => import('./admin/pages/CommissionsPage'));
 const UsersPage = lazy(() => import('./admin/pages/UsersPage'));
 const AuditLogsPage = lazy(() => import('./admin/pages/AuditLogsPage'));
@@ -102,6 +103,7 @@ const AnimatedRoutes = () => {
           <Route path="leads" element={<LeadsPage />} />
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="banks" element={<BanksPage />} />
+          <Route path="banks/:bankId" element={<BankManagePage />} />
           <Route path="commissions" element={<CommissionsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />

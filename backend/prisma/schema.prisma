@@ -249,6 +249,58 @@ model LenderDocRequirement {
   @@map("lender_doc_requirements")
 }
 
+model Bank {
+  id                String               @id @default(uuid())
+  name              String
+  code              String               @unique
+  logo              String?
+  status            BankStatus           @default(active)
+  supportedLoanTypes String[]            @map("supported_loan_types")
+  interestRateMin   Decimal              @map("interest_rate_min") @db.Decimal(5, 2)
+  interestRateMax   Decimal              @map("interest_rate_max") @db.Decimal(5, 2)
+  processingFee     String               @map("processing_fee")
+  maxTenure         Int                  @map("max_tenure")
+  minAmount         Decimal              @map("min_amount") @db.Decimal(15, 2)
+  maxAmount         Decimal              @map("max_amount") @db.Decimal(15, 2)
+  processingTime    String               @map("processing_time")
+  isPopular         Boolean              @default(false) @map("is_popular")
+  features          String[]
+  avgTat            Int                  @map("avg_tat")
+  activeLeads       Int                  @default(0) @map("active_leads")
+  approvalRate      Int                  @default(0) @map("approval_rate")
+  totalDisbursed    String               @default("₹0") @map("total_disbursed")
+  contactPerson     String               @map("contact_person")
+  contactEmail      String               @map("contact_email")
+  contactPhone      String               @map("contact_phone")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  commissionRates   BankCommissionRate[]
+
+  @@index([status])
+  @@map("banks")
+}
+
+model BankCommissionRate {
+  id                String   @id @default(uuid())
+  bankId            String   @map("bank_id")
+  loanType          String   @map("loan_type")
+  partnerCommission Decimal  @map("partner_commission") @db.Decimal(5, 2)
+  interestRate      String?  @map("interest_rate")
+  maxAmount         Decimal? @map("max_amount") @db.Decimal(15, 2)
+  minAmount         Decimal? @map("min_amount") @db.Decimal(15, 2)
+  maxTenure         Int?     @map("max_tenure")
+  bank              Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  @@unique([bankId, loanType])
+  @@index([bankId])
+  @@map("bank_commission_rates")
+}
+
+enum BankStatus {
+  active
+  inactive
+}
+
 enum UserRole {
   super_admin
   admin

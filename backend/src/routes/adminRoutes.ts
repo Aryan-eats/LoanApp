@@ -550,5 +550,173 @@ router.delete('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<v
   }
 });
 
+// ── Banks ────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/banks
+ * List all banks with commission rates.
+ */
+router.get('/banks', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const banks = await basePrisma.bank.findMany({
+      include: { commissionRates: true },
+      orderBy: { name: 'asc' },
+    });
+    res.status(200).json({ success: true, count: banks.length, data: { banks } });
+  } catch (error) {
+    console.error('Get banks error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/admin/banks/:id
+ * Get a single bank by ID with commission rates.
+ */
+router.get('/banks/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const bank = await basePrisma.bank.findUnique({
+      where: { id },
+      include: { commissionRates: true },
+    });
+    if (!bank) {
+      res.status(404).json({ success: false, message: 'Bank not found' });
+      return;
+    }
+    res.status(200).json({ success: true, data: { bank } });
+  } catch (error) {
+    console.error('Get bank error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * PATCH /api/admin/banks/:id/status
+ * Toggle bank status between active and inactive.
+ */
+router.patch('/banks/:id/status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const { status } = req.body as { status: 'active' | 'inactive' };
+
+    if (!status || !['active', 'inactive'].includes(status)) {
+      res.status(400).json({ success: false, message: 'status must be "active" or "inactive"' });
+      return;
+    }
+
+    let bank;
+    try {
+      bank = await basePrisma.bank.update({
+        where: { id },
+        data: { status },
+        include: { commissionRates: true },
+      });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'P2025') {
+        res.status(404).json({ success: false, message: 'Bank not found' });
+        return;
+      }
+      throw err;
+    }
+
+    res.status(200).json({ success: true, message: `Bank ${status === 'active' ? 'activated' : 'deactivated'}`, data: { bank } });
+  } catch (error) {
+    console.error('Toggle bank status error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/admin/banks/:id
+ * Full update of a bank and its commission rates.
+ */
+router.put('/banks/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const {
+      name, code, status, supportedLoanTypes,
+      interestRateMin, interestRateMax, processingFee,
+      maxTenure, minAmount, maxAmount, processingTime,
+      isPopular, features, avgTat, activeLeads,
+      approvalRate, totalDisbursed, contactPerson,
+      contactEmail, contactPhone, commissionRates,
+    } = req.body;
+
+    // Build update data – only include fields that were sent
+    const updateData: Record<string, unknown> = {};
+    if (name !== undefined) updateData.name = name;
+    if (code !== undefined) updateData.code = code;
+    if (status !== undefined) updateData.status = status;
+    if (supportedLoanTypes !== undefined) updateData.supportedLoanTypes = supportedLoanTypes;
+    if (interestRateMin !== undefined) updateData.interestRateMin = interestRateMin;
+    if (interestRateMax !== undefined) updateData.interestRateMax = interestRateMax;
+    if (processingFee !== undefined) updateData.processingFee = processingFee;
+    if (maxTenure !== undefined) updateData.maxTenure = maxTenure;
+    if (minAmount !== undefined) updateData.minAmount = minAmount;
+    if (maxAmount !== undefined) updateData.maxAmount = maxAmount;
+    if (processingTime !== undefined) updateData.processingTime = processingTime;
+    if (isPopular !== undefined) updateData.isPopular = isPopular;
+    if (features !== undefined) updateData.features = features;
+    if (avgTat !== undefined) updateData.avgTat = avgTat;
+    if (activeLeads !== undefined) updateData.activeLeads = activeLeads;
+    if (approvalRate !== undefined) updateData.approvalRate = approvalRate;
+    if (totalDisbursed !== undefined) updateData.totalDisbursed = totalDisbursed;
+    if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
+    if (contactEmail !== undefined) updateData.contactEmail = contactEmail;
+    if (contactPhone !== undefined) updateData.contactPhone = contactPhone;
+
+    // Use transaction to atomically update bank + replace commission rates
+    const bank = await basePrisma.$transaction(async (tx) => {
+      // Update bank fields
+      const updated = await tx.bank.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // If commission rates are provided, replace them all
+      if (Array.isArray(commissionRates)) {
+        await tx.bankCommissionRate.deleteMany({ where: { bankId: id } });
+        if (commissionRates.length > 0) {
+          await tx.bankCommissionRate.createMany({
+            data: commissionRates.map((r: { loanType: string; partnerCommission: number; interestRate?: string; maxAmount?: number; minAmount?: number; maxTenure?: number }) => ({
+              bankId: id,
+              loanType: r.loanType,
+              partnerCommission: r.partnerCommission,
+              interestRate: r.interestRate ?? null,
+              maxAmount: r.maxAmount ?? null,
+              minAmount: r.minAmount ?? null,
+              maxTenure: r.maxTenure ?? null,
+            })),
+          });
+        }
+      }
+
+      return tx.bank.findUnique({
+        where: { id: updated.id },
+        include: { commissionRates: true },
+      });
+    });
+
+    if (!bank) {
+      res.status(404).json({ success: false, message: 'Bank not found' });
+      return;
+    }
+
+    res.status(200).json({ success: true, message: 'Bank updated successfully', data: { bank } });
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code === 'P2025') {
+      res.status(404).json({ success: false, message: 'Bank not found' });
+      return;
+    }
+    if ((error as { code?: string }).code === 'P2002') {
+      res.status(409).json({ success: false, message: 'Bank code already exists' });
+      return;
+    }
+    console.error('Update bank error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 export default router;
 
