@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import type { User } from '@prisma/client';
 import prisma from '../config/prisma.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
+import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
+import { cacheWrap, cacheDelete } from '../utils/cache.js';
 
 // Format partner response for API - matching frontend Partner type
 const formatPartnerResponse = (user: User, leadsSubmitted = 0) => ({
@@ -246,9 +247,15 @@ export const updatePartner = async (req: Request, res: Response): Promise<void> 
     });
 
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
+      await logAuditEvent('PARTNER_UPDATED', req, {
         userId: req.user.id,
-        metadata: { action: 'UPDATE_PARTNER', partnerId, changes: Object.keys(updateData) },
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          changedFields: Object.keys(updateData),
+          previousActive: existing.isActive,
+          newActive: updateData.isActive ?? existing.isActive,
+        },
       });
     }
 
@@ -312,11 +319,20 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
     });
 
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
+      const eventType = status === 'approved' ? 'PARTNER_APPROVED'
+        : (status === 'suspended' || status === 'rejected') ? 'PARTNER_SUSPENDED'
+        : 'PARTNER_UPDATED';
+      await logAuditEvent(eventType as any, req, {
         userId: req.user.id,
-        metadata: { action: `PARTNER_${status.toUpperCase()}`, partnerId, reason },
+        entityId: partnerId,
+        entityType: 'partner',
+        severity: eventType === 'PARTNER_SUSPENDED' ? 'HIGH' : 'MEDIUM',
+        metadata: { status, reason, previousActive: existing.isActive },
       });
     }
+
+    // Partner counts changed — bust the stats cache
+    await cacheDelete('partner:stats');
 
     res.status(200).json({
       success: true,
@@ -518,6 +534,15 @@ export const updatePartnerProfile = async (req: Request, res: Response): Promise
       data: updateData,
     });
 
+    if (req.user) {
+      await logAuditEvent('PARTNER_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: { changedFields: Object.keys(updateData), selfUpdate: req.user.id === partnerId },
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
@@ -565,6 +590,20 @@ export const submitPartnerKYC = async (req: Request, res: Response): Promise<voi
       where: { id: partnerId },
       data: updateData,
     });
+
+    if (req.user) {
+      await logAuditEvent('PARTNER_KYC_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          panProvided: !!panNumber,
+          aadhaarProvided: !!aadhaarNumber,
+          ...(panNumber ? { panRedacted: redactPAN(panNumber) } : {}),
+          ...(aadhaarNumber ? { aadhaarRedacted: redactAadhaar(aadhaarNumber) } : {}),
+        },
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -622,9 +661,15 @@ export const updatePartnerKYCStatus = async (req: Request, res: Response): Promi
     });
 
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
+      await logAuditEvent('PARTNER_KYC_UPDATED', req, {
         userId: req.user.id,
-        metadata: { action: `KYC_${status.toUpperCase()}`, partnerId, rejectionReason },
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          kycStatus: status,
+          previousKycStatus: existing.kycStatus,
+          rejectionReason: rejectionReason || undefined,
+        },
       });
     }
 
@@ -646,28 +691,30 @@ export const updatePartnerKYCStatus = async (req: Request, res: Response): Promi
  */
 export const getPartnerStats = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [totalPartners, activePartners, pendingPartners, byType] = await Promise.all([
-      prisma.user.count({ where: { role: 'partner' } }),
-      prisma.user.count({ where: { role: 'partner', isActive: true } }),
-      prisma.user.count({ where: { role: 'partner', isActive: false } }),
-      prisma.user.groupBy({
-        by: ['partnerType'],
-        where: { role: 'partner' },
-        _count: { _all: true },
-      }),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        stats: {
+    const data = await cacheWrap(
+      'partner:stats',
+      async () => {
+        const [totalPartners, activePartners, pendingPartners, byType] = await Promise.all([
+          prisma.user.count({ where: { role: 'partner' } }),
+          prisma.user.count({ where: { role: 'partner', isActive: true } }),
+          prisma.user.count({ where: { role: 'partner', isActive: false } }),
+          prisma.user.groupBy({
+            by: ['partnerType'],
+            where: { role: 'partner' },
+            _count: { _all: true },
+          }),
+        ]);
+        return {
           total: totalPartners,
           active: activePartners,
           pending: pendingPartners,
           byType: byType.map((t) => ({ type: t.partnerType || 'unknown', count: t._count._all })),
-        },
+        };
       },
-    });
+      60 // 60-second TTL
+    );
+
+    res.status(200).json({ success: true, data: { stats: data } });
   } catch (error) {
     console.error('Get partner stats error:', error);
     res.status(500).json({ success: false, message: 'Server error' });

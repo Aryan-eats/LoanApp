@@ -11,6 +11,8 @@ vi.mock('../api/apiClient', () => ({
   setAccessToken: vi.fn(),
   clearTokens: vi.fn(),
   getAccessToken: vi.fn(),
+  startSilentRefresh: vi.fn(),
+  stopSilentRefresh: vi.fn(),
 }));
 
 describe('Auth Store', () => {
@@ -33,7 +35,6 @@ describe('Auth Store', () => {
       isAuthenticated: false,
       isLoading: false,
       error: null,
-      refreshCount: 0,
     });
     vi.clearAllMocks();
   });
@@ -42,7 +43,6 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.refreshCount).toBe(0);
   });
 
   it('logs in user and stores access token in memory', async () => {
@@ -51,6 +51,7 @@ describe('Auth Store', () => {
         data: {
           user: baseUser,
           accessToken: 'access-token',
+          expiresIn: 900,
         },
       },
     });
@@ -75,7 +76,7 @@ describe('Auth Store', () => {
   });
 
   it('logs out and clears token state even when API call fails', async () => {
-    useAuthStore.setState({ user: baseUser, isAuthenticated: true, refreshCount: 2 });
+    useAuthStore.setState({ user: baseUser, isAuthenticated: true });
     (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue('existing-token');
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
 
@@ -84,7 +85,6 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.refreshCount).toBe(0);
     expect(clearTokens).toHaveBeenCalledTimes(1);
   });
 
@@ -99,13 +99,12 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.isAuthenticated).toBe(true);
     expect(state.user?.email).toBe('test@example.com');
-    expect(state.refreshCount).toBe(0);
   });
 
   it('checkAuth refreshes token when no in-memory token exists', async () => {
     (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { data: { accessToken: 'refreshed-token' } },
+      data: { data: { accessToken: 'refreshed-token', expiresIn: 900 } },
     });
     (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { data: { user: baseUser } },
@@ -117,22 +116,8 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
   });
 
-  it('checkAuth applies grace retries for previously authenticated users', async () => {
-    useAuthStore.setState({ isAuthenticated: true, refreshCount: 1 });
-    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
-    (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { data: {} },
-    });
-
-    await useAuthStore.getState().checkAuth();
-
-    const state = useAuthStore.getState();
-    expect(state.isAuthenticated).toBe(true);
-    expect(state.refreshCount).toBe(2);
-  });
-
-  it('checkAuth logs out when grace retries are exhausted', async () => {
-    useAuthStore.setState({ isAuthenticated: true, refreshCount: 3, user: baseUser });
+  it('checkAuth logs out immediately when refresh fails', async () => {
+    useAuthStore.setState({ isAuthenticated: true, user: baseUser });
     (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('expired'));
 
@@ -141,7 +126,6 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
-    expect(state.refreshCount).toBe(0);
     expect(clearTokens).toHaveBeenCalledTimes(1);
   });
 
@@ -151,3 +135,4 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().error).toBeNull();
   });
 });
+

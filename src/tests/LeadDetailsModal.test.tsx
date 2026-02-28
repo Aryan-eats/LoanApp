@@ -35,9 +35,11 @@ describe('LeadDetailsModal', () => {
     );
 
     expect(screen.getByText('Lead L-100')).toBeInTheDocument();
-    expect(screen.getByText('Ravi Sharma')).toBeInTheDocument();
+    expect(screen.getAllByText('Ravi Sharma')).toHaveLength(2);
 
-    const backdrop = document.querySelector('.absolute.inset-0.bg-black\/50') as HTMLElement;
+    const dialog = screen.getByRole('dialog');
+    const backdrop = dialog.parentElement?.firstElementChild as HTMLElement;
+    expect(backdrop).toBeTruthy();
     fireEvent.click(backdrop);
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -81,10 +83,9 @@ describe('LeadDetailsModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Bank' }));
 
-    const bankCards = screen.getAllByText(/Bank|Finance|Finserv|Housing/i);
-    fireEvent.click(bankCards[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^HDFC Bank\b/i }));
 
     expect(onBankAssign).toHaveBeenCalledTimes(1);
-    expect(onBankAssign).toHaveBeenCalledWith('L-100', expect.any(String));
+    expect(onBankAssign).toHaveBeenCalledWith('L-100', 'HDFC Bank');
   });
 });

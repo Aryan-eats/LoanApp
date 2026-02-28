@@ -31,6 +31,16 @@ let redis: Redis;
 
 // Use a unique test namespace so we don't collide with app data.
 const TEST_PREFIX = '__test__:';
+const TEST_RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const NAMESPACE = `${TEST_PREFIX}${TEST_RUN_ID}:`;
+
+const isSafeRedisTarget = (): boolean => {
+  const redisUrl = process.env.REDIS_URL ?? '';
+  const urlLooksLocal = redisUrl.includes('localhost') || redisUrl.includes('127.0.0.1');
+  return process.env.NODE_ENV === 'test' && process.env.RUN_REDIS_TESTS === 'true' && urlLooksLocal;
+};
+
+const describeRedis = isSafeRedisTarget() ? describe : describe.skip;
 
 const flushTestKeys = async (pattern: string) => {
   let cursor = '0';
@@ -44,6 +54,7 @@ const flushTestKeys = async (pattern: string) => {
 // ─── suite setup / teardown ────────────────────────────────
 
 beforeAll(() => {
+  if (!isSafeRedisTarget()) return;
   if (!isRedisAvailable()) {
     throw new Error('REDIS_URL is not configured – cannot run Redis integration tests');
   }
@@ -51,13 +62,14 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  if (!isSafeRedisTarget()) return;
   // Clean up any test keys we may have left behind:
-  await flushTestKeys('cache:__test__*');
-  await flushTestKeys('token_blacklist:__test__*');
-  await flushTestKeys('otp_challenge:__test__*');
-  await flushTestKeys('otp_vtoken:__test__*');
-  await flushTestKeys('user_otp:__test__*');
-  await flushTestKeys('rl:*');
+  await flushTestKeys(`cache:${NAMESPACE}*`);
+  await flushTestKeys(`token_blacklist:${NAMESPACE}*`);
+  await flushTestKeys(`otp_challenge:${NAMESPACE}*`);
+  await flushTestKeys(`otp_vtoken:${NAMESPACE}*`);
+  await flushTestKeys(`user_otp:${NAMESPACE}*`);
+  await flushTestKeys('rl:test:*');
 
   await disconnectRedis();
 });
@@ -65,8 +77,8 @@ afterAll(async () => {
 // ─────────────────────────────────────────────────────────────
 // 1. CACHING
 // ─────────────────────────────────────────────────────────────
-describe('Redis Caching', () => {
-  const key = `${TEST_PREFIX}cache-test`;
+describeRedis('Redis Caching', () => {
+  const key = `${NAMESPACE}cache-test`;
 
   beforeEach(async () => {
     await cacheDelete(key);
@@ -90,7 +102,7 @@ describe('Redis Caching', () => {
   });
 
   it('invalidates keys by pattern', async () => {
-    const prefix = `${TEST_PREFIX}pattern`;
+    const prefix = `${NAMESPACE}pattern`;
     await cacheSet(`${prefix}:a`, 1, 60);
     await cacheSet(`${prefix}:b`, 2, 60);
     await cacheSet(`${prefix}:c`, 3, 60);
@@ -109,7 +121,7 @@ describe('Redis Caching', () => {
       return { data: 'expensive' };
     };
 
-    const wrapKey = `${TEST_PREFIX}wrap`;
+    const wrapKey = `${NAMESPACE}wrap`;
     await cacheDelete(wrapKey);
 
     const first = await cacheWrap(wrapKey, fetcher, 60);
@@ -121,7 +133,7 @@ describe('Redis Caching', () => {
   });
 
   it('respects TTL – key expires', async () => {
-    const ttlKey = `${TEST_PREFIX}ttl`;
+    const ttlKey = `${NAMESPACE}ttl`;
     await cacheSet(ttlKey, 'short-lived', 1); // 1 second TTL
 
     expect(await cacheGet(ttlKey)).toBe('short-lived');
@@ -136,8 +148,8 @@ describe('Redis Caching', () => {
 // ─────────────────────────────────────────────────────────────
 // 2. TOKEN BLACKLISTING
 // ─────────────────────────────────────────────────────────────
-describe('Redis Token Blacklisting', () => {
-  const testToken = `${TEST_PREFIX}token-abc123`;
+describeRedis('Redis Token Blacklisting', () => {
+  const testToken = `${NAMESPACE}token-abc123`;
 
   it('reports a token as NOT blacklisted before adding', async () => {
     expect(await tokenBlacklist.isBlacklisted(testToken)).toBe(false);
@@ -149,12 +161,12 @@ describe('Redis Token Blacklisting', () => {
   });
 
   it('does not cross-contaminate tokens', async () => {
-    await tokenBlacklist.add(`${TEST_PREFIX}tok-a`, Date.now() + 60_000);
-    expect(await tokenBlacklist.isBlacklisted(`${TEST_PREFIX}tok-b`)).toBe(false);
+    await tokenBlacklist.add(`${NAMESPACE}tok-a`, Date.now() + 60_000);
+    expect(await tokenBlacklist.isBlacklisted(`${NAMESPACE}tok-b`)).toBe(false);
   });
 
   it('auto-expires blacklisted tokens via TTL', async () => {
-    const shortToken = `${TEST_PREFIX}short-lived`;
+    const shortToken = `${NAMESPACE}short-lived`;
     // Write directly to Redis to test TTL behavior (the singleton may be
     // in-memory when env vars load after module initialisation).
     await redis.set(`token_blacklist:${shortToken}`, '1', 'EX', 1);
@@ -170,7 +182,7 @@ describe('Redis Token Blacklisting', () => {
 
   it('tracks size correctly', async () => {
     const sizeBefore = await tokenBlacklist.size();
-    await tokenBlacklist.add(`${TEST_PREFIX}size-test`, Date.now() + 60_000);
+    await tokenBlacklist.add(`${NAMESPACE}size-test`, Date.now() + 60_000);
     const sizeAfter = await tokenBlacklist.size();
     expect(sizeAfter).toBeGreaterThanOrEqual(sizeBefore + 1);
   });
@@ -179,7 +191,7 @@ describe('Redis Token Blacklisting', () => {
 // ─────────────────────────────────────────────────────────────
 // 3. RATE LIMITING (smoke test)
 // ─────────────────────────────────────────────────────────────
-describe('Redis Rate Limiting', () => {
+describeRedis('Redis Rate Limiting', () => {
   it('rate limiter stores are backed by Redis (keys exist after request)', async () => {
     // We can't easily send a real HTTP request here without spinning up
     // the entire Express app, so we do a minimal smoke-test:
@@ -209,8 +221,8 @@ describe('Redis Rate Limiting', () => {
 // ─────────────────────────────────────────────────────────────
 // 4. OTP STORAGE
 // ─────────────────────────────────────────────────────────────
-describe('Redis OTP Storage – Phone Challenge (onboarding)', () => {
-  const testPhone = `${TEST_PREFIX}9999999999`;
+describeRedis('Redis OTP Storage – Phone Challenge (onboarding)', () => {
+  const testPhone = `${NAMESPACE}9999999999`;
 
   afterAll(async () => {
     await redis.del(`otp_challenge:${testPhone}`);
@@ -277,9 +289,9 @@ describe('Redis OTP Storage – Phone Challenge (onboarding)', () => {
   });
 });
 
-describe('Redis OTP Storage – User OTP (registered users)', () => {
+describeRedis('Redis OTP Storage – User OTP (registered users)', () => {
   // We use a fake userId since we're testing Redis storage, not the DB
-  const fakeUserId = `${TEST_PREFIX}user-id-12345`;
+  const fakeUserId = `${NAMESPACE}user-id-12345`;
 
   afterAll(async () => {
     await redis.del(`user_otp:${fakeUserId}`);

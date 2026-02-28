@@ -71,6 +71,20 @@ export const passwordResetLimiter = rateLimit({
   store: buildStore('pwd_reset'),
 });
 
+// Rate limiter for token refresh (generous – active sessions refresh frequently)
+export const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 200 : 30,
+  message: {
+    success: false,
+    message: 'Too many refresh requests, please try again later',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  store: buildStore('refresh'),
+});
+
 // Rate limiter for OTP requests
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,

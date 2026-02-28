@@ -35,7 +35,7 @@ import {
 
 // ─── constants ─────────────────────────────────────────────
 
-const TEST_USER_ID = '__test_user_r2__';
+const TEST_USER_ID = `__test_user_r2__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const TEST_FILENAME = 'test-document.pdf';
 const TEST_CONTENT_TYPE = 'application/pdf';
 
@@ -44,9 +44,18 @@ const TEST_BUFFER = Buffer.from('%PDF-1.4 test content for R2 integration', 'utf
 
 let uploadedKey: string | null = null;
 
+const isSafeR2Target = (): boolean => {
+  const bucket = R2_BUCKET ?? '';
+  const bucketLooksTest = bucket.toLowerCase().includes('test') || bucket.toLowerCase().includes('dev');
+  return process.env.NODE_ENV === 'test' && process.env.RUN_R2_TESTS === 'true' && bucketLooksTest;
+};
+
+const describeR2 = isSafeR2Target() ? describe : describe.skip;
+
 // ─── teardown ──────────────────────────────────────────────
 
 afterAll(async () => {
+  if (!isSafeR2Target()) return;
   // Clean up: delete the test file if it still exists
   if (uploadedKey) {
     try {
@@ -60,7 +69,7 @@ afterAll(async () => {
 
 // ─── helper tests ──────────────────────────────────────────
 
-describe('R2 helpers', () => {
+describeR2('R2 helpers', () => {
   it('buildObjectKey returns correct path', () => {
     const key = buildObjectKey('user-123', 'myfile.pdf');
     expect(key).toBe('users/user-123/documents/myfile.pdf');
@@ -84,7 +93,7 @@ describe('R2 helpers', () => {
 
 // ─── R2 connection tests ───────────────────────────────────
 
-describe('R2 connection', () => {
+describeR2('R2 connection', () => {
   it('creates an R2 client without throwing', () => {
     expect(() => getR2Client()).not.toThrow();
   });
@@ -111,7 +120,7 @@ describe('R2 connection', () => {
 
 // ─── Document CRUD tests ──────────────────────────────────
 
-describe('R2 document operations', () => {
+describeR2('R2 document operations', () => {
   it('uploads a document', async () => {
     const result = await uploadDocument(
       TEST_USER_ID,

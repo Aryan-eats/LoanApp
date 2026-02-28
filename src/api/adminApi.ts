@@ -142,6 +142,11 @@ export interface AuditLogsData {
     total: number;
     totalPages: number;
   };
+  counts: {
+    loginEvents: number;
+    securityEvents: number;
+    authEvents: number;
+  };
 }
 
 /**
@@ -159,6 +164,22 @@ export const getAuditLogs = async (params: {
   return response.data;
 };
 
+/**
+ * GET /api/admin/audit-logs/export - Export audit logs as CSV
+ */
+export const exportAuditLogs = async (params: {
+  event?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+} = {}): Promise<Blob> => {
+  const response = await apiClient.get('/admin/audit-logs/export', {
+    params,
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
 export default {
   getUsers,
   createUser,
@@ -168,4 +189,5 @@ export default {
   getAdminStats,
   getAdminPartners,
   getAuditLogs,
+  exportAuditLogs,
 };

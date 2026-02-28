@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useFetch } from '../hooks/useFetch';
 
 describe('useFetch hook', () => {
@@ -19,7 +19,9 @@ describe('useFetch hook', () => {
     expect(fetchFn).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
 
-    await result.current.execute();
+    await act(async () => {
+      await result.current.execute();
+    });
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
@@ -38,11 +40,16 @@ describe('useFetch hook', () => {
     const fetchFn = vi.fn().mockRejectedValue(new Error('Fetch failed'));
 
     const { result } = renderHook(() => useFetch(fetchFn, { immediate: false }));
-    const value = await result.current.execute();
+    let value: unknown;
+    await act(async () => {
+      value = await result.current.execute();
+    });
 
     expect(value).toBeNull();
-    expect(result.current.error).toBe('Fetch failed');
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => {
+      expect(result.current.error).toBe('Fetch failed');
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   it('calls onSuccess callback', async () => {
@@ -70,11 +77,19 @@ describe('useFetch hook', () => {
 
     const { result } = renderHook(() => useFetch(fetchFn, { initialData: { count: 0 }, immediate: false }));
 
-    result.current.setData({ count: 3 });
-    expect(result.current.data).toEqual({ count: 3 });
+    act(() => {
+      result.current.setData({ count: 3 });
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual({ count: 3 });
+    });
 
-    result.current.reset();
-    expect(result.current.data).toEqual({ count: 0 });
-    expect(result.current.error).toBeNull();
+    act(() => {
+      result.current.reset();
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual({ count: 0 });
+      expect(result.current.error).toBeNull();
+    });
   });
 });

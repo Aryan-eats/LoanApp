@@ -258,7 +258,24 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
     await logAuditEvent('REGISTER', req, {
       userId: user.id,
       email: user.email,
+      entityId: user.id,
+      entityType: 'partner',
       metadata: { partnerType },
+    });
+
+    // Log consent for DPDP compliance
+    await logAuditEvent('CONSENT_GIVEN', req, {
+      userId: user.id,
+      email: user.email,
+      entityId: user.id,
+      entityType: 'partner',
+      metadata: {
+        consentDataShare: true,
+        consentCommission: true,
+        consentPrivacyPolicy: true,
+        declarationNotEmployed: true,
+        consentTimestamp: new Date().toISOString(),
+      },
     });
 
     res.status(201).json({
@@ -364,6 +381,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
       await incrementLoginAttempts(user.id, user.failedLoginAttempts);
+
+      // Emit ACCOUNT_LOCKED if threshold crossed
+      if (user.failedLoginAttempts + 1 >= 5) {
+        await logAuditEvent('ACCOUNT_LOCKED', req, {
+          userId: user.id,
+          email: user.email,
+          entityId: user.id,
+          entityType: 'user',
+          severity: 'HIGH',
+          metadata: { failedAttempts: user.failedLoginAttempts + 1 },
+        });
+      }
+
       await logAuditEvent('LOGIN_FAILED', req, {
         userId: user.id,
         email: user.email,

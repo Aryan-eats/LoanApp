@@ -22,6 +22,7 @@ import {
   registerLimiter,
   passwordResetLimiter,
   otpLimiter,
+  refreshLimiter,
 } from '../middleware/rateLimiter.js';
 import {
   validateLogin,
@@ -51,7 +52,7 @@ router.post('/otp/verify', otpLimiter, msg91VerifyOTP);
 router.post('/otp/resend', otpLimiter, msg91ResendOTP);
 
 // Refresh token endpoint (no auth required, but rate limited)
-router.post('/refresh-token', loginLimiter, refreshAccessToken);
+router.post('/refresh-token', refreshLimiter, refreshAccessToken);
 
 // Protected routes
 router.get('/me', protect, getMe);

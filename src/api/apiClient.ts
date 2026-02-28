@@ -3,6 +3,7 @@
  *
  * This client handles:
  * - Automatic access token refresh on 401 errors via httpOnly cookie
+ * - Proactive silent refresh before access token expires
  * - Access token stored in memory only (never in localStorage)
  */
 
@@ -32,6 +33,51 @@ export const getAccessToken = () => accessToken;
 
 export const clearTokens = () => {
   accessToken = null;
+  stopSilentRefresh();
+};
+
+// ──────────────────────────────────────────────
+// Proactive silent-refresh timer
+// ──────────────────────────────────────────────
+let refreshTimerId: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Schedule a silent token refresh ~60 seconds before the access token expires.
+ * @param expiresInSeconds – lifetime of the current access token in seconds
+ */
+export const startSilentRefresh = (expiresInSeconds: number) => {
+  stopSilentRefresh();
+
+  // Refresh 60s before expiry, but at least 10s from now
+  const delayMs = Math.max((expiresInSeconds - 60) * 1000, 10_000);
+
+  refreshTimerId = setTimeout(async () => {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/refresh-token`,
+        {},
+        { withCredentials: true }
+      );
+      const newToken = response?.data?.data?.accessToken;
+      const newExpiresIn = response?.data?.data?.expiresIn;
+      if (typeof newToken === 'string' && newToken.trim() !== '') {
+        setAccessToken(newToken);
+        // Schedule the next refresh cycle
+        if (typeof newExpiresIn === 'number' && newExpiresIn > 0) {
+          startSilentRefresh(newExpiresIn);
+        }
+      }
+    } catch {
+      // Silently ignore — the 401 interceptor will handle it on the next API call
+    }
+  }, delayMs);
+};
+
+export const stopSilentRefresh = () => {
+  if (refreshTimerId !== null) {
+    clearTimeout(refreshTimerId);
+    refreshTimerId = null;
+  }
 };
 
 // Request interceptor - add access token to requests
@@ -103,12 +149,18 @@ apiClient.interceptors.response.use(
         );
 
         const newAccessToken = response?.data?.data?.accessToken;
+        const newExpiresIn = response?.data?.data?.expiresIn;
         if (typeof newAccessToken !== 'string' || newAccessToken.trim() === '') {
           throw new Error('Refresh token response missing access token');
         }
 
         setAccessToken(newAccessToken);
         onTokenRefreshed(newAccessToken);
+
+        // Restart the proactive refresh timer with the new expiry
+        if (typeof newExpiresIn === 'number' && newExpiresIn > 0) {
+          startSilentRefresh(newExpiresIn);
+        }
 
         // Retry original request with new token
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;

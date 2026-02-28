@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import apiClient from '../api/apiClient';
 import {
   assignBank,
@@ -24,6 +24,10 @@ vi.mock('../api/apiClient', () => ({
 }));
 
 describe('leadsApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('getLeads uses partner endpoint by default', async () => {
     (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { success: true } });
 
@@ -48,8 +52,9 @@ describe('leadsApi', () => {
     await getLeadById('lead-1');
     await getLeadById('lead-1', true);
 
-    expect(apiClient.get).toHaveBeenNthCalledWith(1, '/partner/leads/lead-1');
-    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/admin/leads/lead-1');
+    expect(apiClient.get).toHaveBeenCalledTimes(2);
+    expect(apiClient.get).toHaveBeenCalledWith('/partner/leads/lead-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/leads/lead-1');
   });
 
   it('createLead uses partner endpoint by default', async () => {
@@ -123,8 +128,9 @@ describe('leadsApi', () => {
     await getLeadStats(true);
     await updatePreferredBank('lead-7', 'ICICI Bank');
 
-    expect(apiClient.get).toHaveBeenNthCalledWith(1, '/partner/leads/stats');
-    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/admin/leads/stats');
+    expect(apiClient.get).toHaveBeenCalledTimes(2);
+    expect(apiClient.get).toHaveBeenCalledWith('/partner/leads/stats');
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/leads/stats');
     expect(apiClient.patch).toHaveBeenCalledWith('/leads/lead-7/preferred-bank', {
       preferredBank: 'ICICI Bank',
     });

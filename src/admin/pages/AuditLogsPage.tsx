@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import { getAuditLogs } from '../../api/adminApi';
+import { getAuditLogs, exportAuditLogs } from '../../api/adminApi';
 import type { AuditEventType, AuditLog, AuditLogsPagination } from '../types/admin';
 
 const eventLabels: Record<AuditEventType, string> = {
+  // Auth
   LOGIN_SUCCESS: 'Login Success',
   LOGIN_FAILED: 'Login Failed',
   LOGOUT: 'Logout',
@@ -16,6 +17,40 @@ const eventLabels: Record<AuditEventType, string> = {
   ACCOUNT_LOCKED: 'Account Locked',
   TOKEN_REFRESH: 'Token Refresh',
   SUSPICIOUS_ACTIVITY: 'Suspicious Activity',
+  // Lead lifecycle
+  LEAD_CREATED: 'Lead Created',
+  LEAD_UPDATED: 'Lead Updated',
+  LEAD_STATUS_CHANGED: 'Lead Status Changed',
+  LEAD_DELETED: 'Lead Deleted',
+  LEAD_ASSIGNED: 'Lead Assigned',
+  // Documents
+  DOCUMENT_UPLOADED: 'Document Uploaded',
+  DOCUMENT_VIEWED: 'Document Viewed',
+  DOCUMENT_DOWNLOADED: 'Document Downloaded',
+  DOCUMENT_VERIFIED: 'Document Verified',
+  DOCUMENT_REJECTED: 'Document Rejected',
+  DOCUMENT_DELETED: 'Document Deleted',
+  // Partners
+  PARTNER_UPDATED: 'Partner Updated',
+  PARTNER_APPROVED: 'Partner Approved',
+  PARTNER_SUSPENDED: 'Partner Suspended',
+  PARTNER_KYC_UPDATED: 'Partner KYC Updated',
+  // Financials
+  COMMISSION_CALCULATED: 'Commission Calculated',
+  COMMISSION_PAID: 'Commission Paid',
+  COMMISSION_RATE_CHANGED: 'Commission Rate Changed',
+  // Consent & Data Rights
+  CONSENT_GIVEN: 'Consent Given',
+  CONSENT_WITHDRAWN: 'Consent Withdrawn',
+  DATA_DELETION_REQUEST: 'Data Deletion Request',
+  // Admin
+  ADMIN_ROLE_CHANGED: 'Admin Role Changed',
+  ADMIN_USER_CREATED: 'Admin User Created',
+  ADMIN_USER_DELETED: 'Admin User Deleted',
+  BULK_EXPORT: 'Bulk Export',
+  PII_ACCESS: 'PII Access',
+  BANK_UPDATED: 'Bank Updated',
+  BANK_STATUS_CHANGED: 'Bank Status Changed',
 };
 
 const eventColors: Record<AuditEventType, string> = {
@@ -31,51 +66,161 @@ const eventColors: Record<AuditEventType, string> = {
   ACCOUNT_LOCKED: 'bg-red-100 text-red-700',
   TOKEN_REFRESH: 'bg-gray-100 text-gray-700',
   SUSPICIOUS_ACTIVITY: 'bg-red-100 text-red-700',
+  // Lead
+  LEAD_CREATED: 'bg-blue-100 text-blue-700',
+  LEAD_UPDATED: 'bg-blue-100 text-blue-700',
+  LEAD_STATUS_CHANGED: 'bg-indigo-100 text-indigo-700',
+  LEAD_DELETED: 'bg-red-100 text-red-700',
+  LEAD_ASSIGNED: 'bg-teal-100 text-teal-700',
+  // Documents
+  DOCUMENT_UPLOADED: 'bg-green-100 text-green-700',
+  DOCUMENT_VIEWED: 'bg-gray-100 text-gray-700',
+  DOCUMENT_DOWNLOADED: 'bg-gray-100 text-gray-700',
+  DOCUMENT_VERIFIED: 'bg-green-100 text-green-700',
+  DOCUMENT_REJECTED: 'bg-red-100 text-red-700',
+  DOCUMENT_DELETED: 'bg-red-100 text-red-700',
+  // Partners
+  PARTNER_UPDATED: 'bg-blue-100 text-blue-700',
+  PARTNER_APPROVED: 'bg-green-100 text-green-700',
+  PARTNER_SUSPENDED: 'bg-red-100 text-red-700',
+  PARTNER_KYC_UPDATED: 'bg-yellow-100 text-yellow-700',
+  // Financials
+  COMMISSION_CALCULATED: 'bg-emerald-100 text-emerald-700',
+  COMMISSION_PAID: 'bg-green-100 text-green-700',
+  COMMISSION_RATE_CHANGED: 'bg-yellow-100 text-yellow-700',
+  // Consent
+  CONSENT_GIVEN: 'bg-green-100 text-green-700',
+  CONSENT_WITHDRAWN: 'bg-orange-100 text-orange-700',
+  DATA_DELETION_REQUEST: 'bg-red-100 text-red-700',
+  // Admin
+  ADMIN_ROLE_CHANGED: 'bg-red-100 text-red-700',
+  ADMIN_USER_CREATED: 'bg-blue-100 text-blue-700',
+  ADMIN_USER_DELETED: 'bg-red-100 text-red-700',
+  BULK_EXPORT: 'bg-yellow-100 text-yellow-700',
+  PII_ACCESS: 'bg-orange-100 text-orange-700',
+  BANK_UPDATED: 'bg-blue-100 text-blue-700',
+  BANK_STATUS_CHANGED: 'bg-yellow-100 text-yellow-700',
+};
+
+const severityColors: Record<string, string> = {
+  LOW: 'bg-gray-100 text-gray-600',
+  MEDIUM: 'bg-yellow-100 text-yellow-700',
+  HIGH: 'bg-red-100 text-red-700',
+  CRITICAL: 'bg-red-200 text-red-900',
 };
 
 const AuditLogsPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [pagination, setPagination] = useState<AuditLogsPagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [counts, setCounts] = useState({ loginEvents: 0, securityEvents: 0, authEvents: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [eventFilter, setEventFilter] = useState<AuditEventType | ''>('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [hideTokenRefresh, setHideTokenRefresh] = useState(true);
+  const latestRequestIdRef = useRef(0);
 
-  const fetchLogs = useCallback(async (page = 1) => {
-    setIsLoading(true);
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchLogs = useCallback(async (page = 1, options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    const requestId = ++latestRequestIdRef.current;
+
+    if (!silent) {
+      setIsLoading(true);
+    }
     setError(null);
+
     try {
-      const params: Record<string, unknown> = { page, limit: 50 };
-      if (searchQuery) params.search = searchQuery;
+      const params: {
+        page: number;
+        limit: number;
+        search?: string;
+        event?: AuditEventType;
+        dateFrom?: string;
+        dateTo?: string;
+      } = { page, limit: 50 };
+      if (debouncedSearch) params.search = debouncedSearch;
       if (eventFilter) params.event = eventFilter;
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
 
-      const response = await getAuditLogs(params as any);
+      const response = await getAuditLogs(params);
+      if (requestId !== latestRequestIdRef.current) return;
+
       if (response.success && response.data) {
-        setLogs(response.data.logs as AuditLog[]);
+        let filteredLogs = response.data.logs as AuditLog[];
+
+        // Client-side filters
+        if (statusFilter === 'success') filteredLogs = filteredLogs.filter(l => l.success);
+        if (statusFilter === 'failed') filteredLogs = filteredLogs.filter(l => !l.success);
+        if (hideTokenRefresh) filteredLogs = filteredLogs.filter(l => l.event !== 'TOKEN_REFRESH');
+
+        setLogs(filteredLogs);
         setPagination(response.data.pagination);
+        if (response.data.counts) setCounts(response.data.counts);
+        setLastUpdatedAt(new Date());
       } else {
         setError(response.message || 'Failed to fetch audit logs');
       }
     } catch (err) {
-      setError('Failed to fetch audit logs');
-      console.error('Audit logs fetch error:', err);
+      if (requestId === latestRequestIdRef.current) {
+        setError('Failed to fetch audit logs');
+        console.error('Audit logs fetch error:', err);
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [searchQuery, eventFilter, dateFrom, dateTo]);
+  }, [debouncedSearch, eventFilter, dateFrom, dateTo, statusFilter, hideTokenRefresh]);
 
   useEffect(() => {
     fetchLogs(1);
   }, [fetchLogs]);
 
-  const loginEvents = logs.filter(l => l.event === 'LOGIN_SUCCESS' || l.event === 'LOGIN_FAILED' || l.event === 'LOGOUT').length;
-  const securityEvents = logs.filter(l => l.event === 'ACCOUNT_LOCKED' || l.event === 'SUSPICIOUS_ACTIVITY').length;
-  const authEvents = logs.filter(l => ['REGISTER', 'PASSWORD_CHANGE', 'PASSWORD_RESET_REQUEST', 'PASSWORD_RESET_SUCCESS'].includes(l.event)).length;
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchLogs(pagination.page, { silent: true });
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchLogs, pagination.page]);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const blob = await exportAuditLogs({
+        event: eventFilter || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: debouncedSearch || undefined,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      setError('Failed to export audit logs');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <AdminLayout>
@@ -84,12 +229,27 @@ const AuditLogsPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
           <p className="text-sm text-gray-500 mt-1">System activity and security monitoring</p>
         </div>
-        <button className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Export Logs
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {isExporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          <button
+            onClick={() => fetchLogs(pagination.page)}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 border border-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0H15m4.419 0A8.003 8.003 0 014.582 15" />
+            </svg>
+            Refresh Now
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -111,7 +271,7 @@ const AuditLogsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Login Events</p>
-              <p className="text-2xl font-bold text-blue-600">{loginEvents}</p>
+              <p className="text-2xl font-bold text-blue-600">{counts.loginEvents}</p>
             </div>
             <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,7 +285,7 @@ const AuditLogsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Security Events</p>
-              <p className="text-2xl font-bold text-red-600">{securityEvents}</p>
+              <p className="text-2xl font-bold text-red-600">{counts.securityEvents}</p>
             </div>
             <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,7 +299,7 @@ const AuditLogsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Auth Changes</p>
-              <p className="text-2xl font-bold text-yellow-600">{authEvents}</p>
+              <p className="text-2xl font-bold text-yellow-600">{counts.authEvents}</p>
             </div>
             <div className="w-10 h-10 bg-yellow-50 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,9 +333,51 @@ const AuditLogsPage: React.FC = () => {
             className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
           >
             <option value="">All Events</option>
-            {Object.entries(eventLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
+            <optgroup label="Auth">
+              {(['LOGIN_SUCCESS','LOGIN_FAILED','LOGOUT','REGISTER','PASSWORD_CHANGE','ACCOUNT_LOCKED','SUSPICIOUS_ACTIVITY'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Leads">
+              {(['LEAD_CREATED','LEAD_UPDATED','LEAD_STATUS_CHANGED','LEAD_DELETED','LEAD_ASSIGNED'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Documents">
+              {(['DOCUMENT_UPLOADED','DOCUMENT_VIEWED','DOCUMENT_DOWNLOADED','DOCUMENT_VERIFIED','DOCUMENT_REJECTED','DOCUMENT_DELETED'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Partners">
+              {(['PARTNER_UPDATED','PARTNER_APPROVED','PARTNER_SUSPENDED','PARTNER_KYC_UPDATED'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Financials">
+              {(['COMMISSION_CALCULATED','COMMISSION_PAID','COMMISSION_RATE_CHANGED'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Compliance">
+              {(['CONSENT_GIVEN','CONSENT_WITHDRAWN','DATA_DELETION_REQUEST'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+            <optgroup label="Admin">
+              {(['ADMIN_ROLE_CHANGED','ADMIN_USER_CREATED','ADMIN_USER_DELETED','BULK_EXPORT','PII_ACCESS','BANK_UPDATED','BANK_STATUS_CHANGED'] as AuditEventType[]).map(v =>
+                <option key={v} value={v}>{eventLabels[v]}</option>
+              )}
+            </optgroup>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'success' | 'failed')}
+            className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
+          >
+            <option value="all">All Status</option>
+            <option value="success">Success Only</option>
+            <option value="failed">Failed Only</option>
           </select>
 
           <div className="flex items-center gap-2">
@@ -195,6 +397,18 @@ const AuditLogsPage: React.FC = () => {
               placeholder="To"
             />
           </div>
+        </div>
+
+        <div className="flex items-center gap-4 mt-3 text-sm">
+          <label className="flex items-center gap-2 text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideTokenRefresh}
+              onChange={(e) => setHideTokenRefresh(e.target.checked)}
+              className="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+            />
+            Hide Token Refresh events
+          </label>
         </div>
       </div>
 
@@ -223,7 +437,9 @@ const AuditLogsPage: React.FC = () => {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Timestamp</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">User</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Event</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Severity</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Entity</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">IP Address</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Details</th>
               </tr>
@@ -233,6 +449,13 @@ const AuditLogsPage: React.FC = () => {
                 const date = new Date(log.createdAt);
                 const dateStr = date.toLocaleDateString();
                 const timeStr = date.toLocaleTimeString();
+                const userName = (log.userName || 'System').trim();
+                const initials = userName
+                  .split(' ')
+                  .filter(Boolean)
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2) || 'SY';
                 return (
                 <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
@@ -244,10 +467,10 @@ const AuditLogsPage: React.FC = () => {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium text-gray-600">
-                        {log.userName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        {initials}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{log.userName}</p>
+                        <p className="text-sm font-medium text-gray-900">{userName}</p>
                         <p className="text-xs text-gray-500">{log.userRole}</p>
                       </div>
                     </div>
@@ -255,6 +478,11 @@ const AuditLogsPage: React.FC = () => {
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs font-medium rounded ${eventColors[log.event] || 'bg-gray-100 text-gray-700'}`}>
                       {eventLabels[log.event] || log.event}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${severityColors[log.severity] || 'bg-gray-100 text-gray-600'}`}>
+                      {log.severity}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -268,6 +496,16 @@ const AuditLogsPage: React.FC = () => {
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                         Failed
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {log.entityType ? (
+                      <div>
+                        <p className="text-xs font-medium text-gray-700 capitalize">{log.entityType}</p>
+                        <p className="text-xs text-gray-400 font-mono truncate max-w-[120px]" title={log.entityId || ''}>{log.entityId ? log.entityId.slice(0, 8) + '...' : '-'}</p>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -300,6 +538,9 @@ const AuditLogsPage: React.FC = () => {
             {pagination.totalPages > 1 && (
               <span> &middot; Page {pagination.page} of {pagination.totalPages}</span>
             )}
+            {lastUpdatedAt && (
+              <span> &middot; Updated {lastUpdatedAt.toLocaleTimeString()}</span>
+            )}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -329,7 +570,8 @@ const AuditLogsPage: React.FC = () => {
         <div>
           <p className="text-sm font-medium text-blue-900">Audit Log Retention Policy</p>
           <p className="text-sm text-blue-700 mt-1">
-            Audit logs are retained for 90 days as per compliance requirements. For logs older than 90 days, please contact the system administrator.
+            Audit logs are retained for 5 years in compliance with RBI Master Direction on Digital Lending
+            and IT Act 2000 requirements. For logs beyond the online window, contact the system administrator.
           </p>
         </div>
       </div>

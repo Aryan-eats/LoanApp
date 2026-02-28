@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import type { Lead, LeadDocument, LeadTimeline, LeadStatus } from '@prisma/client';
 import prisma from '../config/prisma.js';
+import { cacheWrap, cacheDelete } from '../utils/cache.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
 
 // ---------------------------------------------------------------------------
@@ -306,10 +307,15 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       include: { documents: true, timeline: true },
     });
 
-    await logAuditEvent('REGISTER', req, {
+    await logAuditEvent('LEAD_CREATED', req, {
       userId: req.user.id,
-      metadata: { action: 'CREATE_LEAD', leadId: lead.id },
+      entityId: lead.id,
+      entityType: 'lead',
+      metadata: { loanType: lead.loanType, loanAmount: Number(lead.loanAmount) },
     });
+
+    // Invalidate lead stats cache for this partner and the admin-wide view
+    await cacheDelete(`lead:stats:${req.user.id}`, 'lead:stats:all');
 
     res.status(201).json({
       success: true,
@@ -519,10 +525,18 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    await logAuditEvent('REGISTER', req, {
+    await logAuditEvent(statusChanged ? 'LEAD_STATUS_CHANGED' : 'LEAD_UPDATED', req, {
       userId: req.user.id,
-      metadata: { action: 'UPDATE_LEAD', leadId: leadId, changes: Object.keys(updateData) },
+      entityId: leadId,
+      entityType: 'lead',
+      metadata: {
+        changedFields: Object.keys(updateData),
+        ...(statusChanged ? { previousStatus: lead.status, newStatus: updateData.status } : {}),
+      },
     });
+
+    // Invalidate lead stats for the lead's owner and admin-wide view
+    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({
       success: true,
@@ -554,6 +568,12 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
 
     const leadId = req.params.id as string;
 
+    const leadToDelete = await prisma.lead.findUnique({ where: { id: leadId } });
+    if (!leadToDelete) {
+      res.status(404).json({ success: false, message: 'Lead not found' });
+      return;
+    }
+
     try {
       await prisma.lead.delete({ where: { id: leadId } });
     } catch (error) {
@@ -564,10 +584,20 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
       throw error;
     }
 
-    await logAuditEvent('REGISTER', req, {
+    await logAuditEvent('LEAD_DELETED', req, {
       userId: req.user.id,
-      metadata: { action: 'DELETE_LEAD', leadId: leadId },
+      entityId: leadId,
+      entityType: 'lead',
+      severity: 'HIGH',
+      metadata: {
+        loanType: leadToDelete.loanType,
+        loanAmount: Number(leadToDelete.loanAmount),
+        clientName: leadToDelete.clientFullName,
+      },
     });
+
+    // Invalidate lead stats for the lead's owner and admin-wide view
+    await cacheDelete(`lead:stats:${leadToDelete.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({
       success: true,
@@ -591,47 +621,46 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    const isPartner = req.user.role === 'partner';
+    const cacheKey = `lead:stats:${isPartner ? req.user.id : 'all'}`;
     const where: Record<string, unknown> = {};
-    if (req.user.role === 'partner') {
-      where.partnerId = req.user.id;
-    }
+    if (isPartner) where.partnerId = req.user.id;
 
-    const statusCounts = await prisma.lead.groupBy({
-      by: ['status'],
-      where,
-      _count: { _all: true },
-      _sum: { loanAmount: true },
-    });
+    const data = await cacheWrap(
+      cacheKey,
+      async () => {
+        const [statusCounts, loanTypeCounts] = await Promise.all([
+          prisma.lead.groupBy({
+            by: ['status'],
+            where,
+            _count: { _all: true },
+            _sum: { loanAmount: true },
+          }),
+          prisma.lead.groupBy({
+            by: ['loanType'],
+            where,
+            _count: { _all: true },
+            orderBy: { _count: { loanType: 'desc' } },
+            take: 10,
+          }),
+        ]);
 
-    const loanTypeCounts = await prisma.lead.groupBy({
-      by: ['loanType'],
-      where,
-      _count: { _all: true },
-      orderBy: { _count: { loanType: 'desc' } },
-      take: 10,
-    });
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const recentLeads = await prisma.lead.count({
+          where: { ...where, createdAt: { gte: sevenDaysAgo } },
+        });
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const stats: Record<string, number> = {};
+        let totalLeads = 0;
+        let totalAmount = 0;
+        statusCounts.forEach((item: any) => {
+          stats[item.status] = item._count._all;
+          totalLeads += item._count._all;
+          totalAmount += Number(item._sum.loanAmount || 0);
+        });
 
-    const recentLeads = await prisma.lead.count({
-      where: { ...where, createdAt: { gte: sevenDaysAgo } },
-    });
-
-    const stats: Record<string, number> = {};
-    let totalLeads = 0;
-    let totalAmount = 0;
-
-    statusCounts.forEach((item: any) => {
-      stats[item.status] = item._count._all;
-      totalLeads += item._count._all;
-      totalAmount += Number(item._sum.loanAmount || 0);
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        stats: {
+        return {
           total: totalLeads,
           totalAmount,
           byStatus: stats,
@@ -640,9 +669,12 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
             count: item._count._all,
           })),
           recentLeads,
-        },
+        };
       },
-    });
+      30 // 30-second TTL — stats are near-real-time
+    );
+
+    res.status(200).json({ success: true, data: { stats: data } });
   } catch (error) {
     console.error('Get lead stats error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -745,6 +777,16 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
       include: { documents: true, timeline: true },
     });
 
+    await logAuditEvent('LEAD_STATUS_CHANGED', req, {
+      userId: req.user.id,
+      entityId: leadId,
+      entityType: 'lead',
+      metadata: { previousStatus: lead.status, newStatus: status, note },
+    });
+
+    // Invalidate lead stats for this lead's owner and admin-wide view
+    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
+
     res.status(200).json({
       success: true,
       message: 'Lead status updated successfully',
@@ -834,10 +876,15 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       include: { documents: true, timeline: true },
     });
 
-    await logAuditEvent('REGISTER', req, {
+    await logAuditEvent('LEAD_ASSIGNED', req, {
       userId: req.user.id,
-      metadata: { action: 'ASSIGN_BANK', leadId: leadId, bank: bankName },
+      entityId: leadId,
+      entityType: 'lead',
+      metadata: { bankName, previousBank: lead.bankAssigned || null },
     });
+
+    // Assigning a bank may change the lead's status — invalidate stats
+    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({
       success: true,

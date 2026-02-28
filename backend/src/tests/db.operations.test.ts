@@ -12,12 +12,28 @@ if (!process.env.FIELD_ENCRYPTION_KEY) {
   process.env.FIELD_ENCRYPTION_KEY = Buffer.alloc(32, 5).toString('base64');
 }
 
-describe('PostgreSQL DB operations', () => {
+const isSafeDatabaseTarget = (): boolean => {
+  const dbUrl = process.env.DATABASE_URL ?? '';
+  const urlLooksLocal =
+    dbUrl.includes('localhost') ||
+    dbUrl.includes('127.0.0.1') ||
+    dbUrl.includes('host.docker.internal') ||
+    dbUrl.includes('_test') ||
+    dbUrl.includes('test');
+
+  return process.env.NODE_ENV === 'test' && process.env.RUN_DB_TESTS === 'true' && urlLooksLocal;
+};
+
+const describeDb = isSafeDatabaseTarget() ? describe : describe.skip;
+
+describeDb('PostgreSQL DB operations', () => {
   beforeAll(async () => {
+    if (!isSafeDatabaseTarget()) return;
     await prisma.$connect();
   });
 
   afterAll(async () => {
+    if (!isSafeDatabaseTarget()) return;
     await prisma.$disconnect();
   });
 
@@ -175,7 +191,7 @@ describe('PostgreSQL DB operations', () => {
     });
 
     const logs = await prisma.auditLog.findMany({
-      where: { event: 'LOGIN_SUCCESS' },
+      where: { event: 'LOGIN_SUCCESS', userId: user.id },
     });
 
     expect(logs.length).toBe(1);

@@ -63,29 +63,129 @@ export const redactPhone = (phone: string): string => {
   return '*'.repeat(phone.length - 4) + phone.slice(-4);
 };
 
+/**
+ * Redact a PAN number — shows only first 2 and last 1 characters.
+ * e.g., "ABCDE1234F" → "AB*******F"
+ */
+export const redactPAN = (pan: string): string => {
+  if (!pan || pan.length < 4) return '****';
+  return pan.slice(0, 2) + '*'.repeat(pan.length - 3) + pan.slice(-1);
+};
+
+/**
+ * Redact an Aadhaar number — shows only last 4 digits.
+ * e.g., "123456789012" → "********9012"
+ */
+export const redactAadhaar = (aadhaar: string): string => {
+  if (!aadhaar || aadhaar.length <= 4) return '****';
+  return '*'.repeat(aadhaar.length - 4) + aadhaar.slice(-4);
+};
+
 const hashEmail = (email: string): string =>
   crypto
     .createHmac('sha256', getEmailHashKey())
     .update(email.trim().toLowerCase())
     .digest('hex');
 
+// ── Severity Mapping ──────────────────────────────────────────────────────────
+
+export type AuditSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+const HIGH_SEVERITY_EVENTS: string[] = [
+  'LOGIN_FAILED', 'ACCOUNT_LOCKED', 'SUSPICIOUS_ACTIVITY',
+  'LEAD_DELETED', 'PARTNER_SUSPENDED', 'ADMIN_ROLE_CHANGED',
+  'ADMIN_USER_DELETED', 'DATA_DELETION_REQUEST', 'BULK_EXPORT',
+  'DOCUMENT_DELETED',
+];
+
+const MEDIUM_SEVERITY_EVENTS: string[] = [
+  'LOGIN_SUCCESS', 'LOGOUT', 'REGISTER',
+  'PASSWORD_CHANGE', 'PASSWORD_RESET_SUCCESS', 'PASSWORD_RESET_REQUEST',
+  'LEAD_STATUS_CHANGED', 'LEAD_ASSIGNED',
+  'DOCUMENT_VERIFIED', 'DOCUMENT_REJECTED',
+  'PARTNER_APPROVED', 'PARTNER_UPDATED', 'PARTNER_KYC_UPDATED',
+  'COMMISSION_PAID', 'COMMISSION_RATE_CHANGED',
+  'CONSENT_GIVEN', 'CONSENT_WITHDRAWN',
+  'ADMIN_USER_CREATED', 'BANK_UPDATED', 'BANK_STATUS_CHANGED',
+  'PII_ACCESS',
+];
+
+const getDefaultSeverity = (event: AuditEventType): AuditSeverity => {
+  if (HIGH_SEVERITY_EVENTS.includes(event)) return 'HIGH';
+  if (MEDIUM_SEVERITY_EVENTS.includes(event)) return 'MEDIUM';
+  return 'LOW';
+};
+
+// ── Log Integrity Checksum ────────────────────────────────────────────────────
+
 /**
- * Log an audit event
+ * Compute a SHA-256 checksum over the core log fields for tamper detection.
+ * This creates a chain by including the previous log's checksum.
+ */
+const computeChecksum = (
+  event: string,
+  userId: string | undefined,
+  entityId: string | undefined,
+  timestamp: Date,
+  previousChecksum: string | null
+): string => {
+  const payload = [
+    event,
+    userId ?? '',
+    entityId ?? '',
+    timestamp.toISOString(),
+    previousChecksum ?? 'GENESIS',
+  ].join('|');
+  return crypto.createHash('sha256').update(payload).digest('hex');
+};
+
+/**
+ * Get the checksum of the most recent audit log entry (for chaining).
+ */
+const getLastChecksum = async (): Promise<string | null> => {
+  try {
+    const last = await prisma.auditLog.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { checksum: true },
+    });
+    return last?.checksum ?? null;
+  } catch {
+    return null;
+  }
+};
+
+// ── Primary Audit Logger ──────────────────────────────────────────────────────
+
+export interface AuditLogOptions {
+  userId?: string;
+  email?: string;
+  success?: boolean;
+  failureReason?: string;
+  metadata?: Record<string, unknown>;
+  entityId?: string;
+  entityType?: string;
+  severity?: AuditSeverity;
+}
+
+/**
+ * Log an audit event with entity tracking, severity, and integrity checksum.
  */
 export const logAuditEvent = async (
   event: AuditEventType,
   req: Request,
-  options: {
-    userId?: string;
-    email?: string;
-    success?: boolean;
-    failureReason?: string;
-    metadata?: Record<string, unknown>;
-  } = {}
+  options: AuditLogOptions = {}
 ): Promise<void> => {
   try {
     const hashedEmail = options.email ? hashEmail(options.email) : null;
     const userAgent = normalizeHeaderValue(req.headers['user-agent']);
+    const now = new Date();
+    const severity = options.severity ?? getDefaultSeverity(event);
+
+    // Compute integrity checksum (chain-linked to previous entry)
+    const previousChecksum = await getLastChecksum();
+    const checksum = computeChecksum(
+      event, options.userId, options.entityId, now, previousChecksum
+    );
 
     await prisma.auditLog.create({
       data: {
@@ -98,6 +198,11 @@ export const logAuditEvent = async (
         success: options.success ?? true,
         failureReason: options.failureReason,
         metadata: options.metadata as any,
+        entityId: options.entityId,
+        entityType: options.entityType,
+        severity,
+        checksum,
+        createdAt: now,
       },
     });
   } catch (error) {

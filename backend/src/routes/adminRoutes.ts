@@ -5,6 +5,8 @@ import prisma from '../config/prisma.js';
 import { basePrisma } from '../config/prisma.js';
 import { Prisma } from '@prisma/client';
 import { hashPassword } from '../services/userService.js';
+import { logAuditEvent } from '../utils/auditLogger.js';
+import { cacheWrap, cacheDelete, cacheInvalidatePattern } from '../utils/cache.js';
 import {
   getLeads,
   getLeadById,
@@ -142,6 +144,13 @@ router.post('/users', async (req: Request, res: Response): Promise<void> => {
       message: 'User created successfully',
       data: { user },
     });
+
+    await logAuditEvent('ADMIN_USER_CREATED' as any, req, {
+      userId: req.user?.id,
+      entityId: user.id,
+      entityType: 'user',
+      metadata: { email: email.toLowerCase(), role },
+    });
   } catch (error) {
     console.error('Create user error:', error);
     res.status(500).json({
@@ -214,6 +223,17 @@ router.put('/users/:id', async (req: Request, res: Response): Promise<void> => {
       message: 'User updated successfully',
       data: { user },
     });
+
+    // Detect role changes for ADMIN_ROLE_CHANGED
+    if (role !== undefined) {
+      await logAuditEvent('ADMIN_ROLE_CHANGED' as any, req, {
+        userId: req.user?.id,
+        entityId: id,
+        entityType: 'user',
+        severity: 'HIGH',
+        metadata: { newRole: role, changedFields: Object.keys(updateData) },
+      });
+    }
   } catch (error) {
     console.error('Update user error:', error);
     res.status(500).json({
@@ -250,6 +270,14 @@ router.delete('/users/:id', async (req: Request, res: Response): Promise<void> =
       success: true,
       message: 'User deleted successfully',
     });
+
+    await logAuditEvent('ADMIN_USER_DELETED' as any, req, {
+      userId: req.user?.id,
+      entityId: id,
+      entityType: 'user',
+      severity: 'HIGH',
+      metadata: { deletedEmail: user.email, deletedRole: user.role },
+    });
   } catch (error) {
     console.error('Delete user error:', error);
     res.status(500).json({
@@ -261,37 +289,28 @@ router.delete('/users/:id', async (req: Request, res: Response): Promise<void> =
 
 router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const totalUsers = await prisma.user.count();
-    const activeUsers = await prisma.user.count({ where: { isActive: true } });
-    const partners = await prisma.user.count({ where: { role: 'partner' } });
-    const admins = await prisma.user.count({ where: { role: 'admin' } });
-    const verifiedUsers = await prisma.user.count({ where: { isEmailVerified: true } });
-
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const newUsersThisWeek = await prisma.user.count({
-      where: { createdAt: { gte: sevenDaysAgo } },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        stats: {
-          totalUsers,
-          activeUsers,
-          partners,
-          admins,
-          verifiedUsers,
-          newUsersThisWeek,
-        },
+    const data = await cacheWrap(
+      'admin:stats',
+      async () => {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const [totalUsers, activeUsers, partners, admins, verifiedUsers, newUsersThisWeek] =
+          await Promise.all([
+            prisma.user.count(),
+            prisma.user.count({ where: { isActive: true } }),
+            prisma.user.count({ where: { role: 'partner' } }),
+            prisma.user.count({ where: { role: 'admin' } }),
+            prisma.user.count({ where: { isEmailVerified: true } }),
+            prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+          ]);
+        return { totalUsers, activeUsers, partners, admins, verifiedUsers, newUsersThisWeek };
       },
-    });
+      60 // 60-second TTL
+    );
+    res.status(200).json({ success: true, data: { stats: data } });
   } catch (error) {
     console.error('Get stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-    });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -342,7 +361,7 @@ router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => 
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
-    const [logs, total] = await Promise.all([
+    const [logs, total, loginCount, securityCount, authCount] = await Promise.all([
       prisma.auditLog.findMany({
         where,
         include: {
@@ -361,6 +380,9 @@ router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => 
         take: limitNum,
       }),
       prisma.auditLog.count({ where }),
+      prisma.auditLog.count({ where: { ...where, event: { in: ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT'] } } }),
+      prisma.auditLog.count({ where: { ...where, event: { in: ['ACCOUNT_LOCKED', 'SUSPICIOUS_ACTIVITY'] } } }),
+      prisma.auditLog.count({ where: { ...where, event: { in: ['REGISTER', 'PASSWORD_CHANGE', 'PASSWORD_RESET_REQUEST', 'PASSWORD_RESET_SUCCESS'] } } }),
     ]);
 
     const formattedLogs = logs.map((log) => ({
@@ -375,6 +397,9 @@ router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => 
       success: log.success,
       failureReason: log.failureReason,
       metadata: log.metadata,
+      entityId: (log as any).entityId || null,
+      entityType: (log as any).entityType || null,
+      severity: (log as any).severity || 'LOW',
       createdAt: log.createdAt.toISOString(),
     }));
 
@@ -389,6 +414,11 @@ router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => 
           total,
           totalPages: Math.ceil(total / limitNum),
         },
+        counts: {
+          loginEvents: loginCount,
+          securityEvents: securityCount,
+          authEvents: authCount,
+        },
       },
     });
   } catch (error) {
@@ -397,6 +427,71 @@ router.get('/audit-logs', async (req: Request, res: Response): Promise<void> => 
       success: false,
       message: 'Server error',
     });
+  }
+});
+
+// ── Audit Logs CSV Export ─────────────────────────────────────────────────────
+
+router.get('/audit-logs/export', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { event, dateFrom, dateTo, search } = req.query;
+
+    const where: Prisma.AuditLogWhereInput = {};
+    if (event && typeof event === 'string') where.event = event as any;
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom && typeof dateFrom === 'string') (where.createdAt as any).gte = new Date(dateFrom);
+      if (dateTo && typeof dateTo === 'string') {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        (where.createdAt as any).lte = toDate;
+      }
+    }
+    if (search && typeof search === 'string') {
+      where.OR = [
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+        { ip: { contains: search } },
+      ];
+    }
+
+    await logAuditEvent('BULK_EXPORT' as any, req, {
+      userId: req.user?.id,
+      severity: 'HIGH',
+      metadata: { format: 'csv', filters: req.query },
+    });
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: { user: { select: { firstName: true, lastName: true, email: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 10000,
+    });
+
+    const escCsv = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+    const csv = [
+      'Timestamp,User,Role,Event,Status,IP,EntityType,EntityId,Severity,Details',
+      ...logs.map((l) => [
+        escCsv(l.createdAt.toISOString()),
+        escCsv(l.user ? `${l.user.firstName} ${l.user.lastName}` : 'System'),
+        escCsv(l.user?.role || 'unknown'),
+        escCsv(l.event),
+        escCsv(l.success ? 'Success' : 'Failed'),
+        escCsv(l.ip || ''),
+        escCsv((l as any).entityType || ''),
+        escCsv((l as any).entityId || ''),
+        escCsv((l as any).severity || 'LOW'),
+        escCsv(JSON.stringify(l.metadata || l.failureReason || '')),
+      ].join(',')),
+    ].join('\n');
+
+    res.header('Content-Type', 'text/csv');
+    res.header('Content-Disposition', `attachment; filename="audit-logs-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Export audit logs error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -424,18 +519,20 @@ router.patch('/leads/:id/assign-bank', assignBank);
 router.get('/docs/reqdoc', async (req: Request, res: Response): Promise<void> => {
   try {
     const { lenderCode, loanCode } = req.query;
+    const lc = typeof lenderCode === 'string' ? lenderCode : '';
+    const lco = typeof loanCode === 'string' ? loanCode : '';
     const where: Record<string, unknown> = {};
-    if (lenderCode && typeof lenderCode === 'string') where.lenderCode = lenderCode;
-    if (loanCode   && typeof loanCode   === 'string') where.loanCode   = loanCode;
+    if (lc) where.lenderCode = lc;
+    if (lco) where.loanCode = lco;
 
-    const docs = await basePrisma.lenderDocRequirement.findMany({
-      where,
-      orderBy: [
-        { lenderCode: 'asc' },
-        { loanCode:   'asc' },
-        { sortOrder:  'asc' },
-      ],
-    });
+    const docs = await cacheWrap(
+      `docs:reqdoc:${lc}:${lco}`,
+      () => basePrisma.lenderDocRequirement.findMany({
+        where,
+        orderBy: [{ lenderCode: 'asc' }, { loanCode: 'asc' }, { sortOrder: 'asc' }],
+      }),
+      600 // 10-minute TTL — reference data rarely changes
+    );
 
     res.status(200).json({ success: true, count: docs.length, data: docs });
   } catch (error) {
@@ -479,6 +576,9 @@ router.post('/docs/reqdoc', async (req: Request, res: Response): Promise<void> =
       },
     });
 
+    // New requirement — bust all cached variations
+    await cacheInvalidatePattern('docs:reqdoc:*');
+
     res.status(201).json({ success: true, data: doc });
   } catch (error: unknown) {
     if ((error as { code?: string }).code === 'P2002') {
@@ -520,6 +620,9 @@ router.patch('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<vo
       throw err;
     }
 
+    // Updated — bust all cached doc req variations
+    await cacheInvalidatePattern('docs:reqdoc:*');
+
     res.status(200).json({ success: true, data: doc });
   } catch (error) {
     console.error('Update doc requirement error:', error);
@@ -543,6 +646,10 @@ router.delete('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<v
       }
       throw err;
     }
+
+    // Deleted — bust all cached doc req variations
+    await cacheInvalidatePattern('docs:reqdoc:*');
+
     res.status(200).json({ success: true, message: 'Document requirement removed' });
   } catch (error) {
     console.error('Delete doc requirement error:', error);
@@ -558,10 +665,11 @@ router.delete('/docs/reqdoc/:id', async (req: Request, res: Response): Promise<v
  */
 router.get('/banks', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const banks = await basePrisma.bank.findMany({
-      include: { commissionRates: true },
-      orderBy: { name: 'asc' },
-    });
+    const banks = await cacheWrap(
+      'banks:all',
+      () => basePrisma.bank.findMany({ include: { commissionRates: true }, orderBy: { name: 'asc' } }),
+      300 // 5-minute TTL — bank data is slow-moving
+    );
     res.status(200).json({ success: true, count: banks.length, data: { banks } });
   } catch (error) {
     console.error('Get banks error:', error);
@@ -576,10 +684,11 @@ router.get('/banks', async (_req: Request, res: Response): Promise<void> => {
 router.get('/banks/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const bank = await basePrisma.bank.findUnique({
-      where: { id },
-      include: { commissionRates: true },
-    });
+    const bank = await cacheWrap(
+      `banks:id:${id}`,
+      () => basePrisma.bank.findUnique({ where: { id }, include: { commissionRates: true } }),
+      300
+    );
     if (!bank) {
       res.status(404).json({ success: false, message: 'Bank not found' });
       return;
@@ -621,6 +730,16 @@ router.patch('/banks/:id/status', async (req: Request, res: Response): Promise<v
     }
 
     res.status(200).json({ success: true, message: `Bank ${status === 'active' ? 'activated' : 'deactivated'}`, data: { bank } });
+
+    // Invalidate both the list and this specific bank's cache entry
+    await cacheDelete('banks:all', `banks:id:${id}`);
+
+    await logAuditEvent('BANK_STATUS_CHANGED' as any, req, {
+      userId: req.user?.id,
+      entityId: id,
+      entityType: 'bank',
+      metadata: { status },
+    });
   } catch (error) {
     console.error('Toggle bank status error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -704,6 +823,31 @@ router.put('/banks/:id', async (req: Request, res: Response): Promise<void> => {
     }
 
     res.status(200).json({ success: true, message: 'Bank updated successfully', data: { bank } });
+
+    // Bust both caches — list and individual entry
+    await cacheDelete('banks:all', `banks:id:${id}`);
+
+    await logAuditEvent('BANK_UPDATED' as any, req, {
+      userId: req.user?.id,
+      entityId: id,
+      entityType: 'bank',
+      metadata: {
+        updatedFields: Object.keys(updateData),
+        commissionRatesUpdated: Array.isArray(commissionRates),
+      },
+    });
+
+    if (Array.isArray(commissionRates)) {
+      await logAuditEvent('COMMISSION_RATE_CHANGED' as any, req, {
+        userId: req.user?.id,
+        entityId: id,
+        entityType: 'bank',
+        metadata: {
+          ratesCount: commissionRates.length,
+          loanTypes: commissionRates.map((r: { loanType: string }) => r.loanType),
+        },
+      });
+    }
   } catch (error: unknown) {
     if ((error as { code?: string }).code === 'P2025') {
       res.status(404).json({ success: false, message: 'Bank not found' });

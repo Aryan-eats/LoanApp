@@ -4,11 +4,12 @@
  * Manages auth state across the application using Zustand.
  * Uses JWT-based authentication with httpOnly cookie refresh tokens.
  * Access tokens are kept in memory only (never persisted to localStorage).
+ * Proactive silent-refresh keeps sessions alive during active use.
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import apiClient, { setAccessToken, clearTokens, getAccessToken } from '../api/apiClient';
+import apiClient, { setAccessToken, clearTokens, getAccessToken, startSilentRefresh, stopSilentRefresh } from '../api/apiClient';
 
 export interface AuthUser {
   id: string;
@@ -28,8 +29,6 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  /** Counts consecutive failed silent-refresh attempts across page reloads */
-  refreshCount: number;
 }
 
 interface AuthActions {
@@ -50,7 +49,6 @@ export const useAuthStore = create<AuthStore>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
-      refreshCount: 0,
 
       // Actions
       login: async (email: string, password: string) => {
@@ -60,11 +58,15 @@ export const useAuthStore = create<AuthStore>()(
           const response = await apiClient.post('/auth/login', { email, password });
           const data = response.data.data;
 
-          const { user, accessToken } = data;
+          const { user, accessToken, expiresIn } = data;
 
           // Store access token in memory only
           if (accessToken) {
             setAccessToken(accessToken);
+            // Start proactive silent refresh timer
+            if (typeof expiresIn === 'number' && expiresIn > 0) {
+              startSilentRefresh(expiresIn);
+            }
           }
 
           set({
@@ -72,7 +74,6 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            refreshCount: 0,
           });
         } catch (error) {
           // Use centralized error parser
@@ -99,34 +100,35 @@ export const useAuthStore = create<AuthStore>()(
           // Ignore logout errors - still clear local state
         } finally {
           clearTokens();
+          stopSilentRefresh();
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
             error: null,
-            refreshCount: 0,
           });
         }
       },
 
       checkAuth: async () => {
-        // If we have an access token in memory, use it; otherwise refresh from cookie.
-        const existingToken = getAccessToken();
-        const hadInMemoryToken = !!existingToken;
-        const { isAuthenticated: wasAuthenticated, refreshCount } = useAuthStore.getState();
-
         set({ isLoading: true });
 
         try {
-          if (!existingToken) {
+          // If no in-memory token, try refreshing from the httpOnly cookie
+          if (!getAccessToken()) {
             const refreshResponse = await apiClient.post('/auth/refresh-token');
             const refreshedAccessToken = refreshResponse.data.data?.accessToken;
+            const expiresIn = refreshResponse.data.data?.expiresIn;
 
             if (refreshedAccessToken) {
               setAccessToken(refreshedAccessToken);
+              // Start proactive silent refresh timer
+              if (typeof expiresIn === 'number' && expiresIn > 0) {
+                startSilentRefresh(expiresIn);
+              }
             } else {
               clearTokens();
-              set({ user: null, isAuthenticated: false, isLoading: false, refreshCount: 0 });
+              set({ user: null, isAuthenticated: false, isLoading: false });
               return;
             }
           }
@@ -139,23 +141,14 @@ export const useAuthStore = create<AuthStore>()(
             user,
             isAuthenticated: true,
             isLoading: false,
-            refreshCount: 0,
           });
         } catch {
-          // Allow limited grace retries only when a token existed in memory.
-          // If we had no token/cookie, mark user as logged out immediately.
-          if (hadInMemoryToken && wasAuthenticated && refreshCount < 3) {
-            // Mark as unauthenticated during retry to avoid stale auth state
-            set({ isAuthenticated: false, isLoading: false, refreshCount: refreshCount + 1 });
-            return;
-          }
-
+          // Refresh failed — session is genuinely over
           clearTokens();
           set({
             user: null,
             isAuthenticated: false,
             isLoading: false,
-            refreshCount: 0,
           });
         }
       },
@@ -167,15 +160,13 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => localStorage),
-      // Persist user data, auth status, and refresh counter (not loading states or tokens)
+      // Persist user data and auth status (not loading states or tokens)
       partialize: (state) => ({ 
         user: state.user,
         isAuthenticated: state.isAuthenticated,
-        refreshCount: state.refreshCount,
       }),
     }
   )
 );
 
 export default useAuthStore;
-

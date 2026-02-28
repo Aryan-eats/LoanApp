@@ -202,6 +202,10 @@ model AuditLog {
   metadata          Json?
   success           Boolean        @default(true)
   failureReason     String?        @map("failure_reason")
+  entityId          String?        @map("entity_id")
+  entityType        String?        @map("entity_type")
+  severity          String         @default("LOW")
+  checksum          String?        @map("checksum")
   createdAt         DateTime       @default(now()) @map("created_at")
   user              User?          @relation(fields: [userId], references: [id])
 
@@ -209,6 +213,8 @@ model AuditLog {
   @@index([event, createdAt(sort: Desc)])
   @@index([ip, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
+  @@index([entityId, entityType])
+  @@index([severity])
   @@map("audit_logs")
 }
 
@@ -362,6 +368,7 @@ enum CommissionStatus {
 }
 
 enum AuditEventType {
+  // Auth
   LOGIN_SUCCESS
   LOGIN_FAILED
   LOGOUT
@@ -374,4 +381,44 @@ enum AuditEventType {
   ACCOUNT_LOCKED
   TOKEN_REFRESH
   SUSPICIOUS_ACTIVITY
+
+  // Lead lifecycle
+  LEAD_CREATED
+  LEAD_UPDATED
+  LEAD_STATUS_CHANGED
+  LEAD_DELETED
+  LEAD_ASSIGNED
+
+  // Documents
+  DOCUMENT_UPLOADED
+  DOCUMENT_VIEWED
+  DOCUMENT_DOWNLOADED
+  DOCUMENT_VERIFIED
+  DOCUMENT_REJECTED
+  DOCUMENT_DELETED
+
+  // Partners
+  PARTNER_UPDATED
+  PARTNER_APPROVED
+  PARTNER_SUSPENDED
+  PARTNER_KYC_UPDATED
+
+  // Financials
+  COMMISSION_CALCULATED
+  COMMISSION_PAID
+  COMMISSION_RATE_CHANGED
+
+  // Consent & Data Rights
+  CONSENT_GIVEN
+  CONSENT_WITHDRAWN
+  DATA_DELETION_REQUEST
+
+  // Admin
+  ADMIN_ROLE_CHANGED
+  ADMIN_USER_CREATED
+  ADMIN_USER_DELETED
+  BULK_EXPORT
+  PII_ACCESS
+  BANK_UPDATED
+  BANK_STATUS_CHANGED
 }

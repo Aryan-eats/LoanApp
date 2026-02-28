@@ -163,6 +163,7 @@ export interface Commission {
 }
 
 export type AuditEventType =
+  // Auth
   | 'LOGIN_SUCCESS'
   | 'LOGIN_FAILED'
   | 'LOGOUT'
@@ -174,7 +175,41 @@ export type AuditEventType =
   | 'OTP_VERIFIED'
   | 'ACCOUNT_LOCKED'
   | 'TOKEN_REFRESH'
-  | 'SUSPICIOUS_ACTIVITY';
+  | 'SUSPICIOUS_ACTIVITY'
+  // Lead lifecycle
+  | 'LEAD_CREATED'
+  | 'LEAD_UPDATED'
+  | 'LEAD_STATUS_CHANGED'
+  | 'LEAD_DELETED'
+  | 'LEAD_ASSIGNED'
+  // Documents
+  | 'DOCUMENT_UPLOADED'
+  | 'DOCUMENT_VIEWED'
+  | 'DOCUMENT_DOWNLOADED'
+  | 'DOCUMENT_VERIFIED'
+  | 'DOCUMENT_REJECTED'
+  | 'DOCUMENT_DELETED'
+  // Partners
+  | 'PARTNER_UPDATED'
+  | 'PARTNER_APPROVED'
+  | 'PARTNER_SUSPENDED'
+  | 'PARTNER_KYC_UPDATED'
+  // Financials
+  | 'COMMISSION_CALCULATED'
+  | 'COMMISSION_PAID'
+  | 'COMMISSION_RATE_CHANGED'
+  // Consent & Data Rights
+  | 'CONSENT_GIVEN'
+  | 'CONSENT_WITHDRAWN'
+  | 'DATA_DELETION_REQUEST'
+  // Admin
+  | 'ADMIN_ROLE_CHANGED'
+  | 'ADMIN_USER_CREATED'
+  | 'ADMIN_USER_DELETED'
+  | 'BULK_EXPORT'
+  | 'PII_ACCESS'
+  | 'BANK_UPDATED'
+  | 'BANK_STATUS_CHANGED';
 
 export interface AuditLog {
   id: string;
@@ -186,6 +221,9 @@ export interface AuditLog {
   success: boolean;
   failureReason: string | null;
   metadata: Record<string, unknown> | null;
+  entityId: string | null;
+  entityType: string | null;
+  severity: string;
   createdAt: string;
 }
 
@@ -199,6 +237,11 @@ export interface AuditLogsPagination {
 export interface AuditLogsResponse {
   logs: AuditLog[];
   pagination: AuditLogsPagination;
+  counts: {
+    loginEvents: number;
+    securityEvents: number;
+    authEvents: number;
+  };
 }
 
 export interface AuditLogsFilters {

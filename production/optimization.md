@@ -1,98 +1,242 @@
-# Web App Navigation Optimization Guide
+# Code Quality and Scalability Optimization Plan
 
-## Goal
-Make route transitions and page interactions feel smooth by reducing hard reloads, duplicate API calls, and expensive first-load work.
+## Audit Snapshot (2026-03-01)
 
-## What is currently slowing navigation
+### Repo profile
+- TS/TSX files scanned: **193** (`src` + `backend/src`)
+- Test files: **14** total (frontend + backend)
+- Largest files include:
+  - `src/data/DocsReq.ts` (**1339 lines**)
+  - `backend/src/controllers/authController.ts` (**1024 lines**)
+  - `src/partner/pages/AddClientPage.tsx` (**895 lines**)
+  - `src/admin/pages/DocumentsPage.tsx` (**827 lines**)
+  - `backend/src/routes/adminRoutes.ts` (**772 lines**)
 
-### 1) Auth guard remount causes spinner flashes on protected-route navigation
-- `src/components/ProtectedRoute.tsx:20` initializes `isChecking` to `true` on every mount.
-- `src/components/ProtectedRoute.tsx:34` shows full-screen loader while `isChecking` is true.
-- `src/App.tsx:92` to `src/App.tsx:101` wraps each admin route individually with `ProtectedRoute`, so every admin route change remounts it.
+### Current health checks
+- Frontend lint: **fails** (`npm run lint`) with **108 problems** (107 errors, 1 warning)
+- Frontend tests: **fails** (`npm run test`) with **6 failed / 25 total**
+- Frontend build: **fails** (`npm run build`) due unused symbol in `src/pages/CustomerUploadPage.tsx:129`
+- Backend tests: **passes** (`backend/npm run test`) with **100 passed / 42 skipped**
+- Backend build: **fails** (`backend/npm run build`) due missing `mongodb` module in `src/scripts/migPostgres.ts`
 
-Impact:
-- Route-to-route transitions in admin feel blocked even when already authenticated.
+---
 
-### 2) Hard page reloads instead of SPA navigation
-- `src/admin/pages/AdminDashboard.tsx:283` uses `<a href="/admin/leads">`.
-- `src/partner/components/PartnerHeader.tsx:184`, `src/partner/components/PartnerHeader.tsx:190`, `src/partner/components/PartnerHeader.tsx:196` use `<a href="/partner/...">`.
-- `src/partner/components/PartnerHeader.tsx:81` and `src/partner/components/PartnerSidebar.tsx:65` use `window.location.href = '/login'`.
+## Priority Findings and Fixes
 
-Impact:
-- Full document reload, JS re-bootstrap, and extra auth checks.
+## P0 - Restore reliable quality gates (do first)
 
-### 3) Duplicate leads fetching across partner layout/pages
-- `src/partner/components/PartnerSidebar.tsx:36` fetches leads on mount.
-- `src/partner/pages/PartnerDashboard.tsx:28`, `src/partner/pages/MyLeadsPage.tsx:89`, `src/partner/pages/ProfilePage.tsx:129` also fetch leads.
-
-Impact:
-- Extra API traffic and UI waiting during navigation.
-
-### 4) Route mismatch breaks flow and can create perceived lag
-- App route is `credit-check`: `src/App.tsx:108`.
-- Navigation points to `eligibility`: `src/partner/components/PartnerSidebar.tsx:48`, `src/partner/pages/PartnerDashboard.tsx:289`, `src/partner/pages/AddClientPage.tsx:235`.
+### 1) Lint scope is too broad and includes generated/archived files
+Evidence:
+- Lint errors reported from `backend/dist/**/*.d.ts` and `production/migration-archive/**`.
 
 Impact:
-- Dead route / wrong destination, extra retries and confusion.
+- CI signal is noisy and blocks merges for non-source artifacts.
 
-### 5) Scroll handler updates state on every scroll tick
-- `src/components/Navbar.tsx:25` attaches scroll listener and toggles visibility state every scroll movement.
+Fix:
+1. Update root ESLint config ignores to include:
+   - `backend/dist/**`
+   - `production/migration-archive/**`
+   - optionally `**/*.d.ts` for generated declaration output
+2. Add package-level lint scripts:
+   - `lint:frontend` -> `eslint src`
+   - `lint:backend` -> `eslint backend/src`
+
+### 2) Build pipelines are blocked by avoidable errors
+Evidence:
+- Frontend build fails on `src/pages/CustomerUploadPage.tsx:129` (`formatFileSize` unused).
+- Backend build fails because `backend/src/scripts/migPostgres.ts` imports `mongodb` but dependency is absent.
 
 Impact:
-- Re-render pressure on public pages; can feel janky on lower-end devices.
+- No dependable production build gate.
 
-### 6) Bundle pressure from icon package and large shared data chunk
-- Build observation: `npx vite build` transformed ~12,901 modules.
-- Core chunk is large: `dist/assets/index-*.js` ~315 kB (gzip ~102 kB).
-- `@mui/icons-material` emits very large warning volume and contributes heavy processing.
-- `dist/assets/loanProducts-*.js` ~103 kB (gzip ~37 kB).
+Fix:
+1. Remove/consume unused symbol in `CustomerUploadPage.tsx`.
+2. For backend script issue, choose one:
+   - install `mongodb` in backend deps, or
+   - move migration scripts outside production `tsc` include, or
+   - split `tsconfig` into app vs script builds.
+
+### 3) React 19 hook-rule violations are concentrated in shared hooks/components
+Evidence from lint:
+- `src/hooks/useFetch.ts` (ref writes during render)
+- `src/hooks/useLocalStorage.ts` (ref writes during render)
+- `src/hooks/useMediaQuery.ts`, `src/components/Navbar.tsx`, `src/components/shared/OptimizedImage.tsx`, `src/hooks/useApplicationForm.ts` (setState in effect warnings)
 
 Impact:
-- First-route and first-time chunk load delays.
+- Render instability risk, hard-to-debug behavior, and future React upgrade friction.
 
-## Priority plan (do in this order)
+Fix:
+1. Refactor shared hooks first (`useFetch`, `useLocalStorage`, `useMediaQuery`, `usePrevious`).
+2. Replace render-time ref mutation with effect/event-driven updates.
+3. Add regression tests around these hooks before refactor.
 
-### P0 (same day, biggest perceived gain)
-1. Use nested protected routes so auth check is done once per section.
-2. Replace all internal `<a href="/...">` with `<Link to="...">`.
-3. Replace `window.location.href` logout redirects with `useNavigate()` after logout.
-4. Fix `/partner/eligibility` to `/partner/credit-check` everywhere.
+### 4) Frontend tests are brittle and out of sync with behavior
+Evidence:
+- `src/tests/leadsApi.test.ts` endpoint expectation mismatch.
+- `src/tests/useFetch.test.ts` stale assumptions + missing `act()` usage.
+- `src/tests/LeadDetailsModal.test.tsx` ambiguous text selectors and interaction mismatch.
 
-### P1 (1-2 days)
-1. Deduplicate leads fetches with store-level TTL cache (for example 30-60 seconds).
-2. Move partner profile summary fetch to shared store/context so header does not refetch on each layout mount.
-3. Throttle/debounce navbar scroll visibility updates with `requestAnimationFrame` and only update when direction actually changes.
+Impact:
+- Test suite cannot protect refactors.
 
-### P2 (2-4 days)
-1. Remove `@mui/icons-material` usage in partner pages and standardize on `lucide-react`.
-2. Split heavy static data (`loanProducts`) by feature or lazy-load where needed.
-3. Add route prefetch on hover/focus for heavy dashboard pages.
+Fix:
+1. Stabilize tests using role/label selectors instead of duplicate raw text matching.
+2. Align test expectations with actual API routes.
+3. Add helper factories for lead fixtures to reduce test drift.
 
-## Implementation notes
+---
 
-### A) Protected route nesting pattern
-- Keep one parent protected route for `/admin/*` and one for `/partner/*`.
-- Child routes render via `<Outlet />` to avoid remount spinner loop.
+## P1 - Reduce structural complexity for maintainability
 
-### B) Store caching pattern for leads
-- In `leadsStore`, track `lastFetchedAt` and skip network calls when cache is fresh unless `force=true`.
-- This alone will remove repeated fetches during quick route changes.
+### 5) Several "god files" are beyond maintainable size
+High-risk files:
+- `backend/src/controllers/authController.ts` (1024 lines)
+- `backend/src/routes/adminRoutes.ts` (772 lines)
+- `backend/src/controllers/leadController.ts` (797 lines)
+- `src/partner/pages/AddClientPage.tsx` (895 lines)
+- `src/admin/pages/DocumentsPage.tsx` (827 lines)
 
-### C) Navigation consistency
-- Use React Router navigation everywhere for in-app routes.
-- Keep `<a>` only for external links (`mailto:`, `tel:`, docs outside app).
+Impact:
+- High change risk, merge conflicts, low onboarding speed.
 
-## Suggested performance acceptance criteria
-1. Protected route-to-route transition in admin/partner without full-screen spinner flash.
-2. No full page reload for internal nav links (verify via Network tab: no new `index.html` fetch).
-3. Max one leads fetch during initial partner section load, none on immediate sibling route switch.
-4. Lighthouse: improved TBT/INP and faster route interaction readiness.
+Fix:
+1. Introduce target file-size guardrails (soft limit ~300-400 lines).
+2. Split by responsibility:
+   - backend: `routes` (validation + transport), `services` (business logic), `repositories` (Prisma query modules)
+   - frontend: page shell + feature sections + hooks + mappers
+3. Enforce no-new-large-file policy in PR checklist.
 
-## Quick verification checklist
-1. Open DevTools Network and filter `partner/leads`; navigate Partner Dashboard -> My Leads -> Profile.
-2. Confirm internal nav clicks do not request document again.
-3. Confirm `/partner/credit-check` works from sidebar, dashboard CTA, and Add Client redirect.
-4. Run build after fixes and compare chunk sizes and module count.
+### 6) Type safety is eroded by repeated `any` in critical paths
+Evidence:
+- Heavy `any` usage in admin/audit code (`backend/src/routes/adminRoutes.ts`, `backend/src/controllers/*`, `src/admin/pages/DocumentsPage.tsx`, `src/admin/hooks/useLeadsManager.ts`).
 
-## Important current repo note
-`npm run build` currently fails type-checking due existing audit-log type mismatch in `src/admin/data/placeholderData.ts` (`timestamp` field not in `AuditLog`). Fix that separately so CI build gating can reflect performance changes reliably.
+Impact:
+- Runtime bugs slip through compile-time checks; API contracts drift.
+
+Fix:
+1. Create typed DTO mappers for audit logs/leads responses.
+2. Replace `as any` audit event casts with strict union typing from Prisma enums.
+3. Add `zod` (or equivalent) schema validation at API boundaries for external inputs.
+
+### 7) Duplicate component implementations increase divergence risk
+Evidence:
+- Two different `PrefetchLink` implementations:
+  - `src/components/PrefetchLink.tsx`
+  - `src/components/shared/PrefetchLink.tsx`
+- Parallel component variants (`StatsCard`, `StatusBadge`) across admin/partner.
+
+Impact:
+- Inconsistent behavior and duplicated maintenance.
+
+Fix:
+1. Consolidate duplicated components into shared primitives with variant props.
+2. Keep domain-specific wrappers thin.
+
+---
+
+## P2 - Scalability and performance improvements
+
+### 8) Audit logs endpoint is offset-paginated and does multiple expensive counts
+Evidence:
+- `backend/src/routes/adminRoutes.ts` uses `skip/take` plus multiple `count()` queries per request.
+- Frontend (`src/admin/pages/AuditLogsPage.tsx`) auto-refreshes every 15s.
+
+Impact:
+- Cost grows with dataset size; dashboard refresh amplifies DB load.
+
+Fix:
+1. Move audit list to cursor pagination (`createdAt,id` cursor).
+2. Cache summary counts briefly (15-30s) or compute asynchronously.
+3. Add API support for incremental fetch (`since` cursor) for polling.
+4. Move CSV export (>10k rows) to async job + downloadable artifact.
+
+### 9) Oversized static document config in frontend bundle
+Evidence:
+- `src/data/DocsReq.ts` is 1339 lines / 45KB and static.
+
+Impact:
+- Bundle weight and memory overhead on clients.
+
+Fix:
+1. Move doc requirements to backend source-of-truth (`lender_doc_requirements`) only.
+2. Fetch per lender/loan with cache and schema versioning.
+3. Keep frontend fallback as minimal seed subset only.
+
+### 10) Mixed icon stacks increase bundle surface
+Evidence:
+- `@mui/icons-material` still used in key pages (`AddClientPage`, `MyLeadsPage`, `admin/DocumentsPage`) while `lucide-react` is also present.
+
+Impact:
+- Larger dependency graph and slower builds.
+
+Fix:
+1. Standardize to one icon library (prefer existing `lucide-react` footprint).
+2. Replace high-traffic page icon imports first.
+
+---
+
+## P3 - Operational hardening
+
+### 11) Missing monorepo-style task boundaries
+Issue:
+- Root scripts run over mixed frontend/backend/archives without clear separation.
+
+Fix:
+1. Add orchestrated scripts:
+   - `check:frontend` -> typecheck + lint + test (frontend)
+   - `check:backend` -> typecheck + lint + test (backend)
+   - `check` -> run both
+2. Gate CI on both checks.
+
+### 12) Encoding inconsistencies (mojibake) in comments/strings
+Evidence:
+- Garbled unicode separators visible in files like `backend/src/index.ts`, `src/api/apiClient.ts`, `backend/src/utils/cache.ts`.
+
+Impact:
+- Readability and tooling inconsistencies.
+
+Fix:
+1. Normalize all source files to UTF-8.
+2. Add `.editorconfig` and formatting pre-commit checks.
+
+---
+
+## Recommended Execution Plan
+
+## Week 1 (stabilization)
+1. Fix lint ignores and split lint scripts.
+2. Unblock frontend and backend builds.
+3. Resolve React hook-rule errors in shared hooks/components.
+4. Fix failing frontend tests and make test suite green.
+
+## Week 2 (maintainability)
+1. Refactor `adminRoutes`, `authController`, and one large frontend page (`AddClientPage`) into modules.
+2. Replace `any` in audit/leads paths with typed DTOs.
+3. Consolidate duplicate shared components.
+
+## Week 3 (scalability)
+1. Implement cursor-based audit-log API.
+2. Reduce audit dashboard polling payload.
+3. Move heavy docs config from frontend static file to API-first model.
+4. Standardize icons to reduce bundle surface.
+
+---
+
+## Acceptance Criteria
+
+1. `npm run lint` passes with source-only scope and zero errors.
+2. Frontend `npm run test` passes with stable selectors and no flaky failures.
+3. Frontend + backend `npm run build` pass in CI.
+4. No files above 500 lines in newly touched code; large legacy files tracked in refactor backlog.
+5. Audit logs page can paginate large datasets without linear slowdown.
+6. `DocsReq` static payload is removed or reduced to a lightweight fallback.
+
+---
+
+## Immediate Next Fixes (highest ROI)
+
+1. Fix ESLint ignore scope and split scripts by package.
+2. Repair `useFetch` and related shared hooks for React 19 compliance.
+3. Make failing frontend tests green (`leadsApi`, `useFetch`, `LeadDetailsModal`).
+4. Resolve backend `mongodb` build blocker in migration script strategy.
+5. Start extracting `adminRoutes` audit + banks flows into dedicated route modules.

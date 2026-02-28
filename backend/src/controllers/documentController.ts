@@ -16,6 +16,7 @@ import {
 } from '../services/documentService.js';
 import prisma from '../config/prisma.js';
 import crypto from 'crypto';
+import { logAuditEvent } from '../utils/auditLogger.js';
 
 /**
  * POST /api/documents/upload
@@ -123,6 +124,19 @@ export const uploadLeadDoc = async (req: Request, res: Response): Promise<void> 
         },
       },
     });
+
+    await logAuditEvent('DOCUMENT_UPLOADED' as any, req, {
+      userId: currentUser.id,
+      entityId: documentId,
+      entityType: 'document',
+      metadata: {
+        leadId,
+        docType: doc.type,
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+      },
+    });
   } catch (error) {
     console.error('Lead document upload error:', error);
     res.status(500).json({
@@ -163,6 +177,17 @@ export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> 
         url: result.url,
         document: result.document,
         expiresIn: 3600,
+      },
+    });
+
+    await logAuditEvent('DOCUMENT_DOWNLOADED' as any, req, {
+      userId: currentUser.id,
+      entityId: documentId,
+      entityType: 'document',
+      metadata: {
+        leadId: docRecord.leadId,
+        docType: docRecord.type,
+        fileName: docRecord.fileName,
       },
     });
   } catch (error) {
@@ -221,6 +246,18 @@ export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> 
     });
 
     res.status(200).json({ success: true, message: 'Document deleted successfully' });
+
+    await logAuditEvent('DOCUMENT_DELETED' as any, req, {
+      userId: currentUser.id,
+      entityId: documentId,
+      entityType: 'document',
+      severity: 'HIGH',
+      metadata: {
+        leadId: docRecord.leadId,
+        docType: docRecord.type,
+        fileName: docRecord.fileName,
+      },
+    });
   } catch (error) {
     console.error('Lead document delete error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete document' });
@@ -286,6 +323,20 @@ export const updateLeadDocStatus = async (req: Request, res: Response): Promise<
         },
       },
     });
+
+    const docEvent = status === 'verified' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_REJECTED';
+    await logAuditEvent(docEvent as any, req, {
+      userId: currentUser.id,
+      entityId: documentId,
+      entityType: 'document',
+      metadata: {
+        leadId: docRecord.leadId,
+        docType: docRecord.type,
+        previousStatus: docRecord.status,
+        newStatus: status,
+        ...(rejectionReason ? { rejectionReason } : {}),
+      },
+    });
   } catch (error) {
     console.error('Lead document status update error:', error);
     res.status(500).json({ success: false, message: 'Failed to update document status' });
@@ -342,6 +393,18 @@ export const bulkUpdateLeadDocStatus = async (req: Request, res: Response): Prom
       success: true,
       message: `${result.count} document(s) ${status} successfully`,
       data: { count: result.count },
+    });
+
+    const bulkEvent = status === 'verified' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_REJECTED';
+    await logAuditEvent(bulkEvent as any, req, {
+      userId: currentUser.id,
+      entityType: 'document',
+      metadata: {
+        documentIds,
+        count: result.count,
+        status,
+        ...(rejectionReason ? { rejectionReason } : {}),
+      },
     });
   } catch (error) {
     console.error('Bulk document status update error:', error);
@@ -648,6 +711,18 @@ export const uploadViaToken = async (req: Request, res: Response): Promise<void>
           fileName: updatedDoc.fileName,
           status: updatedDoc.status,
         },
+      },
+    });
+
+    // Log even for public upload — userId will be null (customer upload)
+    await logAuditEvent('DOCUMENT_UPLOADED' as any, req, {
+      entityId: documentId,
+      entityType: 'document',
+      metadata: {
+        leadId: tokenRecord.leadId,
+        docType: docRecord.type,
+        fileName: file.originalname,
+        uploadMethod: 'customer_token',
       },
     });
   } catch (error) {
