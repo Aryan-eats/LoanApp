@@ -19,7 +19,7 @@ const Navbar: React.FC = () => {
   const lastScrollY = useRef(0);
 
   useEffect(() => {
-    setIsOpen(false);
+    setIsOpen(prev => prev ? false : prev);
   }, [location.pathname]);
 
   useEffect(() => {

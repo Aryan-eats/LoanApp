@@ -29,9 +29,9 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   const fetchPriority = priority ? 'high' : 'auto';
 
   useEffect(() => {
-    // Reset visual state when source set changes.
-    setIsLoaded(false);
-    setHasError(false);
+    // Reset visual state when source set changes; bail out if already reset
+    setIsLoaded(prev => prev ? false : prev);
+    setHasError(prev => prev ? false : prev);
   }, [src, webpSrc, avifSrc]);
 
   const handleLoad = () => {

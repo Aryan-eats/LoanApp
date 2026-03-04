@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import { consolidatedBanks } from '../../data/mockBanks';
 import {
@@ -23,7 +23,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface BankLoanDocMap {
   /** bankCode → loanCode → list of docs */
@@ -32,7 +32,7 @@ interface BankLoanDocMap {
   };
 }
 
-// ─── Add Doc Form ─────────────────────────────────────────────────────────────
+// --- Add Doc Form -------------------------------------------------------------
 
 interface AddDocFormProps {
   onAdd: (payload: {
@@ -129,7 +129,7 @@ const AddDocForm: React.FC<AddDocFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component -----------------------------------------------------------
 
 const ReqDocPage: React.FC = () => {
   const [docMap, setDocMap] = useState<BankLoanDocMap>({});
@@ -144,7 +144,7 @@ const ReqDocPage: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [mutating, setMutating] = useState<Record<string, boolean>>({});
 
-  // ── Load all docs from API on mount ────────────────────────────────────────
+  // -- Load all docs from API on mount ----------------------------------------
   useEffect(() => {
     setIsLoading(true);
     getDocRequirements()
@@ -192,7 +192,7 @@ const ReqDocPage: React.FC = () => {
     });
   }, []);
 
-  // ── Mutations ───────────────────────────────────────────────────────────────
+  // -- Mutations ---------------------------------------------------------------
 
   const handleRemoveDoc = useCallback(async (loanCode: string, docId: string) => {
     setMutating((m) => ({ ...m, [docId]: true }));
@@ -296,7 +296,7 @@ const ReqDocPage: React.FC = () => {
     [bankLoanDocs]
   );
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // -- Render ------------------------------------------------------------------
 
   return (
     <AdminLayout>

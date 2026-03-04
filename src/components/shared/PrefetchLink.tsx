@@ -1,11 +1,13 @@
 import React, { useRef } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
+import { prefetchRoute as prefetchByPath } from '../../utils/routePrefetch';
 
 interface PrefetchLinkProps extends LinkProps {
-  prefetchRoute: () => Promise<any>;
+  prefetchRoute?: () => Promise<unknown>;
 }
 
 const PrefetchLink: React.FC<PrefetchLinkProps> = ({
+  to,
   prefetchRoute,
   onMouseEnter,
   onFocus,
@@ -14,11 +16,14 @@ const PrefetchLink: React.FC<PrefetchLinkProps> = ({
   ...props
 }) => {
   const prefetchedRef = useRef(false);
+  const path = typeof to === 'string' ? to : to.pathname ?? '';
 
   const runPrefetch = () => {
     if (prefetchedRef.current) return;
     prefetchedRef.current = true;
-    prefetchRoute().catch(() => {});
+
+    const prefetchPromise = prefetchRoute ? prefetchRoute() : Promise.resolve(prefetchByPath(path));
+    prefetchPromise.catch(() => {});
   };
 
   const handleMouseEnter = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
@@ -44,6 +49,7 @@ const PrefetchLink: React.FC<PrefetchLinkProps> = ({
 
   return (
     <Link
+      to={to}
       onMouseEnter={handleMouseEnter}
       onFocus={handleFocus}
       onTouchStart={handleTouchStart}

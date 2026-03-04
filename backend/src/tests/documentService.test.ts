@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unit tests for document service helpers and behavior changes.
  *
  * These tests verify:
@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { sanitiseFilename } from '../services/documentService.js';
 import { MAX_FILE_SIZE } from '../middleware/upload.js';
 
-// ─── sanitiseFilename ─────────────────────────────────────
+// --- sanitiseFilename -------------------------------------
 
 describe('sanitiseFilename', () => {
   it('handles a normal filename', () => {
@@ -50,7 +50,7 @@ describe('sanitiseFilename', () => {
   });
 });
 
-// ─── MAX_FILE_SIZE export ─────────────────────────────────
+// --- MAX_FILE_SIZE export ---------------------------------
 
 describe('MAX_FILE_SIZE', () => {
   it('is exported and equals 3 MB', () => {
@@ -58,7 +58,7 @@ describe('MAX_FILE_SIZE', () => {
   });
 });
 
-// ─── documentExists error-handling logic ──────────────────
+// --- documentExists error-handling logic ------------------
 
 describe('documentExists error-handling logic', () => {
   it('should return false for a NotFound-style error', () => {

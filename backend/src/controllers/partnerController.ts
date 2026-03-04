@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import type { User } from '@prisma/client';
+﻿import { Request, Response } from 'express';
+import type { User, AuditEventType } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
 import { cacheWrap, cacheDelete } from '../utils/cache.js';
@@ -319,10 +319,10 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
     });
 
     if (req.user) {
-      const eventType = status === 'approved' ? 'PARTNER_APPROVED'
+      const eventType: AuditEventType = status === 'approved' ? 'PARTNER_APPROVED'
         : (status === 'suspended' || status === 'rejected') ? 'PARTNER_SUSPENDED'
         : 'PARTNER_UPDATED';
-      await logAuditEvent(eventType as any, req, {
+      await logAuditEvent(eventType, req, {
         userId: req.user.id,
         entityId: partnerId,
         entityType: 'partner',
@@ -331,7 +331,7 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
       });
     }
 
-    // Partner counts changed — bust the stats cache
+    // Partner counts changed - bust the stats cache
     await cacheDelete('partner:stats');
 
     res.status(200).json({

@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   User,
   Phone,
@@ -16,230 +14,37 @@ import {
   ArrowLeft,
   Info,
   ChevronDown,
+  Save,
+  Send,
+  FolderOpen,
 } from 'lucide-react';
-import {
-  Business,
-  Home,
-  AccountBalance,
-  DriveEta,
-  Stars,
-  School,
-  Grass,
-  Flag,
-  ShoppingCart,
-  Construction,
-  FlashOn,
-} from '@mui/icons-material';
 import Tooltip from '../components/Tooltip';
 import { getProductsByCategory, type LoanCategory } from '../../data/loanProductsData';
-import { useLeadsStore } from '../../stores/leadsStore';
-
-type Step = 'client' | 'loan' | 'employment' | 'address' | 'consent';
-
-const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
-  { id: 'client', label: 'Client Details', icon: <User size={18} /> },
-  { id: 'loan', label: 'Loan Details', icon: <CreditCard size={18} /> },
-  { id: 'employment', label: 'Employment', icon: <Briefcase size={18} /> },
-  { id: 'address', label: 'Address', icon: <MapPin size={18} /> },
-  { id: 'consent', label: 'Consent', icon: <CheckCircle size={18} /> },
-];
-
-const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'personal', label: 'Personal Loan', icon: <CreditCard fontSize="small" /> },
-  { value: 'business', label: 'Business Loan', icon: <Business fontSize="small" /> },
-  { value: 'home', label: 'Home Loan', icon: <Home fontSize="small" /> },
-  { value: 'property', label: 'Property Loan', icon: <AccountBalance fontSize="small" /> },
-  { value: 'vehicle', label: 'Vehicle Loan', icon: <DriveEta fontSize="small" /> },
-  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars fontSize="small" /> },
-  { value: 'education', label: 'Education Loan', icon: <School fontSize="small" /> },
-  { value: 'agriculture', label: 'Agriculture Loan', icon: <Grass fontSize="small" /> },
-  { value: 'government', label: 'Govt. Schemes', icon: <Flag fontSize="small" /> },
-  { value: 'corporate', label: 'Corporate Loan', icon: <AccountBalance fontSize="small" /> },
-  { value: 'consumer', label: 'Consumer Loan', icon: <ShoppingCart fontSize="small" /> },
-  { value: 'short_term', label: 'Short-Term Loan', icon: <FlashOn fontSize="small" /> },
-  { value: 'real_estate', label: 'Real Estate', icon: <Construction fontSize="small" /> },
-  { value: 'specialized', label: 'Specialized', icon: <FlashOn fontSize="small" /> },
-];
-
-const employmentTypes = [
-  { value: 'salaried', label: 'Salaried', description: 'Working for a company' },
-  { value: 'self_employed', label: 'Self Employed', description: 'Running own business' },
-  { value: 'business_owner', label: 'Business Owner', description: 'Company/Firm owner' },
-  { value: 'professional', label: 'Professional', description: 'Doctor, CA, Lawyer etc.' },
-];
-
-const indianStates = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
-  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
-  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-  'Delhi', 'Jammu and Kashmir', 'Ladakh',
-];
+import { useAddClientForm } from '../hooks/useAddClientForm';
+import { steps, loanCategories, employmentTypes, indianStates } from '../data/addClientConstants';
 
 export default function AddClientPage() {
-  const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState<Step>('client');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showEligibilityOption, setShowEligibilityOption] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<LoanCategory | ''>('');
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const { createLead } = useLeadsStore();
-
-  const [formData, setFormData] = useState({
-    fullName: '',
-    phone: '',
-    email: '',
-    dateOfBirth: '',
-    gender: '',
-    panNumber: '',
-    
-    loanCategory: '',
-    loanType: '',
-    loanAmount: '',
-    tenure: '',
-    loanPurpose: '',
-    
-    employmentType: '',
-    monthlyIncome: '',
-    companyName: '',
-    designation: '',
-    workExperience: '',
-    businessType: '',
-    businessVintage: '',
-    annualTurnover: '',
-    
-    currentAddress: '',
-    city: '',
-    state: '',
-    pincode: '',
-    residenceType: '',
-    
-    consentCredit: false,
-    consentContact: false,
-    consentTerms: false,
-  });
-
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
-  };
-
-  const validateStep = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    switch (currentStep) {
-      case 'client':
-        if (!formData.fullName.trim()) newErrors.fullName = 'Full name is required';
-        if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
-        else if (!/^[6-9]\d{9}$/.test(formData.phone)) newErrors.phone = 'Enter valid 10-digit mobile number';
-        if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-          newErrors.email = 'Enter valid email address';
-        }
-        if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-        break;
-
-      case 'loan':
-        if (!formData.loanCategory) newErrors.loanCategory = 'Please select a loan category';
-        if (!formData.loanType) newErrors.loanType = 'Please select a loan type';
-        if (!formData.loanAmount) newErrors.loanAmount = 'Loan amount is required';
-        else if (Number(formData.loanAmount) < 50000) newErrors.loanAmount = 'Minimum loan amount is ₹50,000';
-        break;
-
-      case 'employment':
-        if (!formData.employmentType) newErrors.employmentType = 'Employment type is required';
-        if (!formData.monthlyIncome) newErrors.monthlyIncome = 'Monthly income is required';
-        if (formData.employmentType === 'salaried' && !formData.companyName) {
-          newErrors.companyName = 'Company name is required';
-        }
-        break;
-
-      case 'address':
-        if (!formData.currentAddress.trim()) newErrors.currentAddress = 'Address is required';
-        if (!formData.city.trim()) newErrors.city = 'City is required';
-        if (!formData.state) newErrors.state = 'State is required';
-        if (!formData.pincode.trim()) newErrors.pincode = 'Pincode is required';
-        else if (!/^\d{6}$/.test(formData.pincode)) newErrors.pincode = 'Enter valid 6-digit pincode';
-        break;
-
-      case 'consent':
-        if (!formData.consentCredit) newErrors.consentCredit = 'Credit check consent is required';
-        if (!formData.consentTerms) newErrors.consentTerms = 'Please accept terms and conditions';
-        break;
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (!validateStep()) return;
-
-    const stepIndex = steps.findIndex((s) => s.id === currentStep);
-    if (stepIndex < steps.length - 1) {
-      setCurrentStep(steps[stepIndex + 1].id);
-    }
-  };
-
-  const handleBack = () => {
-    const stepIndex = steps.findIndex((s) => s.id === currentStep);
-    if (stepIndex > 0) {
-      setCurrentStep(steps[stepIndex - 1].id);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!validateStep()) return;
-
-    setIsSubmitting(true);
-    setSubmitError(null);
-
-    try {
-      const lead = await createLead({
-        fullName: formData.fullName,
-        phone: formData.phone,
-        email: formData.email || 'not-provided@placeholder.com',
-        city: formData.city,
-        pincode: formData.pincode,
-        employmentType: formData.employmentType,
-        monthlyIncome: formData.monthlyIncome ? Number(formData.monthlyIncome) : undefined,
-        companyName: formData.companyName,
-        loanType: formData.loanType || formData.loanCategory || 'personal_loan',
-        loanAmount: Number(formData.loanAmount),
-        tenure: formData.tenure ? Number(formData.tenure) : undefined,
-      }, true); // isPartner = true
-
-      if (lead) {
-        setShowEligibilityOption(true);
-      } else {
-        setSubmitError('Failed to create lead. Please try again.');
-      }
-    } catch (error) {
-      console.error('Submit lead error:', error);
-      const { parseApiError } = await import('../../utils/parseApiError');
-      setSubmitError(parseApiError(error, 'Failed to create lead. Please try again.'));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCheckEligibility = () => {
-    navigate('/partner/credit-check', { state: { clientData: formData } });
-  };
-
-  const handleSubmitLead = () => {
-    navigate('/partner/leads', { state: { newLead: true } });
-  };
-
-  const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
+  const {
+    currentStep,
+    setCurrentStep,
+    currentStepIndex,
+    isSubmitting,
+    showEligibilityOption,
+    saveTarget,
+    selectedCategory,
+    setSelectedCategory,
+    submitError,
+    formData,
+    errors,
+    handleInputChange,
+    handleNext,
+    handleBack,
+    handleSaveLocally,
+    handleSubmitToAdmin,
+    handleCheckEligibility,
+    handleSubmitLead,
+    handleViewMyClients,
+  } = useAddClientForm();
 
   const renderInput = (
     label: string,
@@ -280,16 +85,28 @@ export default function AddClientPage() {
   );
 
   if (showEligibilityOption) {
+    const isLocal = saveTarget === 'local';
     return (
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle size={32} className="text-green-600" />
+          <div className={`w-16 h-16 ${isLocal ? 'bg-slate-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+            {isLocal ? (
+              <Save size={32} className="text-slate-600" />
+            ) : (
+              <CheckCircle size={32} className="text-green-600" />
+            )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Client Added Successfully!</h2>
-          <p className="text-slate-500 mb-8">
-            {formData.fullName}'s details have been saved. What would you like to do next?
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+            {isLocal ? 'Client Saved Locally!' : 'Lead Submitted to Admin!'}
+          </h2>
+          <p className="text-slate-500 mb-2">
+            {formData.fullName}'s details have been {isLocal ? 'saved to your device' : 'submitted for processing'}.
           </p>
+          {isLocal && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block mb-6">
+              This lead is stored locally on your device. Submit it to admin when you're ready to process it.
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md mx-auto">
             <button
@@ -303,16 +120,29 @@ export default function AddClientPage() {
               <span className="text-xs text-slate-500">Soft check - No CIBIL impact</span>
             </button>
 
-            <button
-              onClick={handleSubmitLead}
-              className="flex flex-col items-center gap-2 p-6 bg-green-50 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-100 transition-all group"
-            >
-              <div className="w-12 h-12 bg-green-500 text-white rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                <ArrowRight size={24} />
-              </div>
-              <span className="font-semibold text-slate-800">Submit Lead</span>
-              <span className="text-xs text-slate-500">Proceed to document upload</span>
-            </button>
+            {isLocal ? (
+              <button
+                onClick={handleViewMyClients}
+                className="flex flex-col items-center gap-2 p-6 bg-slate-50 border-2 border-slate-200 rounded-xl hover:border-slate-400 hover:bg-slate-100 transition-all group"
+              >
+                <div className="w-12 h-12 bg-slate-500 text-white rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <FolderOpen size={24} />
+                </div>
+                <span className="font-semibold text-slate-800">View My Clients</span>
+                <span className="text-xs text-slate-500">Manage locally saved leads</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmitLead}
+                className="flex flex-col items-center gap-2 p-6 bg-green-50 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-100 transition-all group"
+              >
+                <div className="w-12 h-12 bg-green-500 text-white rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <ArrowRight size={24} />
+                </div>
+                <span className="font-semibold text-slate-800">Submit Lead</span>
+                <span className="text-xs text-slate-500">Proceed to document upload</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -444,7 +274,7 @@ export default function AddClientPage() {
                       onChange={(e) => {
                         setSelectedCategory(e.target.value as LoanCategory);
                         handleInputChange('loanCategory', e.target.value);
-                        handleInputChange('loanType', ''); // Reset sub-type when category changes
+                        handleInputChange('loanType', '');
                       }}
                       className="sr-only"
                     />
@@ -931,23 +761,35 @@ export default function AddClientPage() {
               <ArrowRight size={18} />
             </button>
           ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={18} />
-                  Save Client
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveLocally}
+                disabled={isSubmitting}
+                title="Save to your device only — you control the status"
+                className="flex items-center gap-2 px-5 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={16} />
+                Save Locally
+              </button>
+              <button
+                onClick={handleSubmitToAdmin}
+                disabled={isSubmitting}
+                title="Submit lead to admin for processing"
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} />
+                    Submit to Admin
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>

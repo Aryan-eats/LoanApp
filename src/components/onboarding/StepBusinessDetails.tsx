@@ -37,14 +37,6 @@ const StepBusinessDetails: React.FC<StepBusinessDetailsProps> = ({
   const isDealer = ['used-car-dealer', 'property-dealer', 'builder'].includes(formData.partnerType);
   const isFreelancer = ['freelancer', 'sub-dsa'].includes(formData.partnerType);
 
-  const validatePan = (pan: string): string => {
-    if (!pan) return 'PAN number is required';
-    if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan.toUpperCase())) {
-      return 'Enter a valid PAN number (e.g., ABCDE1234F)';
-    }
-    return '';
-  };
-
   const validateGst = (gst: string): string => {
     if (!gst) return ''; // GST is optional
     if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gst.toUpperCase())) {
@@ -56,8 +48,8 @@ const StepBusinessDetails: React.FC<StepBusinessDetailsProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
-    // Auto-uppercase PAN and GST
-    if (name === 'panNumber' || name === 'gstNumber') {
+    // Auto-uppercase GST
+    if (name === 'gstNumber') {
       updateFormData({ [name]: value.toUpperCase() });
     } else {
       updateFormData({ [name]: value });
@@ -72,9 +64,6 @@ const StepBusinessDetails: React.FC<StepBusinessDetailsProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
-
-    // Validate PAN
-    newErrors.panNumber = validatePan(formData.panNumber);
 
     if (isDealer) {
       if (!formData.businessName.trim()) {
@@ -115,31 +104,6 @@ const StepBusinessDetails: React.FC<StepBusinessDetailsProps> = ({
             ? 'Tell us about your business' 
             : 'Share your experience and expectations'}
         </p>
-      </div>
-
-      {/* PAN Number - Common for all */}
-      <div>
-        <label htmlFor="panNumber" className="block text-sm font-medium text-gray-700 mb-1">
-          PAN Number <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          id="panNumber"
-          name="panNumber"
-          value={formData.panNumber}
-          onChange={handleChange}
-          maxLength={10}
-          className={`w-full px-4 py-2.5 border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-colors uppercase ${
-            errors.panNumber ? 'border-red-500' : 'border-gray-300'
-          }`}
-          placeholder="ABCDE1234F"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Required for commission payouts and compliance
-        </p>
-        {errors.panNumber && (
-          <p className="mt-1 text-sm text-red-500">{errors.panNumber}</p>
-        )}
       </div>
 
       {/* Dealer/Builder Fields */}

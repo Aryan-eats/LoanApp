@@ -35,12 +35,23 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
+      # Liveness: ping responds
+      # Memory guard: alert (but don't fail) when usage > 80% of maxmemory
+      test: |
+        redis-cli ping | grep -q PONG &&
+        redis-cli INFO memory | awk -F: '
+          /used_memory:/ { used=$$2+0 }
+          /maxmemory:/ { max=$$2+0 }
+          END { if (max>0 && used/max > 0.8) { print "WARN: Redis memory > 80%"; exit 1 } }'
+      interval: 15s
       timeout: 5s
-      retries: 5
-    command: redis-server --appendonly yes
+      retries: 3
+      start_period: 5s
+    command: redis-server /usr/local/etc/redis/redis.conf
 
   # ---------- Backend API (Production) ----------
   backend:
@@ -63,6 +74,9 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost}
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
       SYSTEM_PARTNER_ID: ${SYSTEM_PARTNER_ID:-}
+      # DB connection is over Docker-internal network — no TLS on the pg container.
+      # Set DB_SSL=false here; use DB_SSL=true (the default) for hosted DBs (RDS, Supabase, etc.)
+      DB_SSL: ${DB_SSL:-false}
       MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
       MSG91_TEMPLATE_ID: ${MSG91_TEMPLATE_ID:-}
       MSG91_SENDER_ID: ${MSG91_SENDER_ID:-GPSIND}

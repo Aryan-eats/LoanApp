@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Centralized Authentication Store
  * 
  * Manages auth state across the application using Zustand.
@@ -143,7 +143,7 @@ export const useAuthStore = create<AuthStore>()(
             isLoading: false,
           });
         } catch {
-          // Refresh failed — session is genuinely over
+          // Refresh failed - session is genuinely over
           clearTokens();
           set({
             user: null,

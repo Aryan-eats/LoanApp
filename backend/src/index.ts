@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import prisma from './config/prisma.js';
-import { isRedisAvailable, disconnectRedis } from './config/redis.js';
+import { isRedisAvailable, disconnectRedis, checkRedisMemory } from './config/redis.js';
 import { destroyR2Client } from './config/r2.js';
 import authRoutes from './routes/authRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
@@ -151,6 +151,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // Graceful shutdown handling
 let server: ReturnType<typeof app.listen>;
+let redisMemoryCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Shutting down gracefully...`);
@@ -164,6 +165,9 @@ const gracefulShutdown = async (signal: string) => {
   } catch (err) {
     console.error('Error closing HTTP server:', err);
   }
+
+  // Stop Redis memory check interval
+  if (redisMemoryCheckInterval) clearInterval(redisMemoryCheckInterval);
 
   // Disconnect Redis
   if (isRedisAvailable()) {
@@ -207,6 +211,16 @@ server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔒 CORS origins: ${getAllowedOrigins().join(', ')}`);
+
+  // Periodically check Redis memory usage and warn if > 80% of maxmemory.
+  // The first run is triggered inside the Redis 'connect' event handler in
+  // config/redis.ts so it only fires once the connection is confirmed ready.
+  if (isRedisAvailable()) {
+    redisMemoryCheckInterval = setInterval(
+      () => checkRedisMemory().catch((err) => console.error('Redis memory check failed:', err)),
+      5 * 60 * 1_000
+    ); // every 5 min
+  }
 });
 
 export default app;

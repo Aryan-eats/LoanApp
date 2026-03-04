@@ -93,3 +93,34 @@ export const deleteDocRequirement = async (id: string): Promise<DeleteResponse> 
   const response = await apiClient.delete(`/admin/docs/reqdoc/${id}`);
   return response.data;
 };
+
+// ---------------------------------------------------------------------------
+// Public (authenticated) endpoint – flat deduped list per loan code
+// ---------------------------------------------------------------------------
+
+export interface FlatDocRequirement {
+  id: string;
+  name: string;
+  description?: string | null;
+  mandatory: boolean;
+  acceptedFormats: string[];
+  maxSizeMB: number;
+}
+
+export type FlatDocsResponse = ApiResponse<FlatDocRequirement[]>;
+
+/**
+ * GET /api/documents/req-docs/flat?loanCode=xxx&lenderCode=yyy
+ * Returns a deduped flat list of document requirements for a loan code.
+ * When lenderCode is provided, returns bank-specific requirements.
+ * Accessible to all authenticated roles.
+ */
+export const getFlatDocRequirements = async (
+  loanCode: string,
+  lenderCode?: string,
+): Promise<FlatDocsResponse> => {
+  const params: Record<string, string> = { loanCode };
+  if (lenderCode) params.lenderCode = lenderCode;
+  const response = await apiClient.get('/documents/req-docs/flat', { params });
+  return response.data;
+};

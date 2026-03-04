@@ -1,237 +1,11 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import type { Lead, LeadDocument, LeadTimeline, LeadStatus } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import type { LeadStatus } from '@prisma/client';
+import prisma, { basePrisma } from '../config/prisma.js';
 import { cacheWrap, cacheDelete } from '../utils/cache.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
-
-// ---------------------------------------------------------------------------
-// Document requirements per loan type — used when transitioning to docs_pending
-// ---------------------------------------------------------------------------
-const KYC = ['PAN Card', 'Aadhaar Card', 'Address Proof', 'Passport-size Photograph'];
-const SALARIED = ['Salary Slips (Last 3 Months)', 'Bank Statement (Last 6 Months)', 'Form 16 / ITR (Last 2 Years)'];
-const SELF_EMP = ['ITR (Last 2 Years)', 'Bank Statement (Last 12 Months)', 'Balance Sheet & P&L (Last 2 Years)', 'GST Returns (Last 12 Months)'];
-const BUSINESS = ['Business Registration / Incorporation Certificate', 'GST Registration Certificate', 'Udyam / MSME Certificate'];
-const PROPERTY = ['Sale Deed / Title Deed', 'Encumbrance Certificate', 'Property Tax Receipt', 'Approved Building Plan / Layout'];
-
-const LOAN_DOCS_MAP: Record<string, string[]> = {
-  // ── Personal ──────────────────────────────────────────────────────────────
-  personal_loan:              [...KYC, ...SALARIED],
-  personal_loan_self_employed:[...KYC, ...SELF_EMP],
-  instant_personal_loan:      [...KYC, 'Bank Statement (Last 6 Months)', 'Income Proof'],
-  credit_line:                [...KYC, 'Bank Statement (Last 6 Months)', 'Income Proof'],
-  stdl:                       [...KYC, 'Bank Statement (Last 3 Months)'],
-  consumer_durable_loan:      [...KYC, 'Salary Slip / Income Proof'],
-  travel_loan:                [...KYC, 'Salary Slip (Last 3 Months)', 'Bank Statement (Last 3 Months)'],
-  wedding_loan:               [...KYC, 'Salary Slip (Last 3 Months)', 'Bank Statement (Last 6 Months)'],
-  medical_loan:               [...KYC, 'Salary Slip / Income Proof', 'Bank Statement (Last 3 Months)'],
-  professional_loan:          [...KYC, ...SELF_EMP, 'Professional Degree / Registration Certificate'],
-
-  // ── Business ──────────────────────────────────────────────────────────────
-  business_loan:              [...KYC, ...SELF_EMP, ...BUSINESS],
-  secured_business_loan:      [...KYC, ...SELF_EMP, ...BUSINESS, ...PROPERTY],
-  working_capital_loan:       [...KYC, ...SELF_EMP, ...BUSINESS, 'Stock Statement (Last 3 Months)'],
-  overdraft:                  [...KYC, ...SELF_EMP, ...BUSINESS],
-  cash_credit:                [...KYC, ...SELF_EMP, ...BUSINESS],
-  dropline_od:                [...KYC, ...SELF_EMP, ...BUSINESS],
-  invoice_financing:          [...KYC, ...BUSINESS, 'Invoices / Bills (Last 6 Months)', 'Bank Statement (Last 6 Months)'],
-  merchant_cash_advance:      [...KYC, 'POS / Payment Gateway Statement (Last 12 Months)', 'Bank Statement (Last 6 Months)'],
-  gst_business_loan:          [...KYC, ...BUSINESS, 'GST Returns (Last 12 Months)', 'Bank Statement (Last 12 Months)'],
-  startup_loan:               [...KYC, 'Business Plan / Pitch Deck', ...BUSINESS, 'Bank Statement (Last 6 Months)'],
-  machinery_loan:             [...KYC, ...SELF_EMP, ...BUSINESS, 'Machinery Quotation / Invoice'],
-  equipment_finance:          [...KYC, ...SELF_EMP, ...BUSINESS, 'Equipment Quotation / Invoice'],
-  supply_chain_finance:       [...KYC, ...BUSINESS, 'Purchase Orders', 'Invoices (Last 6 Months)'],
-  professional_business_loan: [...KYC, ...SELF_EMP, 'Professional Registration Certificate'],
-  franchise_loan:             [...KYC, ...SELF_EMP, 'Franchise Agreement', ...BUSINESS],
-
-  // ── Home ──────────────────────────────────────────────────────────────────
-  home_loan:                  [...KYC, ...SALARIED, ...PROPERTY, 'Builder Allotment Letter / Cost Breakup'],
-  home_construction_loan:     [...KYC, ...SALARIED, ...PROPERTY, 'Approved Building Plan', 'Construction Cost Estimate'],
-  home_renovation_loan:       [...KYC, ...SALARIED, 'Property Ownership Proof', 'Renovation Cost Estimate', 'Property Tax Receipt'],
-  home_extension_loan:        [...KYC, ...SALARIED, 'Existing Property Title Deed', 'Approved Extension Plan', 'Extension Cost Estimate'],
-  home_loan_bt:               [...KYC, ...SALARIED, ...PROPERTY, 'Existing Loan Sanction Letter', 'Loan Account Statement (24 Months)', 'Foreclosure / Outstanding Amount Letter'],
-  topup_home_loan:            [...KYC, ...SALARIED, 'Original Home Loan Sanction Letter', 'Loan Account Statement (24 Months)'],
-
-  // ── Property ──────────────────────────────────────────────────────────────
-  lap:                        [...KYC, ...SALARIED, ...PROPERTY],
-  lap_commercial:             [...KYC, ...SELF_EMP, ...BUSINESS, 'Commercial Property Documents', 'Property Valuation Report'],
-  plot_loan:                  [...KYC, ...SALARIED, 'Plot Sale Deed / Agreement', 'Chain of Title / Mutation Records', 'Survey Map / Khasra / Khatauni'],
-  lrd:                        [...KYC, ...SELF_EMP, 'Registered Lease Agreement', 'Tenant KYC', ...PROPERTY],
-  reverse_mortgage:           [...KYC, 'Property Ownership Proof', 'Property Tax Receipt', 'Encumbrance Certificate'],
-  industrial_property_loan:   [...KYC, ...SELF_EMP, ...BUSINESS, 'Industrial Property Documents'],
-
-  // ── Vehicle ───────────────────────────────────────────────────────────────
-  car_loan:                   [...KYC, ...SALARIED, 'Proforma Invoice from Dealer', 'Vehicle Quotation'],
-  used_car_loan:              [...KYC, ...SALARIED, 'Registration Certificate (RC Book)', 'Vehicle Insurance Policy', 'Vehicle Valuation Report', 'Form 29 & 30 (Transfer of Ownership)'],
-  two_wheeler_loan:           [...KYC, 'Salary Slip / Income Proof', 'Proforma Invoice / Quotation from Dealer'],
-  commercial_vehicle_loan:    [...KYC, ...SALARIED, 'Vehicle Quotation / Proforma Invoice', 'Driving License'],
-  tractor_loan:               [...KYC, 'Land Records', 'Income Proof', 'Tractor Quotation'],
-  fleet_finance:              [...KYC, ...SELF_EMP, ...BUSINESS, 'Fleet Details', 'Vehicle Quotations'],
-
-  // ── Gold & Securities ─────────────────────────────────────────────────────
-  gold_loan:                  [...KYC, 'Gold Purity Certificate (issued at branch)'],
-  sgb_loan:                   [...KYC, 'Sovereign Gold Bond Certificate'],
-  loan_against_fd:            [...KYC, 'FD Receipt / Certificate'],
-  loan_against_mf:            [...KYC, 'Mutual Fund Statement (Latest)', 'Demat Account Statement'],
-  loan_against_shares:        [...KYC, 'Demat Account Statement', 'List of Shares to be Pledged'],
-  loan_against_insurance:     [...KYC, 'Insurance Policy Document', 'Premium Payment Receipts'],
-
-  // ── Education ─────────────────────────────────────────────────────────────
-  education_loan:             [...KYC, 'Admission / Offer Letter from Institution', 'Official Fee Structure', 'Academic Records (10th, 12th, Last Exam)', ...SALARIED],
-  foreign_education_loan:     [...KYC, 'Admission Letter (Foreign University)', 'Visa / I-20 / CAS Letter', 'Official Fee Structure', 'Academic Records', ...SALARIED],
-  secured_education_loan:     [...KYC, 'Admission Letter', 'Official Fee Structure', 'Academic Records', ...SALARIED, ...PROPERTY],
-  unsecured_education_loan:   [...KYC, 'Admission Letter', 'Official Fee Structure', 'Academic Records', ...SALARIED],
-
-  // ── Government Schemes ────────────────────────────────────────────────────
-  mudra_shishu:               [...KYC, 'Mudra Loan Application Form', 'Business Proof', 'Bank Statement (Last 6 Months)'],
-  mudra_kishor:               [...KYC, ...BUSINESS, 'Mudra Loan Application Form', 'Bank Statement (Last 6 Months)', 'ITR (Last 1-2 Years)'],
-  mudra_tarun:                [...KYC, ...BUSINESS, 'Mudra Loan Application Form', 'Bank Statement (Last 12 Months)', ...SELF_EMP],
-  pmegp:                      [...KYC, ...BUSINESS, 'PMEGP Application Form', 'Project Report', 'Bank Statement (Last 6 Months)'],
-  standup_india:              [...KYC, ...BUSINESS, 'Standup India Application Form', 'Project Report', 'Bank Statement (Last 12 Months)'],
-  pmay_home_loan:             [...KYC, ...SALARIED, ...PROPERTY, 'Self-declaration of No Pucca House', 'Income Certificate (EWS/LIG/MIG)', 'Aadhaar-linked Mobile Declaration'],
-  cgtmse:                     [...KYC, ...SELF_EMP, ...BUSINESS, 'Project Report', 'Bank Statement (Last 12 Months)'],
-
-  // ── Agriculture ───────────────────────────────────────────────────────────
-  kcc:                        [...KYC, 'Land Records (Khasra / Khatauni)', 'Crop Details', 'Bank Statement (Last 6 Months)'],
-  crop_loan:                  [...KYC, 'Land Records', 'Crop Details / Sowing Certificate'],
-  seed_fertilizer_loan:       [...KYC, 'Land Records', 'Quotation for Seeds / Fertilizers'],
-  warehouse_receipt_finance:  [...KYC, 'Warehouse Receipt', 'Commodity Details'],
-  dairy_poultry_loan:         [...KYC, 'Land Records', 'Income Proof', 'Project Report for Farm'],
-  farm_equipment_loan:        [...KYC, 'Land Records', 'Equipment Quotation / Invoice'],
-
-  // ── Consumer ──────────────────────────────────────────────────────────────
-  emi_card_loan:              [...KYC, 'Salary Slip / Income Proof'],
-  mobile_electronics_emi:     [...KYC, 'Salary Slip / Income Proof'],
-  furniture_loan:             [...KYC, 'Salary Slip / Income Proof', 'Quotation from Store'],
-  lifestyle_loan:             [...KYC, 'Salary Slip / Income Proof'],
-
-  // ── Short-Term ────────────────────────────────────────────────────────────
-  advance_salary_loan:        [...KYC, 'Salary Slip (Last 2 Months)', 'Bank Statement (Last 3 Months)', 'Employment Letter'],
-  payday_loan:                [...KYC, 'Salary Slip (Last Month)', 'Bank Statement (Last Month)'],
-  revolving_loc:              [...KYC, 'Bank Statement (Last 6 Months)', 'Income Proof'],
-  emergency_loan:             [...KYC, 'Income Proof', 'Bank Statement (Last 3 Months)'],
-
-  // ── Real Estate / Builder ─────────────────────────────────────────────────
-  builder_finance:            [...KYC, ...BUSINESS, ...SELF_EMP, 'RERA Registration Certificate', 'Approved Layout Plan', 'Land Title Deed', 'Detailed Project Report', 'Construction Cost Estimate'],
-  construction_finance:       [...KYC, ...BUSINESS, ...SELF_EMP, 'Land Ownership Documents', 'Building Sanction / Municipal Approval', 'Construction Cost Estimate & Plan'],
-  plot_construction_loan:     [...KYC, ...SALARIED, 'Plot Sale Deed / Agreement', 'Approved Building Plan', 'Construction Cost Estimate'],
-  bridge_loan:                [...KYC, ...SELF_EMP, ...PROPERTY, 'Existing Property Sale Agreement'],
-
-  // ── Specialized ───────────────────────────────────────────────────────────
-  crypto_loan:                [...KYC, 'Crypto Wallet Statement', 'Proof of Ownership of Crypto Assets'],
-  ev_loan:                    [...KYC, ...SALARIED, 'EV Proforma Invoice (OEM / Dealer)', 'FAME-II Subsidy Eligibility Document (if applicable)'],
-  green_home_loan:            [...KYC, ...SALARIED, ...PROPERTY, 'Green Building / BEE Rating Certificate', 'Solar / Energy-efficient System Plan'],
-  solar_panel_loan:           [...KYC, 'Income Proof', 'Solar System Quotation from Empanelled Vendor', 'Property Ownership Proof / NOC from Landlord'],
-  medical_equipment_loan:     [...KYC, 'Professional Registration Certificate', 'Equipment Quotation / Invoice', ...SELF_EMP],
-
-  // ── Corporate ─────────────────────────────────────────────────────────────
-  term_loan:                  [...KYC, ...SELF_EMP, ...BUSINESS, 'Project Report / Business Plan'],
-  project_finance:            [...KYC, ...BUSINESS, ...SELF_EMP, 'Detailed Project Report (DPR)', 'Environmental Clearance'],
-  working_capital_large:      [...KYC, ...BUSINESS, ...SELF_EMP, 'Stock Statement', 'Debtors & Creditors Statement'],
-  ecb:                        [...KYC, ...BUSINESS, ...SELF_EMP, 'RBI Approval / ECB Filing Documents'],
-  cash_flow_lending:          [...KYC, ...SELF_EMP, ...BUSINESS, 'Projected Cash Flow Statement'],
-  asset_backed_finance:       [...KYC, ...SELF_EMP, ...BUSINESS, 'Asset Valuation Report', 'Asset Ownership Proof'],
-};
-
-/** Returns the required document type names for a given loan type */
-const getRequiredDocTypes = (loanType: string): string[] => {
-  return LOAN_DOCS_MAP[loanType] ?? [
-    ...KYC,
-    'Bank Statement (Last 6 Months)',
-    'Income Proof (Salary Slip / ITR)',
-  ];
-};
-
-type LeadWithRelations = Lead & {
-  documents: LeadDocument[];
-  timeline: LeadTimeline[];
-};
-
-const formatLeadResponse = (lead: LeadWithRelations) => {
-  const eligibilityResult =
-    lead.isEligible !== null ||
-    lead.maxLoanAmount !== null ||
-    lead.minLoanAmount !== null ||
-    lead.estimatedEMI !== null ||
-    lead.eligibilityCheckedAt !== null
-      ? {
-          isEligible: lead.isEligible ?? false,
-          maxLoanAmount: lead.maxLoanAmount ? Number(lead.maxLoanAmount) : undefined,
-          minLoanAmount: lead.minLoanAmount ? Number(lead.minLoanAmount) : undefined,
-          estimatedEMI: lead.estimatedEMI ? Number(lead.estimatedEMI) : undefined,
-          checkedAt: lead.eligibilityCheckedAt?.toISOString(),
-        }
-      : undefined;
-
-  const commission =
-    lead.commissionAmount !== null ||
-    lead.commissionRate !== null ||
-    lead.commissionStatus !== null ||
-    lead.commissionPaidAt !== null
-      ? {
-          amount: lead.commissionAmount ? Number(lead.commissionAmount) : undefined,
-          rate: lead.commissionRate ? Number(lead.commissionRate) : undefined,
-          status: lead.commissionStatus || undefined,
-          paidAt: lead.commissionPaidAt?.toISOString(),
-        }
-      : undefined;
-
-  return {
-    id: lead.id,
-    client: {
-      id: lead.id,
-      fullName: lead.clientFullName || 'Unknown',
-      phone: lead.clientPhone || '',
-      email: lead.clientEmail || '',
-      dateOfBirth: lead.clientDateOfBirth || undefined,
-      panNumber: lead.clientPanNumber || undefined,
-      aadhaarNumber: lead.clientAadhaar || undefined,
-      employmentType: lead.clientEmployment || undefined,
-      monthlyIncome: lead.clientIncome ? Number(lead.clientIncome) : undefined,
-      companyName: lead.clientCompany || undefined,
-      workExperience: lead.clientExperience || undefined,
-      city: lead.clientCity || undefined,
-      pincode: lead.clientPincode || undefined,
-    },
-    loanType: lead.loanType,
-    loanAmount: Number(lead.loanAmount),
-    tenure: lead.tenure || undefined,
-    sanctionedAmount: lead.sanctionedAmount ? Number(lead.sanctionedAmount) : undefined,
-    disbursedAmount: lead.disbursedAmount ? Number(lead.disbursedAmount) : undefined,
-    interestRate: lead.interestRate ? Number(lead.interestRate) : undefined,
-    emi: lead.emi ? Number(lead.emi) : undefined,
-    status: lead.status,
-    bankAssigned: lead.bankAssigned || undefined,
-    bankLogo: lead.bankLogo || undefined,
-    preferredBank: lead.preferredBank || undefined,
-    partnerId: lead.partnerId || 'SYSTEM',
-    partnerName: lead.partnerName || 'Website Direct',
-    documents: (lead.documents || []).map((doc: LeadDocument) => ({
-      id: doc.id,
-      type: doc.type,
-      fileName: doc.fileName,
-      fileSize: doc.fileSize || undefined,
-      fileUrl: doc.fileUrl || undefined,
-      mimeType: doc.mimeType || undefined,
-      uploadedBy: doc.uploadedBy || undefined,
-      r2ObjectKey: doc.r2ObjectKey || undefined,
-      uploadedAt: doc.uploadedAt?.toISOString(),
-      status: doc.status,
-      rejectionReason: doc.rejectionReason || undefined,
-    })),
-    timeline: (lead.timeline || []).map((event: LeadTimeline) => ({
-      id: event.id,
-      status: event.status,
-      timestamp: event.timestamp?.toISOString(),
-      note: event.note || undefined,
-      updatedBy: event.updatedBy,
-    })),
-    eligibilityResult,
-    commission,
-    createdAt: lead.createdAt?.toISOString().split('T')[0] || '',
-    updatedAt: lead.updatedAt?.toISOString().split('T')[0] || '',
-  };
-};
+import { getRequiredDocTypes } from '../data/loanDocsMap.js';
+import { formatLeadResponse } from '../utils/leadHelpers.js';
 
 /**
  * @desc    Create a new lead
@@ -246,20 +20,9 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
     }
 
     const {
-      fullName,
-      phone,
-      email,
-      dateOfBirth,
-      panNumber,
-      employmentType,
-      monthlyIncome,
-      companyName,
-      workExperience,
-      city,
-      pincode,
-      loanType,
-      loanAmount,
-      tenure,
+      fullName, phone, email, dateOfBirth, panNumber,
+      employmentType, monthlyIncome, companyName,
+      workExperience, city, pincode, loanType, loanAmount, tenure,
     } = req.body;
 
     const firstName = req.user.firstName ?? '';
@@ -314,7 +77,6 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       metadata: { loanType: lead.loanType, loanAmount: Number(lead.loanAmount) },
     });
 
-    // Invalidate lead stats cache for this partner and the admin-wide view
     await cacheDelete(`lead:stats:${req.user.id}`, 'lead:stats:all');
 
     res.status(201).json({
@@ -341,17 +103,9 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     }
 
     const where: Record<string, unknown> = {};
-    if (req.user.role === 'partner') {
-      where.partnerId = req.user.id;
-    }
-
-    if (req.query.status) {
-      where.status = req.query.status;
-    }
-
-    if (req.query.loanType) {
-      where.loanType = req.query.loanType;
-    }
+    if (req.user.role === 'partner') where.partnerId = req.user.id;
+    if (req.query.status) where.status = req.query.status;
+    if (req.query.loanType) where.loanType = req.query.loanType;
 
     if (req.query.search) {
       const search = req.query.search as string;
@@ -366,14 +120,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
 
-    const allowedSortFields = new Set([
-      'createdAt',
-      'updatedAt',
-      'loanAmount',
-      'status',
-      'loanType',
-    ]);
-
+    const allowedSortFields = new Set(['createdAt', 'updatedAt', 'loanAmount', 'status', 'loanType']);
     const sortField = allowedSortFields.has(req.query.sortBy as string)
       ? (req.query.sortBy as string)
       : 'createdAt';
@@ -394,12 +141,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
       success: true,
       data: {
         leads: leads.map(formatLeadResponse),
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       },
     });
   } catch (error) {
@@ -474,32 +216,20 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
     const partnerAllowedFields = ['loanAmount', 'tenure'];
     const adminAllowedFields = [
       ...partnerAllowedFields,
-      'status',
-      'bankAssigned',
-      'bankLogo',
-      'sanctionedAmount',
-      'disbursedAmount',
-      'interestRate',
-      'emi',
-      'internalNotes',
+      'status', 'bankAssigned', 'bankLogo',
+      'sanctionedAmount', 'disbursedAmount', 'interestRate', 'emi', 'internalNotes',
     ];
-
     const allowedFields = req.user.role === 'admin' ? adminAllowedFields : partnerAllowedFields;
     const updateData: Record<string, unknown> = {};
 
     for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
+      if (req.body[field] !== undefined) updateData[field] = req.body[field];
     }
 
     const statusChanged = updateData.status && updateData.status !== lead.status;
 
     await prisma.$transaction(async (tx) => {
-      await tx.lead.update({
-        where: { id: leadId },
-        data: updateData,
-      });
+      await tx.lead.update({ where: { id: leadId }, data: updateData });
 
       if (statusChanged) {
         const newStatus = updateData.status as LeadStatus;
@@ -535,7 +265,6 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    // Invalidate lead stats for the lead's owner and admin-wide view
     await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({
@@ -567,7 +296,6 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
     }
 
     const leadId = req.params.id as string;
-
     const leadToDelete = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!leadToDelete) {
       res.status(404).json({ success: false, message: 'Lead not found' });
@@ -596,13 +324,9 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    // Invalidate lead stats for the lead's owner and admin-wide view
     await cacheDelete(`lead:stats:${leadToDelete.partnerId}`, 'lead:stats:all');
 
-    res.status(200).json({
-      success: true,
-      message: 'Lead deleted successfully',
-    });
+    res.status(200).json({ success: true, message: 'Lead deleted successfully' });
   } catch (error) {
     console.error('Delete lead error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -631,17 +355,13 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
       async () => {
         const [statusCounts, loanTypeCounts] = await Promise.all([
           prisma.lead.groupBy({
-            by: ['status'],
-            where,
-            _count: { _all: true },
-            _sum: { loanAmount: true },
+            by: ['status'], where,
+            _count: { _all: true }, _sum: { loanAmount: true },
           }),
           prisma.lead.groupBy({
-            by: ['loanType'],
-            where,
+            by: ['loanType'], where,
             _count: { _all: true },
-            orderBy: { _count: { loanType: 'desc' } },
-            take: 10,
+            orderBy: { _count: { loanType: 'desc' } }, take: 10,
           }),
         ]);
 
@@ -654,24 +374,22 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
         const stats: Record<string, number> = {};
         let totalLeads = 0;
         let totalAmount = 0;
-        statusCounts.forEach((item: any) => {
+        statusCounts.forEach((item) => {
           stats[item.status] = item._count._all;
           totalLeads += item._count._all;
           totalAmount += Number(item._sum.loanAmount || 0);
         });
 
         return {
-          total: totalLeads,
-          totalAmount,
+          total: totalLeads, totalAmount,
           byStatus: stats,
-          byLoanType: loanTypeCounts.map((item: any) => ({
-            type: item.loanType,
-            count: item._count._all,
+          byLoanType: loanTypeCounts.map((item) => ({
+            type: item.loanType, count: item._count._all,
           })),
           recentLeads,
         };
       },
-      30 // 30-second TTL — stats are near-real-time
+      30 // 30-second TTL
     );
 
     res.status(200).json({ success: true, data: { stats: data } });
@@ -701,14 +419,8 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
     }
 
     const validStatuses: LeadStatus[] = [
-      'draft',
-      'submitted',
-      'docs_pending',
-      'docs_uploaded',
-      'bank_processing',
-      'approved',
-      'disbursed',
-      'rejected',
+      'draft', 'submitted', 'docs_pending', 'docs_uploaded',
+      'bank_processing', 'approved', 'disbursed', 'rejected',
     ];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ success: false, message: 'Invalid status' });
@@ -737,35 +449,96 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.lead.update({
-        where: { id: leadId },
-        data: { status },
+    // Block docs_pending unless a bank has been assigned
+    if (status === 'docs_pending' && !lead.bankAssigned) {
+      res.status(400).json({
+        success: false,
+        message: 'Cannot move to docs_pending: a bank must be assigned to this lead first',
       });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({ where: { id: leadId }, data: { status } });
 
       await tx.leadTimeline.create({
         data: {
-          leadId,
-          status,
-          timestamp: new Date(),
+          leadId, status, timestamp: new Date(),
           updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
           note: note || `Status updated to ${status}`,
         },
       });
 
       // When transitioning to docs_pending, auto-create required document slots
-      // if the lead doesn't already have documents
+      // using the assigned bank's document requirements
       if (status === 'docs_pending') {
         const existingDocCount = await tx.leadDocument.count({ where: { leadId } });
         if (existingDocCount === 0) {
-          const requiredDocs = getRequiredDocTypes(lead.loanType);
+          let requiredDocs: string[] = [];
+          const dedupeDocNames = (rows: Array<{ docId: string; docName: string }>) => {
+            const seen = new Set<string>();
+            return rows
+              .filter((r) => {
+                if (seen.has(r.docId)) return false;
+                seen.add(r.docId);
+                return true;
+              })
+              .map((r) => r.docName);
+          };
+
+          // Prefer bankCode. For legacy/manual rows where only bankAssigned exists,
+          // resolve the code by bank name before fetching requirements.
+          let bankCodeToUse = lead.bankCode || '';
+          if (!bankCodeToUse && lead.bankAssigned) {
+            const matchedBank = await tx.bank.findFirst({
+              where: { name: { equals: lead.bankAssigned, mode: 'insensitive' } },
+              select: { code: true },
+            });
+            bankCodeToUse = matchedBank?.code || '';
+
+            // Persist resolved code so future lookups stay bank-specific.
+            if (bankCodeToUse) {
+              await tx.lead.update({
+                where: { id: leadId },
+                data: { bankCode: bankCodeToUse },
+              });
+            }
+          }
+
+          if (bankCodeToUse) {
+            const bankDocs = await tx.lenderDocRequirement.findMany({
+              where: { lenderCode: bankCodeToUse, loanCode: lead.loanType },
+              orderBy: [{ mandatory: 'desc' }, { sortOrder: 'asc' }],
+            });
+
+            if (bankDocs.length > 0) {
+              requiredDocs = dedupeDocNames(bankDocs);
+            }
+          }
+
+          // Fallback: try lenderName match when code mapping is missing/inconsistent.
+          if (requiredDocs.length === 0 && lead.bankAssigned) {
+            const bankDocsByName = await tx.lenderDocRequirement.findMany({
+              where: {
+                lenderName: { equals: lead.bankAssigned, mode: 'insensitive' },
+                loanCode: lead.loanType,
+              },
+              orderBy: [{ mandatory: 'desc' }, { sortOrder: 'asc' }],
+            });
+            if (bankDocsByName.length > 0) {
+              requiredDocs = dedupeDocNames(bankDocsByName);
+            }
+          }
+
+          // Fall back to static map if no bank-specific docs found
+          if (requiredDocs.length === 0) {
+            requiredDocs = getRequiredDocTypes(lead.loanType);
+          }
+
           await tx.leadDocument.createMany({
             data: requiredDocs.map((docType) => ({
-              leadId,
-              type: docType,
-              fileName: '',
-              status: 'pending' as const,
-              uploadedBy: 'System',
+              leadId, type: docType, fileName: '',
+              status: 'pending' as const, uploadedBy: 'System',
             })),
           });
         }
@@ -784,7 +557,6 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
       metadata: { previousStatus: lead.status, newStatus: status, note },
     });
 
-    // Invalidate lead stats for this lead's owner and admin-wide view
     await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({
@@ -815,11 +587,21 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const { bankName, bankLogo, note } = req.body;
+    const { bankName, bankCode, bankLogo, note } = req.body;
 
     if (!bankName) {
       res.status(400).json({ success: false, message: 'Bank name is required' });
       return;
+    }
+
+    // Resolve bank code: prefer explicit bankCode, otherwise look up by name
+    let resolvedBankCode = typeof bankCode === 'string' ? bankCode : '';
+    if (!resolvedBankCode) {
+      const bank = await basePrisma.bank.findFirst({
+        where: { name: bankName },
+        select: { code: true },
+      });
+      resolvedBankCode = bank?.code || '';
     }
 
     const leadId = req.params.id as string;
@@ -853,6 +635,7 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
         where: { id: leadId },
         data: {
           bankAssigned: bankName,
+          bankCode: resolvedBankCode || null,
           bankLogo: bankLogo || null,
           status: newStatus || lead.status,
         },
@@ -861,9 +644,7 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       for (const entry of timelineEntries) {
         await tx.leadTimeline.create({
           data: {
-            leadId,
-            status: entry.status,
-            timestamp: new Date(),
+            leadId, status: entry.status, timestamp: new Date(),
             updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
             note: entry.note,
           },
@@ -883,7 +664,6 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       metadata: { bankName, previousBank: lead.bankAssigned || null },
     });
 
-    // Assigning a bank may change the lead's status — invalidate stats
     await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
 
     res.status(200).json({

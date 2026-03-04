@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Seed script – populates lender_doc_requirements from static DocsReq data.
  * Safe to run multiple times (upsert).
  *
@@ -14,7 +14,7 @@ dotenv.config();
 
 import { basePrisma as prisma } from '../config/prisma.js';
 
-// ── Bank / NBFC catalogue (mirrors mockBanks.ts) ─────────────────────────────
+// -- Bank / NBFC catalogue (mirrors mockBanks.ts) -----------------------------
 const banks = [
   {
     code: 'HDFC',
@@ -66,7 +66,7 @@ const banks = [
   },
 ];
 
-// ── Reusable document blocks ──────────────────────────────────────────────────
+// -- Reusable document blocks --------------------------------------------------
 const kycDocs = [
   { id: 'aadhaar',      name: 'Aadhaar Card',                   description: 'Front and back copy',                                                   mandatory: true,  formats: ['pdf', 'jpg', 'png'], mb: 5  },
   { id: 'pan',          name: 'PAN Card',                        description: undefined,                                                               mandatory: true,  formats: ['pdf', 'jpg', 'png'], mb: 5  },
@@ -103,7 +103,7 @@ const residentialPropertyDocs = [
 
 type DocEntry = { id: string; name: string; description?: string; mandatory: boolean; formats: string[]; mb: number };
 
-// ── Loan → docs mapping ───────────────────────────────────────────────────────
+// -- Loan → docs mapping -------------------------------------------------------
 function getDocsForLoan(loanCode: string): DocEntry[] {
   const seen = new Set<string>();
   const add = (docs: DocEntry[]) => docs.filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true; });
@@ -260,7 +260,7 @@ function getDocsForLoan(loanCode: string): DocEntry[] {
   }
 }
 
-// ── Main seed ─────────────────────────────────────────────────────────────────
+// -- Main seed -----------------------------------------------------------------
 async function seed() {
   let total = 0;
 

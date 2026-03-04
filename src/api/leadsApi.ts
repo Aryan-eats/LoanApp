@@ -143,10 +143,11 @@ export const updateLeadStatus = async (
 export const assignBank = async (
   id: string,
   bankName: string,
+  bankCode?: string,
   bankLogo?: string,
   note?: string
 ): Promise<ApiResponse<{ lead: Lead }>> => {
-  const response = await apiClient.patch(`/admin/leads/${id}/assign-bank`, { bankName, bankLogo, note });
+  const response = await apiClient.patch(`/admin/leads/${id}/assign-bank`, { bankName, bankCode, bankLogo, note });
   return response.data;
 };
 

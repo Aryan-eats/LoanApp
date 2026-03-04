@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudflare R2 integration tests.
  *
  * These tests exercise the R2 document storage service against the live
@@ -33,7 +33,7 @@ import {
   sanitiseFilename,
 } from '../services/documentService.js';
 
-// ─── constants ─────────────────────────────────────────────
+// --- constants ---------------------------------------------
 
 const TEST_USER_ID = `__test_user_r2__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const TEST_FILENAME = 'test-document.pdf';
@@ -52,7 +52,7 @@ const isSafeR2Target = (): boolean => {
 
 const describeR2 = isSafeR2Target() ? describe : describe.skip;
 
-// ─── teardown ──────────────────────────────────────────────
+// --- teardown ----------------------------------------------
 
 afterAll(async () => {
   if (!isSafeR2Target()) return;
@@ -61,13 +61,13 @@ afterAll(async () => {
     try {
       await deleteDocument(uploadedKey);
     } catch {
-      // ignore – may already have been deleted by tests
+      // ignore - may already have been deleted by tests
     }
   }
   destroyR2Client();
 });
 
-// ─── helper tests ──────────────────────────────────────────
+// --- helper tests ------------------------------------------
 
 describeR2('R2 helpers', () => {
   it('buildObjectKey returns correct path', () => {
@@ -91,7 +91,7 @@ describeR2('R2 helpers', () => {
   });
 });
 
-// ─── R2 connection tests ───────────────────────────────────
+// --- R2 connection tests -----------------------------------
 
 describeR2('R2 connection', () => {
   it('creates an R2 client without throwing', () => {
@@ -118,7 +118,7 @@ describeR2('R2 connection', () => {
   });
 });
 
-// ─── Document CRUD tests ──────────────────────────────────
+// --- Document CRUD tests ----------------------------------
 
 describeR2('R2 document operations', () => {
   it('uploads a document', async () => {

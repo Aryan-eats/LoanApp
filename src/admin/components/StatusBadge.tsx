@@ -1,5 +1,6 @@
-import React from 'react';
 import type { ApplicationStatus, LeadStatus, DocumentStatus, CommissionStatus } from '../types/admin';
+import SharedStatusBadge from '../../components/shared/StatusBadge';
+import type { StatusBadgeConfig } from '../../components/shared/StatusBadge';
 
 type StatusType = ApplicationStatus | LeadStatus | DocumentStatus | CommissionStatus | 'active' | 'inactive' | 'uploaded' | 'processing' | 'draft';
 
@@ -8,7 +9,7 @@ interface StatusBadgeProps {
   size?: 'sm' | 'md';
 }
 
-const statusConfig: Record<StatusType, { label: string; className: string }> = {
+const statusConfig: Record<StatusType, StatusBadgeConfig> = {
   // Application Status
   pending: { label: 'Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   approved: { label: 'Approved', className: 'bg-green-50 text-green-700 border-green-200' },
@@ -38,15 +39,15 @@ const statusConfig: Record<StatusType, { label: string; className: string }> = {
   inactive: { label: 'Inactive', className: 'bg-gray-100 text-gray-700 border-gray-300' },
 };
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' }) => {
-  const config = statusConfig[status] || { label: status, className: 'bg-gray-100 text-gray-700 border-gray-300' };
-  
-  const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs';
-
+const StatusBadge = ({ status, size = 'md' }: StatusBadgeProps) => {
   return (
-    <span className={`inline-flex items-center font-medium rounded-full border ${config.className} ${sizeClasses}`}>
-      {config.label}
-    </span>
+    <SharedStatusBadge
+      status={status}
+      size={size}
+      config={statusConfig}
+      withBorder
+      defaultClassName="bg-gray-100 text-gray-700 border-gray-300"
+    />
   );
 };
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Documents API Client
  *
  * API functions for document upload and download.
@@ -144,7 +144,7 @@ export const bulkUpdateDocumentStatus = async (
   return response.data;
 };
 
-// ── Lender Doc Requirements (partner-accessible) ─────────────────────────────
+// -- Lender Doc Requirements (partner-accessible) -----------------------------
 
 export interface ReqDocRow {
   id: string;

@@ -33,7 +33,7 @@ const getLoanTypeLabel = (loanType: string): string => {
     .join(' ');
 };
 
-const getNextStatuses = (currentStatus: LeadStatus): LeadStatus[] => {
+const getNextStatuses = (currentStatus: LeadStatus, lead?: { bankAssigned?: string }): LeadStatus[] => {
   const statusFlow: Record<LeadStatus, LeadStatus[]> = {
     draft: ['submitted', 'rejected'],
     submitted: ['docs_pending', 'rejected'],
@@ -44,14 +44,19 @@ const getNextStatuses = (currentStatus: LeadStatus): LeadStatus[] => {
     disbursed: [],
     rejected: ['submitted'],
   };
-  return statusFlow[currentStatus] || [];
+  const next = statusFlow[currentStatus] || [];
+  // Block docs_pending unless a bank has been assigned
+  if (!lead?.bankAssigned) {
+    return next.filter((s) => s !== 'docs_pending');
+  }
+  return next;
 };
 
 interface LeadDetailsModalProps {
   lead: Lead;
   onClose: () => void;
   onStatusUpdate: (leadId: string, status: LeadStatus, note?: string) => void;
-  onBankAssign: (leadId: string, bankName: string) => void;
+  onBankAssign: (leadId: string, bankName: string, bankCode?: string) => void;
 }
 
 const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onStatusUpdate, onBankAssign }) => {
@@ -137,7 +142,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
             {['overview', 'documents', 'bank', 'timeline'].map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab as any)}
+                onClick={() => setActiveTab(tab as 'overview' | 'documents' | 'bank' | 'timeline')}
                 className={`py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab
                     ? 'border-gray-900 text-gray-900'
@@ -202,10 +207,17 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                   <StatusBadge status={lead.status} />
                 </div>
 
-                {getNextStatuses(lead.status).length > 0 && (
+                {getNextStatuses(lead.status, lead).length > 0 && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <h4 className="text-sm font-medium text-gray-700 mb-3">Update Status</h4>
                     
+                    {/* Hint when docs_pending is blocked */}
+                    {lead.status === 'submitted' && !lead.bankAssigned && (
+                      <p className="mb-3 text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                        Assign a bank first to enable "Docs Pending" status
+                      </p>
+                    )}
+
                     <div className="mb-3">
                       <input
                         type="text"
@@ -217,7 +229,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      {getNextStatuses(lead.status).map((status) => (
+                      {getNextStatuses(lead.status, lead).map((status) => (
                         <button
                           key={status}
                           onClick={() => {
@@ -276,11 +288,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                          <button
                            type="button"
                            key={bank.id}
-                           onClick={() => !isCurrentBank && onBankAssign(lead.id, bank.name)}
+                           onClick={() => !isCurrentBank && onBankAssign(lead.id, bank.name, bank.code)}
                            onKeyDown={(e) => {
                              if ((e.key === 'Enter' || e.key === ' ') && !isCurrentBank) {
                                e.preventDefault();
-                               onBankAssign(lead.id, bank.name);
+                               onBankAssign(lead.id, bank.name, bank.code);
                              }
                            }}
                            tabIndex={isCurrentBank ? -1 : 0}

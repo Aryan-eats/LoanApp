@@ -1,4 +1,4 @@
-// Pure data & helpers — no React, no MUI icons.
+﻿// Pure data & helpers - no React, no MUI icons.
 // Import from here when you only need types, labels, or lookups.
 
 export type LoanCategory =

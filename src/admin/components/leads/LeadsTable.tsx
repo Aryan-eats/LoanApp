@@ -36,7 +36,7 @@ const getLoanTypeLabel = (loanType: string): string => {
 };
 
 // Status flow logic specific to the table actions
-const getNextStatuses = (currentStatus: LeadStatus): LeadStatus[] => {
+const getNextStatuses = (currentStatus: LeadStatus, lead?: { bankAssigned?: string }): LeadStatus[] => {
   const statusFlow: Record<LeadStatus, LeadStatus[]> = {
     draft: ['submitted', 'rejected'],
     submitted: ['docs_pending', 'rejected'],
@@ -47,7 +47,12 @@ const getNextStatuses = (currentStatus: LeadStatus): LeadStatus[] => {
     disbursed: [],
     rejected: ['submitted'], // Allow reactivation
   };
-  return statusFlow[currentStatus] || [];
+  const next = statusFlow[currentStatus] || [];
+  // Block docs_pending unless a bank has been assigned
+  if (!lead?.bankAssigned) {
+    return next.filter((s) => s !== 'docs_pending');
+  }
+  return next;
 };
 
 interface LeadsTableProps {
@@ -119,14 +124,20 @@ const LeadsTable: React.FC<LeadsTableProps> = ({ leads, onLeadClick, onStatusUpd
                       className="flex items-center gap-1 group"
                     >
                       <StatusBadge status={lead.status} size="sm" />
-                      {getNextStatuses(lead.status).length > 0 && (
+                      {getNextStatuses(lead.status, lead).length > 0 && (
                         <ChevronDown size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
                       )}
                     </button>
-                    {showStatusDropdown === lead.id && getNextStatuses(lead.status).length > 0 && (
+                    {showStatusDropdown === lead.id && getNextStatuses(lead.status, lead).length > 0 && (
                       <div className="absolute z-20 top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
                         <p className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase">Update Status</p>
-                        {getNextStatuses(lead.status).map((status) => (
+                        {/* Show hint when docs_pending is blocked due to no bank */}
+                        {lead.status === 'submitted' && !lead.bankAssigned && (
+                          <p className="px-3 py-1.5 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
+                            Assign a bank to enable Docs Pending
+                          </p>
+                        )}
+                        {getNextStatuses(lead.status, lead).map((status) => (
                           <button
                             key={status}
                             onClick={(e) => {

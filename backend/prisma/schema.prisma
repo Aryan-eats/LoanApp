@@ -58,6 +58,7 @@ model User {
   activeSessions         ActiveSession[]
   auditLogs              AuditLog[]
   leads                  Lead[]
+  partnerData            PartnerData[]
   passwordHistory        PasswordHistory[]
 
   @@index([role])
@@ -115,6 +116,7 @@ model Lead {
   emi                  Decimal?          @db.Decimal(15, 2)
   status               LeadStatus        @default(submitted)
   bankAssigned         String?           @map("bank_assigned")
+  bankCode             String?           @map("bank_code")
   bankLogo             String?           @map("bank_logo")
   preferredBank        String?           @map("preferred_bank")
   partnerId            String?           @map("partner_id")
@@ -300,6 +302,55 @@ model BankCommissionRate {
   @@unique([bankId, loanType])
   @@index([bankId])
   @@map("bank_commission_rates")
+}
+
+model PartnerData {
+  id               String          @id @default(uuid())
+  partnerId        String          @map("partner_id")
+  localStatus      LocalLeadStatus @default(new) @map("local_status")
+  notes            String?
+  // Client info
+  fullName         String          @map("full_name")
+  phone            String
+  email            String?
+  dateOfBirth      String?         @map("date_of_birth")
+  gender           String?
+  panNumber        String?         @map("pan_number")
+  employmentType   String?         @map("employment_type")
+  monthlyIncome    Decimal?        @map("monthly_income") @db.Decimal(15, 2)
+  companyName      String?         @map("company_name")
+  designation      String?
+  workExperience   String?         @map("work_experience")
+  city             String?
+  pincode          String?
+  state            String?
+  currentAddress   String?         @map("current_address")
+  residenceType    String?         @map("residence_type")
+  // Loan info
+  loanCategory     String?         @map("loan_category")
+  loanType         String          @map("loan_type")
+  loanAmount       Decimal         @map("loan_amount") @db.Decimal(15, 2)
+  tenure           Int?
+  loanPurpose      String?         @map("loan_purpose")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  partner          User            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([partnerId, localStatus])
+  @@index([createdAt(sort: Desc)])
+  @@map("partner_data")
+}
+
+enum LocalLeadStatus {
+  new
+  contacted
+  docs_pending
+  docs_collected
+  processing
+  approved
+  rejected
+  closed
 }
 
 enum BankStatus {

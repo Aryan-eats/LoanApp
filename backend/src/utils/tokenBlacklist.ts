@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Token Blacklist for logout functionality.
  *
  * Uses the shared Redis client when REDIS_URL is set, otherwise
@@ -15,7 +15,7 @@ interface BlacklistStorage {
 
 const PREFIX = 'token_blacklist:';
 
-// ─── In-memory fallback ────────────────────────────────────
+// --- In-memory fallback ------------------------------------
 
 class InMemoryBlacklist implements BlacklistStorage {
   private blacklist: Map<string, number> = new Map();
@@ -46,7 +46,7 @@ class InMemoryBlacklist implements BlacklistStorage {
   }
 }
 
-// ─── Redis-backed blacklist ────────────────────────────────
+// --- Redis-backed blacklist --------------------------------
 
 class RedisBlacklist implements BlacklistStorage {
   async add(token: string, expiresAt: number): Promise<void> {
@@ -74,7 +74,7 @@ class RedisBlacklist implements BlacklistStorage {
   }
 }
 
-// ─── Factory & singleton ───────────────────────────────────
+// --- Factory & singleton -----------------------------------
 
 const createTokenBlacklist = (): BlacklistStorage => {
   if (isRedisAvailable()) {

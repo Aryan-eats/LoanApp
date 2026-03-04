@@ -30,6 +30,41 @@ export type LoanType = LoanProductCode;
 // Partner-specific lead status (includes draft state)
 export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'bank_processing' | 'approved' | 'disbursed' | 'rejected';
 
+// Status for leads managed locally by the partner (not yet submitted to admin)
+export type LocalLeadStatus = 'new' | 'contacted' | 'docs_pending' | 'docs_collected' | 'processing' | 'approved' | 'rejected' | 'closed';
+
+// A lead stored locally on the partner's device (not sent to admin yet)
+export interface LocalLead {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  localStatus: LocalLeadStatus;
+  notes?: string;
+  // Client info
+  fullName: string;
+  phone: string;
+  email?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  panNumber?: string;
+  employmentType?: string;
+  monthlyIncome?: number;
+  companyName?: string;
+  designation?: string;
+  workExperience?: string;
+  city?: string;
+  pincode?: string;
+  state?: string;
+  currentAddress?: string;
+  residenceType?: string;
+  // Loan info
+  loanCategory?: string;
+  loanType: LoanType;
+  loanAmount: number;
+  tenure?: number;
+  loanPurpose?: string;
+}
+
 export interface PartnerProfile {
   id: string;
   fullName: string;

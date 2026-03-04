@@ -17,13 +17,16 @@ import {
   Building2,
   Star,
   Phone,
+  KeyRound,
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
+import { forgotPassword as apiForgotPassword, resetPassword as apiResetPassword } from '../api/authApi';
 
 type LoginType = 'select' | 'partner' | 'admin';
+type ForgotStep = 'idle' | 'email' | 'code' | 'success';
 type Lang = 'en' | 'hi';
 
-// ─── i18n ────────────────────────────────────────────────────────────────────
+// --- i18n --------------------------------------------------------------------
 const i18n: Record<Lang, Record<string, string>> = {
   en: {
     welcome: 'Welcome Back',
@@ -49,6 +52,20 @@ const i18n: Record<Lang, Record<string, string>> = {
     partnerMotivation: 'Cross ₹5L monthly disbursals to unlock 80% high-performance commission.',
     adminWarning: 'Platform administrators only. Unauthorized access is strictly prohibited.',
     twoFaNote: '2-factor authentication is active on admin accounts',
+    fpTitle: 'Reset Password',
+    fpEmailSub: 'Enter your email to receive a reset code',
+    fpSendCode: 'Send Reset Code',
+    fpSending: 'Sending…',
+    fpCodeLabel: 'Reset Code',
+    fpCodePlaceholder: 'Enter the code sent to your email',
+    fpNewPassword: 'New Password',
+    fpNewPasswordPlaceholder: 'Min 8 characters',
+    fpResetBtn: 'Reset Password',
+    fpResetting: 'Resetting…',
+    fpSuccess: 'Password Reset Successful',
+    fpSuccessSub: 'You can now sign in with your new password.',
+    fpBackToLogin: 'Back to Sign In',
+    fpResend: 'Resend code',
   },
   hi: {
     welcome: 'वापसी पर स्वागत है',
@@ -74,10 +91,24 @@ const i18n: Record<Lang, Record<string, string>> = {
     partnerMotivation: '₹5L मासिक वितरण पार करके 80% हाई-परफॉर्मेंस कमीशन अनलॉक करें।',
     adminWarning: 'यह पोर्टल केवल प्लेटफ़ॉर्म एडमिन के लिए है। अनधिकृत पहुंच सख्त वर्जित है।',
     twoFaNote: 'एडमिन खातों पर 2-फ़ैक्टर प्रमाणीकरण सक्रिय है',
+    fpTitle: 'पासवर्ड रीसेट करें',
+    fpEmailSub: 'रीसेट कोड प्राप्त करने के लिए अपना ईमेल दर्ज करें',
+    fpSendCode: 'रीसेट कोड भेजें',
+    fpSending: 'भेज रहे हैं…',
+    fpCodeLabel: 'रीसेट कोड',
+    fpCodePlaceholder: 'अपने ईमेल पर भेजा गया कोड दर्ज करें',
+    fpNewPassword: 'नया पासवर्ड',
+    fpNewPasswordPlaceholder: 'न्यूनतम 8 अक्षर',
+    fpResetBtn: 'पासवर्ड रीसेट करें',
+    fpResetting: 'रीसेट हो रहा है…',
+    fpSuccess: 'पासवर्ड सफलतापूर्वक रीसेट हो गया',
+    fpSuccessSub: 'अब आप अपने नए पासवर्ड से साइन इन कर सकते हैं।',
+    fpBackToLogin: 'साइन इन पर वापस जाएं',
+    fpResend: 'कोड दोबारा भेजें',
   },
 };
 
-// ─── Animation variants (using named easing strings — no raw bezier arrays) ──
+// --- Animation variants (using named easing strings - no raw bezier arrays) --
 const fadeSlideUp: Variants = {
   hidden: { opacity: 0, y: 24 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
@@ -94,7 +125,7 @@ const itemFade: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
 };
 
-// ─── Trust badges ─────────────────────────────────────────────────────────────
+// --- Trust badges -------------------------------------------------------------
 const BADGES = [
   { icon: CheckCircle2, label: 'RBI Compliant' },
   { icon: Shield,       label: '256-bit SSL' },
@@ -109,7 +140,7 @@ const METRICS = [
   { value: '99.8%',   label: 'Uptime SLA' },
 ];
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 const LogIn: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,6 +152,16 @@ const LogIn: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [lang, setLang]               = useState<Lang>('en');
+
+  // Forgot-password flow
+  const [forgotStep, setForgotStep]   = useState<ForgotStep>('idle');
+  const [fpEmail, setFpEmail]         = useState('');
+  const [fpCode, setFpCode]           = useState('');
+  const [fpNewPw, setFpNewPw]         = useState('');
+  const [fpShowPw, setFpShowPw]       = useState(false);
+  const [fpLoading, setFpLoading]     = useState(false);
+  const [fpError, setFpError]         = useState<string | null>(null);
+  const [fpSuccess, setFpSuccess]     = useState<string | null>(null);
 
   const t = i18n[lang];
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
@@ -153,7 +194,73 @@ const LogIn: React.FC = () => {
     setPassword('');
     setShowPassword(false);
     setError(null);
+    setForgotStep('idle');
     clearError();
+  };
+
+  const openForgotPassword = () => {
+    setFpEmail(email); // pre-fill from login email if any
+    setFpCode('');
+    setFpNewPw('');
+    setFpShowPw(false);
+    setFpError(null);
+    setFpSuccess(null);
+    setForgotStep('email');
+  };
+
+  const closeForgotPassword = () => {
+    setForgotStep('idle');
+    setFpError(null);
+    setFpSuccess(null);
+  };
+
+  const handleFpSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFpError(null);
+    setFpLoading(true);
+    try {
+      await apiForgotPassword(fpEmail);
+      setFpSuccess(null);
+      setForgotStep('code');
+    } catch (err) {
+      const { parseApiError } = await import('../utils/parseApiError');
+      setFpError(parseApiError(err, 'Failed to send reset code. Please try again.'));
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const handleFpReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFpError(null);
+    if (fpNewPw.length < 8) {
+      setFpError('Password must be at least 8 characters long.');
+      return;
+    }
+    setFpLoading(true);
+    try {
+      await apiResetPassword(fpEmail, fpCode, fpNewPw);
+      setForgotStep('success');
+    } catch (err) {
+      const { parseApiError } = await import('../utils/parseApiError');
+      setFpError(parseApiError(err, 'Failed to reset password. Please try again.'));
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const handleFpResend = async () => {
+    setFpError(null);
+    setFpLoading(true);
+    try {
+      await apiForgotPassword(fpEmail);
+      setFpSuccess('A new code has been sent to your email.');
+    } catch (err) {
+      const { parseApiError } = await import('../utils/parseApiError');
+      setFpError(parseApiError(err, 'Failed to resend code.'));
+    } finally {
+      setFpLoading(false);
+    }
   };
 
   const displayError = error || authError;
@@ -164,7 +271,7 @@ const LogIn: React.FC = () => {
     /* Outer shell: full-screen, no scroll */
     <div className="h-screen w-screen overflow-hidden flex flex-col lg:flex-row font-sans">
 
-      {/* ── LEFT BRAND PANEL (desktop only) ─────────────────────────────── */}
+      {/* -- LEFT BRAND PANEL (desktop only) ------------------------------- */}
       <aside
         className="hidden lg:flex lg:w-5/12 xl:w-[44%] shrink-0 flex-col justify-between p-10 xl:p-14 overflow-hidden relative"
         style={{ background: 'linear-gradient(155deg,#0f1923 0%,#0b2545 50%,#13315c 100%)' }}
@@ -223,7 +330,7 @@ const LogIn: React.FC = () => {
         </div>
       </aside>
 
-      {/* ── RIGHT FORM PANEL ──────────────────────────────────────────────── */}
+      {/* -- RIGHT FORM PANEL ------------------------------------------------ */}
       <main
         className="flex-1 flex flex-col overflow-y-auto"
         style={{ background: 'linear-gradient(160deg,#f8faff 0%,#eef2ff 100%)' }}
@@ -273,7 +380,7 @@ const LogIn: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Centred form area ── */}
+        {/* -- Centred form area -- */}
         <div className="flex flex-1 flex-col items-center justify-center px-4 sm:px-6 pb-6">
 
           {/* Desktop lang toggle */}
@@ -290,7 +397,7 @@ const LogIn: React.FC = () => {
           <div className="w-full max-w-md">
             <AnimatePresence mode="wait">
 
-              {/* ── ROLE SELECTION ── */}
+              {/* -- ROLE SELECTION -- */}
               {loginType === 'select' && (
                 <motion.div key="select" variants={fadeSlideUp} initial="hidden" animate="visible" exit="exit"
                   className="rounded-2xl bg-white shadow-xl border border-indigo-100/60 overflow-hidden">
@@ -365,10 +472,10 @@ const LogIn: React.FC = () => {
                 </motion.div>
               )}
 
-              {/* ── LOGIN FORM ── */}
+              {/* -- LOGIN FORM -- */}
               {loginType !== 'select' && (
                 <motion.div key="form" variants={fadeSlideUp} initial="hidden" animate="visible" exit="exit"
-                  className="rounded-2xl bg-white shadow-xl border border-indigo-100/60 overflow-hidden">
+                  className="relative rounded-2xl bg-white shadow-xl border border-indigo-100/60 overflow-hidden">
 
                   {/* Role colour bar */}
                   <div className="h-1 w-full" style={{ background: accentGrad }} />
@@ -449,9 +556,10 @@ const LogIn: React.FC = () => {
                           <label htmlFor="password" className="text-sm font-semibold text-gray-700">
                             {t.passwordLabel}
                           </label>
-                          <a href="#" className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-800">
+                          <button type="button" onClick={openForgotPassword}
+                            className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-800">
                             {t.forgotPassword}
-                          </a>
+                          </button>
                         </div>
                         <div className="relative">
                           <Lock size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -503,6 +611,168 @@ const LogIn: React.FC = () => {
                         {t.twoFaNote}
                       </p>
                     )}
+
+                    {/* Forgot-password overlay */}
+                    <AnimatePresence>
+                      {forgotStep !== 'idle' && (
+                        <motion.div
+                          key="fp-overlay"
+                          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                          className="absolute inset-0 z-20 flex items-center justify-center bg-white/95 backdrop-blur-sm rounded-2xl"
+                        >
+                          <div className="w-full max-w-sm px-6 py-8">
+                            <AnimatePresence mode="wait">
+
+                              {/* Step 1: Enter email */}
+                              {forgotStep === 'email' && (
+                                <motion.div key="fp-email" variants={fadeSlideUp} initial="hidden" animate="visible" exit="exit">
+                                  <div className="mb-5 flex items-center gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-sm">
+                                      <KeyRound size={17} className="text-white" />
+                                    </div>
+                                    <div>
+                                      <h2 className="text-lg font-bold text-gray-900">{t.fpTitle}</h2>
+                                      <p className="text-xs text-gray-400">{t.fpEmailSub}</p>
+                                    </div>
+                                  </div>
+
+                                  <AnimatePresence>
+                                    {fpError && (
+                                      <motion.div role="alert" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                        className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                                        <AlertCircle size={12} className="mt-0.5 shrink-0 text-red-500" />
+                                        <p className="text-[11px] text-red-700">{fpError}</p>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+
+                                  <form onSubmit={handleFpSendCode} noValidate className="space-y-4">
+                                    <div>
+                                      <label htmlFor="fp-email" className="mb-1.5 block text-sm font-semibold text-gray-700">{t.emailLabel}</label>
+                                      <div className="relative">
+                                        <Mail size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input type="email" id="fp-email" autoComplete="email"
+                                          value={fpEmail} onChange={(e) => setFpEmail(e.target.value)}
+                                          placeholder={t.emailPlaceholder} required
+                                          className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 outline-none transition-all hover:border-gray-300 focus:border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-400" />
+                                      </div>
+                                    </div>
+
+                                    <motion.button type="submit" disabled={fpLoading} whileTap={{ scale: 0.98 }}
+                                      className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70 bg-gradient-to-r from-indigo-500 to-blue-600">
+                                      {fpLoading
+                                        ? <><Loader2 size={15} className="animate-spin" />{t.fpSending}</>
+                                        : t.fpSendCode}
+                                    </motion.button>
+                                  </form>
+
+                                  <button onClick={closeForgotPassword}
+                                    className="mt-4 flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700 mx-auto">
+                                    <ArrowLeft size={12} />{t.fpBackToLogin}
+                                  </button>
+                                </motion.div>
+                              )}
+
+                              {/* Step 2: Enter code + new password */}
+                              {forgotStep === 'code' && (
+                                <motion.div key="fp-code" variants={fadeSlideUp} initial="hidden" animate="visible" exit="exit">
+                                  <div className="mb-5 flex items-center gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-sm">
+                                      <KeyRound size={17} className="text-white" />
+                                    </div>
+                                    <div>
+                                      <h2 className="text-lg font-bold text-gray-900">{t.fpTitle}</h2>
+                                      <p className="text-xs text-gray-400">{fpEmail}</p>
+                                    </div>
+                                  </div>
+
+                                  <AnimatePresence>
+                                    {fpError && (
+                                      <motion.div role="alert" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                        className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                                        <AlertCircle size={12} className="mt-0.5 shrink-0 text-red-500" />
+                                        <p className="text-[11px] text-red-700">{fpError}</p>
+                                      </motion.div>
+                                    )}
+                                    {fpSuccess && (
+                                      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                        className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                                        <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-emerald-500" />
+                                        <p className="text-[11px] text-emerald-700">{fpSuccess}</p>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+
+                                  <form onSubmit={handleFpReset} noValidate className="space-y-4">
+                                    <div>
+                                      <label htmlFor="fp-code" className="mb-1.5 block text-sm font-semibold text-gray-700">{t.fpCodeLabel}</label>
+                                      <div className="relative">
+                                        <Shield size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input type="text" id="fp-code" autoComplete="one-time-code"
+                                          value={fpCode} onChange={(e) => setFpCode(e.target.value)}
+                                          placeholder={t.fpCodePlaceholder} required
+                                          className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 outline-none transition-all hover:border-gray-300 focus:border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-400" />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label htmlFor="fp-password" className="mb-1.5 block text-sm font-semibold text-gray-700">{t.fpNewPassword}</label>
+                                      <div className="relative">
+                                        <Lock size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input type={fpShowPw ? 'text' : 'password'} id="fp-password" autoComplete="new-password"
+                                          value={fpNewPw} onChange={(e) => setFpNewPw(e.target.value)}
+                                          placeholder={t.fpNewPasswordPlaceholder} required
+                                          className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-11 text-sm text-gray-900 placeholder-gray-400 outline-none transition-all hover:border-gray-300 focus:border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-400" />
+                                        <button type="button" onClick={() => setFpShowPw((v) => !v)}
+                                          aria-label={fpShowPw ? 'Hide password' : 'Show password'}
+                                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600">
+                                          {fpShowPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <motion.button type="submit" disabled={fpLoading} whileTap={{ scale: 0.98 }}
+                                      className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70 bg-gradient-to-r from-indigo-500 to-blue-600">
+                                      {fpLoading
+                                        ? <><Loader2 size={15} className="animate-spin" />{t.fpResetting}</>
+                                        : t.fpResetBtn}
+                                    </motion.button>
+                                  </form>
+
+                                  <div className="mt-4 flex items-center justify-between">
+                                    <button onClick={closeForgotPassword}
+                                      className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700">
+                                      <ArrowLeft size={12} />{t.fpBackToLogin}
+                                    </button>
+                                    <button onClick={handleFpResend} disabled={fpLoading}
+                                      className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-800 disabled:opacity-50">
+                                      {t.fpResend}
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              )}
+
+                              {/* Step 3: Success */}
+                              {forgotStep === 'success' && (
+                                <motion.div key="fp-success" variants={fadeSlideUp} initial="hidden" animate="visible" exit="exit"
+                                  className="text-center">
+                                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+                                    <CheckCircle2 size={28} className="text-emerald-600" />
+                                  </div>
+                                  <h2 className="text-lg font-bold text-gray-900 mb-1">{t.fpSuccess}</h2>
+                                  <p className="text-xs text-gray-400 mb-6">{t.fpSuccessSub}</p>
+                                  <motion.button onClick={closeForgotPassword} whileTap={{ scale: 0.98 }}
+                                    className="w-full rounded-xl py-3.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg bg-gradient-to-r from-indigo-500 to-blue-600">
+                                    {t.fpBackToLogin}
+                                  </motion.button>
+                                </motion.div>
+                              )}
+
+                            </AnimatePresence>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Bottom trust bar */}

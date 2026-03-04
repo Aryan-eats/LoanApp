@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../components/StatusBadge';
@@ -42,7 +42,7 @@ function formatAmount(val: string | null): string {
   return `₹${num.toLocaleString('en-IN')}`;
 }
 
-// ── Editable field helpers ────────────────────────────────────────────────────
+// -- Editable field helpers ----------------------------------------------------
 
 interface EditableFieldProps {
   label: string;
@@ -69,7 +69,7 @@ const EditableField: React.FC<EditableFieldProps> = ({ label, value, editing, on
   </div>
 );
 
-// ── Editable commission rate row ──────────────────────────────────────────────
+// -- Editable commission rate row ----------------------------------------------
 
 interface CommissionRowData {
   loanType: string;
@@ -93,7 +93,7 @@ function apiRateToRow(r: BankCommissionRate): CommissionRowData {
   };
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// -- Main Component ------------------------------------------------------------
 
 const BankManagePage: React.FC = () => {
   const { bankId } = useParams<{ bankId: string }>();
@@ -121,7 +121,7 @@ const BankManagePage: React.FC = () => {
   const [commissionRows, setCommissionRows] = useState<CommissionRowData[]>([]);
   const [newFeature, setNewFeature] = useState('');
 
-  // ── Load data ──
+  // -- Load data --
   const loadBank = useCallback(async (id: string) => {
     try {
       setLoading(true);
@@ -158,7 +158,7 @@ const BankManagePage: React.FC = () => {
     setCommissionRows(b.commissionRates.map(apiRateToRow));
   };
 
-  // ── Handlers ──
+  // -- Handlers --
   const handleToggleStatus = async () => {
     if (!bank) return;
     const newStatus = bank.status === 'active' ? 'inactive' : 'active';
@@ -231,7 +231,7 @@ const BankManagePage: React.FC = () => {
   const setFormField = (key: string, value: string | boolean) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
-  // ── Commission row helpers ──
+  // -- Commission row helpers --
   const updateCommissionRow = (idx: number, field: keyof CommissionRowData, value: string) => {
     setCommissionRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   };
@@ -246,7 +246,7 @@ const BankManagePage: React.FC = () => {
     }]);
   };
 
-  // ── Feature helpers ──
+  // -- Feature helpers --
   const addFeature = () => {
     if (newFeature.trim()) {
       setForm(prev => ({ ...prev, features: [...prev.features, newFeature.trim()] }));
@@ -258,7 +258,7 @@ const BankManagePage: React.FC = () => {
     setForm(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== idx) }));
   };
 
-  // ── Supported loan type helpers ──
+  // -- Supported loan type helpers --
   const toggleLoanType = (code: string) => {
     setForm(prev => {
       const has = prev.supportedLoanTypes.includes(code);
@@ -271,7 +271,7 @@ const BankManagePage: React.FC = () => {
     });
   };
 
-  // ── Render ──
+  // -- Render --
   if (loading) {
     return (
       <AdminLayout>
@@ -472,7 +472,7 @@ const BankManagePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Supported Loan Types – Category-wise */}
+          {/* Supported Loan Types - Category-wise */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-base font-semibold text-gray-900">Supported Loan Types</h2>

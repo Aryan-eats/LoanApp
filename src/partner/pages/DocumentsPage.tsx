@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Upload,
   FileText,
@@ -30,7 +30,7 @@ import { getLeads } from '../../api/leadsApi';
 import { getLoanTypeLabel } from '../../data/loanProductsData';
 import type { Lead, LeadDocument, DocumentStatus } from '../types/partner-dashboard';
 
-// ── Loan type options (loan codes seeded in the DB) ───────────────────────────
+// -- Loan type options (loan codes seeded in the DB) ---------------------------
 const LOAN_TYPE_OPTIONS: { code: string; label: string }[] = [
   { code: 'home_loan',           label: 'Home Loan' },
   { code: 'personal_loan',       label: 'Personal Loan' },
@@ -51,7 +51,7 @@ const LOAN_TYPE_OPTIONS: { code: string; label: string }[] = [
   { code: 'kcc',                 label: 'Kisan Credit Card' },
 ];
 
-// ── CheckReqDocsPanel ─────────────────────────────────────────────────────────
+// -- CheckReqDocsPanel ---------------------------------------------------------
 
 function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<'loan' | 'banks' | 'docs'>('loan');
@@ -124,7 +124,7 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="p-5">
-        {/* Step 1 – Pick a loan type */}
+        {/* Step 1 - Pick a loan type */}
         {step === 'loan' && (
           <div>
             <p className="text-sm text-slate-500 mb-4">Select a loan type to see which banks are available and what documents they require.</p>
@@ -148,7 +148,7 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* Step 2 – Pick a bank */}
+        {/* Step 2 - Pick a bank */}
         {step === 'banks' && (
           <div>
             <p className="text-sm text-slate-500 mb-1">
@@ -182,7 +182,7 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* Step 3 – Show documents */}
+        {/* Step 3 - Show documents */}
         {step === 'docs' && selectedLender && (
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -248,7 +248,7 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Status / doc helpers ──────────────────────────────────────────────────────
+// -- Status / doc helpers ------------------------------------------------------
 
 const documentStatusConfig: Record<DocumentStatus, { icon: React.ReactNode; color: string; bg: string }> = {
   pending:  { icon: <Clock size={14} />,       color: 'text-slate-500',  bg: 'bg-slate-100' },
@@ -269,7 +269,7 @@ const getDocTypeLabel = (type: string) => {
   return labels[type] || type;
 };
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// -- Main page -----------------------------------------------------------------
 
 export default function DocumentsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);

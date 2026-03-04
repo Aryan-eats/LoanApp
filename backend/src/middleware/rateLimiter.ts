@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+﻿import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
@@ -71,7 +71,7 @@ export const passwordResetLimiter = rateLimit({
   store: buildStore('pwd_reset'),
 });
 
-// Rate limiter for token refresh (generous – active sessions refresh frequently)
+// Rate limiter for token refresh (generous - active sessions refresh frequently)
 export const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 200 : 30,

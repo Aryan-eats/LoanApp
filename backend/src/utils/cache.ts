@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Redis-backed caching layer.
  *
  * Provides get / set / invalidate helpers with automatic JSON
@@ -12,7 +12,7 @@ import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 const PREFIX = 'cache:';
 const DEFAULT_TTL_SECONDS = 300; // 5 minutes
 
-// ─── public API ─────────────────────────────────────────────
+// --- public API ---------------------------------------------
 
 /**
  * Retrieve a cached value.  Returns `null` on miss.

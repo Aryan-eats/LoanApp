@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Redis integration tests.
  *
  * These tests exercise the four Redis use-cases against a live Redis
@@ -25,7 +25,7 @@ import {
 } from '../services/otpChallengeService.js';
 import { generateOTP, verifyUserOTP } from '../services/userService.js';
 
-// ─── helpers ───────────────────────────────────────────────
+// --- helpers -----------------------------------------------
 
 let redis: Redis;
 
@@ -51,7 +51,7 @@ const flushTestKeys = async (pattern: string) => {
   } while (cursor !== '0');
 };
 
-// ─── suite setup / teardown ────────────────────────────────
+// --- suite setup / teardown --------------------------------
 
 beforeAll(() => {
   if (!isSafeRedisTarget()) return;
@@ -74,9 +74,9 @@ afterAll(async () => {
   await disconnectRedis();
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 1. CACHING
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Caching', () => {
   const key = `${NAMESPACE}cache-test`;
 
@@ -145,9 +145,9 @@ describeRedis('Redis Caching', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 2. TOKEN BLACKLISTING
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Token Blacklisting', () => {
   const testToken = `${NAMESPACE}token-abc123`;
 
@@ -188,9 +188,9 @@ describeRedis('Redis Token Blacklisting', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 3. RATE LIMITING (smoke test)
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Rate Limiting', () => {
   it('rate limiter stores are backed by Redis (keys exist after request)', async () => {
     // We can't easily send a real HTTP request here without spinning up
@@ -218,9 +218,9 @@ describeRedis('Redis Rate Limiting', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 4. OTP STORAGE
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis OTP Storage – Phone Challenge (onboarding)', () => {
   const testPhone = `${NAMESPACE}9999999999`;
 

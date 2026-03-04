@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Document controller – handles HTTP requests for document CRUD.
  */
 
@@ -125,7 +125,7 @@ export const uploadLeadDoc = async (req: Request, res: Response): Promise<void> 
       },
     });
 
-    await logAuditEvent('DOCUMENT_UPLOADED' as any, req, {
+    await logAuditEvent('DOCUMENT_UPLOADED', req, {
       userId: currentUser.id,
       entityId: documentId,
       entityType: 'document',
@@ -180,7 +180,7 @@ export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> 
       },
     });
 
-    await logAuditEvent('DOCUMENT_DOWNLOADED' as any, req, {
+    await logAuditEvent('DOCUMENT_DOWNLOADED', req, {
       userId: currentUser.id,
       entityId: documentId,
       entityType: 'document',
@@ -226,7 +226,7 @@ export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> 
       try {
         await deleteDocument(docRecord.r2ObjectKey);
       } catch {
-        // Non-fatal – object may already be gone
+        // Non-fatal - object may already be gone
       }
     }
 
@@ -247,7 +247,7 @@ export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> 
 
     res.status(200).json({ success: true, message: 'Document deleted successfully' });
 
-    await logAuditEvent('DOCUMENT_DELETED' as any, req, {
+    await logAuditEvent('DOCUMENT_DELETED', req, {
       userId: currentUser.id,
       entityId: documentId,
       entityType: 'document',
@@ -325,7 +325,7 @@ export const updateLeadDocStatus = async (req: Request, res: Response): Promise<
     });
 
     const docEvent = status === 'verified' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_REJECTED';
-    await logAuditEvent(docEvent as any, req, {
+    await logAuditEvent(docEvent, req, {
       userId: currentUser.id,
       entityId: documentId,
       entityType: 'document',
@@ -396,7 +396,7 @@ export const bulkUpdateLeadDocStatus = async (req: Request, res: Response): Prom
     });
 
     const bulkEvent = status === 'verified' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_REJECTED';
-    await logAuditEvent(bulkEvent as any, req, {
+    await logAuditEvent(bulkEvent, req, {
       userId: currentUser.id,
       entityType: 'document',
       metadata: {
@@ -714,8 +714,8 @@ export const uploadViaToken = async (req: Request, res: Response): Promise<void>
       },
     });
 
-    // Log even for public upload — userId will be null (customer upload)
-    await logAuditEvent('DOCUMENT_UPLOADED' as any, req, {
+    // Log even for public upload - userId will be null (customer upload)
+    await logAuditEvent('DOCUMENT_UPLOADED', req, {
       entityId: documentId,
       entityType: 'document',
       metadata: {
