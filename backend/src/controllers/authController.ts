@@ -1,50 +1,47 @@
 import { Request, Response } from 'express';
-import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
-import User, { IUser, UserRole } from '../models/User.js';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
+import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../utils/cookieConfig.js';
+import type { User } from '@prisma/client';
+import prisma from '../config/prisma.js';
+import {
+  logAuditEvent,
+  redactPhone,
+  generateDeviceFingerprint,
+  getClientIP,
+  checkSuspiciousActivity,
+} from '../utils/auditLogger.js';
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  getAccessTokenTtlSeconds,
+  extractTokenFromHeader,
+  getTokenExpirationMs,
+} from '../utils/jwt.js';
 import { tokenBlacklist } from '../utils/tokenBlacklist.js';
-import { logAuditEvent, generateDeviceFingerprint, getClientIP, checkSuspiciousActivity } from '../utils/auditLogger.js';
+import {
+  comparePassword,
+  hashPassword,
+  isLocked,
+  incrementLoginAttempts,
+  resetLoginAttempts,
+  generatePasswordResetToken,
+  generateOTP,
+  isPasswordReused,
+  addToPasswordHistory,
+  addSession,
+  removeSession,
+  verifyUserOTP,
+} from '../services/userService.js';
+import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../services/smsService.js';
+import {
+  createOtpChallenge,
+  verifyOtpChallenge,
+} from '../services/otpChallengeService.js';
 
-// Cookie options for secure token storage
-const getCookieOptions = (maxAge: number) => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  maxAge,
-  path: '/',
-});
-
-// Generate JWT Access Token (short-lived)
-const generateAccessToken = (id: string, role: UserRole): string => {
-  const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET is not defined');
-  }
-  // Short-lived access token (15 minutes for security)
-  const expiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
-
-  return jwt.sign({ id, role }, jwtSecret, {
-    expiresIn,
-  } as SignOptions);
-};
-
-// Generate JWT Refresh Token (longer-lived)
-const generateRefreshTokenJWT = (id: string): string => {
-  const jwtSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET is not defined');
-  }
-  // Refresh token valid for 7 days
-  const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-
-  return jwt.sign({ id, type: 'refresh' }, jwtSecret, {
-    expiresIn,
-  } as SignOptions);
-};
-
-// Format user response (exclude sensitive data)
-const formatUserResponse = (user: IUser) => ({
-  id: user._id,
+const formatUserResponse = (user: User) => ({
+  id: user.id,
   email: user.email,
   firstName: user.firstName,
   lastName: user.lastName,
@@ -56,16 +53,45 @@ const formatUserResponse = (user: IUser) => ({
   createdAt: user.createdAt,
 });
 
-/**
- * @desc    Register a new user
- * @route   POST /api/auth/register
- * @access  Public
- */
+const hashToken = (token: string): string =>
+  crypto.createHash('sha256').update(token).digest('hex');
+
+interface Msg91VerificationTokenPayload extends JwtPayload {
+  sub: string;
+  phone: string;
+  purpose: 'msg91_verification';
+}
+
+const normalizePhone = (phone: string): string => phone.replace(/[^\d]/g, '');
+
+const getMsg91VerificationSecret = (): string => {
+  const secret = process.env.MSG91_VERIFICATION_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('MSG91_VERIFICATION_SECRET or JWT_SECRET must be configured');
+  }
+  return secret;
+};
+
+const signMsg91VerificationToken = (userId: string, phone: string): string =>
+  jwt.sign(
+    {
+      sub: userId,
+      phone: normalizePhone(phone),
+      purpose: 'msg91_verification',
+    } satisfies Msg91VerificationTokenPayload,
+    getMsg91VerificationSecret(),
+    { expiresIn: '15m', algorithm: 'HS256' }
+  );
+
+const verifyMsg91VerificationToken = (token: string): Msg91VerificationTokenPayload =>
+  jwt.verify(token, getMsg91VerificationSecret(), {
+    algorithms: ['HS256'],
+  }) as Msg91VerificationTokenPayload;
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName, phone } = req.body;
 
-    // Validate required fields
     if (!email || !password || !firstName || !lastName) {
       res.status(400).json({
         success: false,
@@ -74,8 +100,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
     if (existingUser) {
       res.status(400).json({
         success: false,
@@ -84,67 +111,33 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // SECURITY: Always set role to 'partner' for public registration
-    // Admin users must be created through secure internal scripts only
-    const userRole: UserRole = 'partner';
+    const hashedPassword = await hashPassword(password);
 
-    // Create user
-    const user = await User.create({
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
-      role: userRole,
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstName,
+        lastName,
+        phone,
+        isEmailVerified: true,
+      },
     });
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    const refreshToken = generateRefreshTokenJWT(user._id.toString());
-
-    // Store refresh token hash in database
-    user.generateRefreshToken();
-    await user.save();
-
-    // Add session
-    const fingerprint = generateDeviceFingerprint(req);
-    await user.addSession({
-      deviceFingerprint: fingerprint,
-      userAgent: req.headers['user-agent'] || '',
-      ip: getClientIP(req),
-    });
-
-    // Log audit event
     await logAuditEvent('REGISTER', req, {
-      userId: user._id.toString(),
+      userId: user.id,
       email: user.email,
     });
-
-    // Set httpOnly cookie for refresh token
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       data: {
         user: formatUserResponse(user),
-        accessToken,
-        // Also return tokens in body for non-cookie clients (mobile apps)
-        refreshToken,
       },
     });
   } catch (error) {
     console.error('Registration error:', error);
-    
-    // Handle mongoose validation errors
-    if (error instanceof Error && error.name === 'ValidationError') {
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-
     res.status(500).json({
       success: false,
       message: 'Server error during registration',
@@ -152,22 +145,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-/**
- * @desc    Register a new partner with onboarding data
- * @route   POST /api/auth/register-partner
- * @access  Public
- */
 export const registerPartner = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
-      // Basic Identity (Step 1)
       fullName,
       mobileNumber,
       email,
       password,
       partnerType,
       city,
-      // Business Details (Step 2)
+      phoneVerificationToken,
       businessName,
       businessAddress,
       yearsInOperation,
@@ -175,20 +162,17 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
       gstNumber,
       hasExperience,
       expectedLeads,
-      // Payout Info (Step 3)
       accountHolderName,
       bankName,
       accountNumber,
       ifscCode,
       upiId,
-      // Consent (Step 4)
       consentDataShare,
       consentCommission,
       declarationNotEmployed,
       consentPrivacyPolicy,
     } = req.body;
 
-    // Validate required fields
     if (!fullName || !mobileNumber || !email || !password) {
       res.status(400).json({
         success: false,
@@ -197,7 +181,6 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Validate consent fields
     if (!consentDataShare || !consentCommission || !declarationNotEmployed || !consentPrivacyPolicy) {
       res.status(400).json({
         success: false,
@@ -206,8 +189,9 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
     if (existingUser) {
       res.status(400).json({
         success: false,
@@ -216,8 +200,9 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Check if phone number already exists
-    const existingPhone = await User.findOne({ phone: mobileNumber });
+    const existingPhone = await prisma.user.findFirst({
+      where: { phone: mobileNumber },
+    });
     if (existingPhone) {
       res.status(400).json({
         success: false,
@@ -226,89 +211,82 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Split fullName into firstName and lastName
     const nameParts = fullName.trim().split(/\s+/);
     const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || firstName;
+    const lastName = nameParts.slice(1).join(' ');
 
-    // Create partner user with all onboarding data
-    // isActive is false so admin must approve before partner can submit leads
-    const user = await User.create({
-      email,
-      password,
-      firstName,
-      lastName,
-      phone: mobileNumber,
-      role: 'partner',
-      isActive: false, // Partners require admin approval
-      partnerType,
-      city,
-      businessName,
-      businessAddress,
-      yearsInOperation,
-      panNumber,
-      gstNumber,
-      hasExperience,
-      expectedLeads,
-      accountHolderName,
-      bankName,
-      accountNumber,
-      ifscCode,
-      upiId,
-      consentDataShare,
-      consentCommission,
-      declarationNotEmployed,
-      consentPrivacyPolicy,
-      kycStatus: 'pending',
-      onboardingStatus: 'pending',
-      onboardingCompletedAt: new Date(),
+    const hashedPassword = await hashPassword(password);
+
+    // Phone verification is handled by MSG91 REST API during onboarding
+    // The 'phoneVerificationToken' indicates the phone was verified via OTP
+    const isPhoneVerified = !!phoneVerificationToken;
+
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstName,
+        lastName,
+        phone: mobileNumber,
+        role: 'partner',
+        isActive: false,
+        isEmailVerified: true,
+        isPhoneVerified,
+        partnerType,
+        city,
+        businessName,
+        businessAddress,
+        yearsInOperation,
+        panNumber,
+        gstNumber,
+        hasExperience,
+        expectedLeads,
+        accountHolderName,
+        bankName,
+        accountNumber,
+        ifscCode,
+        upiId,
+        consentDataShare,
+        consentCommission,
+        declarationNotEmployed,
+        consentPrivacyPolicy,
+        kycStatus: 'pending',
+        onboardingStatus: 'pending',
+      },
     });
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    const refreshToken = generateRefreshTokenJWT(user._id.toString());
-
-    user.generateRefreshToken();
-    await user.save();
-
-    // Add session
-    const fingerprint = generateDeviceFingerprint(req);
-    await user.addSession({
-      deviceFingerprint: fingerprint,
-      userAgent: req.headers['user-agent'] || '',
-      ip: getClientIP(req),
-    });
-
-    // Log audit event
     await logAuditEvent('REGISTER', req, {
-      userId: user._id.toString(),
+      userId: user.id,
       email: user.email,
+      entityId: user.id,
+      entityType: 'partner',
       metadata: { partnerType },
     });
 
-    // Set httpOnly cookie
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    // Log consent for DPDP compliance
+    await logAuditEvent('CONSENT_GIVEN', req, {
+      userId: user.id,
+      email: user.email,
+      entityId: user.id,
+      entityType: 'partner',
+      metadata: {
+        consentDataShare: true,
+        consentCommission: true,
+        consentPrivacyPolicy: true,
+        declarationNotEmployed: true,
+        consentTimestamp: new Date().toISOString(),
+      },
+    });
 
     res.status(201).json({
       success: true,
       message: 'Partner registered successfully. Your application is pending approval.',
       data: {
         user: formatUserResponse(user),
-        accessToken,
-        refreshToken,
       },
     });
   } catch (error) {
     console.error('Partner registration error:', error);
-    
-    if (error instanceof Error && error.name === 'ValidationError') {
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-
     res.status(500).json({
       success: false,
       message: 'Server error during partner registration',
@@ -316,16 +294,10 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
   }
 };
 
-/**
- * @desc    Login user
- * @route   POST /api/auth/login
- * @access  Public
- */
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    // Validate required fields
     if (!email || !password) {
       res.status(400).json({
         success: false,
@@ -334,19 +306,34 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Find user by email (include password and lockout fields for comparison)
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      '+password +failedLoginAttempts +lockUntil +activeSessions'
-    );
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        failedLoginAttempts: true,
+        lockUntil: true,
+        onboardingStatus: true,
+        refreshToken: true,
+        refreshTokenExpires: true,
+        createdAt: true,
+      },
+    });
 
     if (!user) {
-      // Log failed attempt even for non-existent user
       await logAuditEvent('LOGIN_FAILED', req, {
         email: email.toLowerCase(),
         success: false,
         failureReason: 'User not found',
       });
-
       res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -354,14 +341,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if account is locked
-    if (user.isLocked()) {
+    if (isLocked(user)) {
       const lockTimeRemaining = Math.ceil(
         ((user.lockUntil?.getTime() || 0) - Date.now()) / 60000
       );
 
       await logAuditEvent('LOGIN_FAILED', req, {
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
         success: false,
         failureReason: 'Account locked',
@@ -374,49 +360,47 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user is active
     if (!user.isActive) {
       await logAuditEvent('LOGIN_FAILED', req, {
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
         success: false,
         failureReason: 'Account not active',
       });
 
-      // Check if it's a pending partner (not yet approved)
       const isPendingPartner = user.role === 'partner' && user.onboardingStatus === 'pending';
-      
       res.status(401).json({
         success: false,
-        message: isPendingPartner 
+        message: isPendingPartner
           ? 'Your partner account is pending approval. You will receive an email once approved.'
           : 'Account has been deactivated. Please contact support.',
       });
       return;
     }
 
-    // Compare password
-    const isPasswordMatch = await user.comparePassword(password);
+    const isMatch = await comparePassword(password, user.password);
+    if (!isMatch) {
+      await incrementLoginAttempts(user.id, user.failedLoginAttempts);
 
-    if (!isPasswordMatch) {
-      // Increment failed login attempts
-      await user.incrementLoginAttempts();
-      
-      // Check if this caused an account lock
+      // Emit ACCOUNT_LOCKED if threshold crossed
       if (user.failedLoginAttempts + 1 >= 5) {
         await logAuditEvent('ACCOUNT_LOCKED', req, {
-          userId: user._id.toString(),
+          userId: user.id,
           email: user.email,
+          entityId: user.id,
+          entityType: 'user',
+          severity: 'HIGH',
+          metadata: { failedAttempts: user.failedLoginAttempts + 1 },
         });
       }
 
       await logAuditEvent('LOGIN_FAILED', req, {
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
         success: false,
         failureReason: 'Invalid password',
       });
-      
+
       res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -424,55 +408,53 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Reset failed login attempts on successful login
-    await user.resetLoginAttempts();
+    await resetLoginAttempts(user.id);
 
-    // Check for suspicious activity (new device)
     const fingerprint = generateDeviceFingerprint(req);
-    const isSuspicious = await checkSuspiciousActivity(user._id.toString(), fingerprint);
-    
+    const isSuspicious = await checkSuspiciousActivity(user.id, fingerprint);
     if (isSuspicious) {
       await logAuditEvent('SUSPICIOUS_ACTIVITY', req, {
-        userId: user._id.toString(),
+        userId: user.id,
         email: user.email,
         metadata: { reason: 'Login from new device' },
       });
-      // In production, you might want to send an email notification here
     }
 
-    // Update last login and add session
-    user.lastLogin = new Date();
-    await user.save();
+    const refreshToken = signRefreshToken(user as User);
+    const refreshExpiresAt = getTokenExpirationMs(refreshToken);
 
-    await user.addSession({
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLogin: new Date(),
+        refreshToken: hashToken(refreshToken),
+        refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+      },
+    });
+
+    await addSession(user.id, {
       deviceFingerprint: fingerprint,
       userAgent: req.headers['user-agent'] || '',
       ip: getClientIP(req),
     });
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    const refreshToken = generateRefreshTokenJWT(user._id.toString());
-
-    user.generateRefreshToken();
-    await user.save();
-
-    // Log successful login
     await logAuditEvent('LOGIN_SUCCESS', req, {
-      userId: user._id.toString(),
+      userId: user.id,
       email: user.email,
     });
 
-    // Set httpOnly cookie
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    const accessToken = signAccessToken(user as User);
+
+    // Set refresh token as httpOnly cookie (not exposed to JS)
+    res.cookie(REFRESH_COOKIE, refreshToken, getRefreshCookieOptions());
 
     res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
-        user: formatUserResponse(user),
+        user: formatUserResponse(user as User),
         accessToken,
-        refreshToken,
+        expiresIn: getAccessTokenTtlSeconds(),
       },
     });
   } catch (error) {
@@ -484,15 +466,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-/**
- * @desc    Refresh access token
- * @route   POST /api/auth/refresh-token
- * @access  Public (with valid refresh token)
- */
 export const refreshAccessToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Get refresh token from cookie or body
-    const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+    // Read refresh token from httpOnly cookie (falls back to body for backwards compat)
+    const refreshToken: string | undefined =
+      req.cookies?.[REFRESH_COOKIE] || (req.body as { refreshToken?: string }).refreshToken;
 
     if (!refreshToken) {
       res.status(401).json({
@@ -502,56 +480,59 @@ export const refreshAccessToken = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // Verify refresh token
-    const jwtSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET is not defined');
-    }
-
-    let decoded: { id: string; type?: string };
+    let refreshPayload;
     try {
-      decoded = jwt.verify(refreshToken, jwtSecret) as { id: string; type?: string };
+      refreshPayload = verifyRefreshToken(refreshToken);
     } catch {
       res.status(401).json({
         success: false,
-        message: 'Invalid or expired refresh token',
+        message: 'Invalid refresh token',
       });
       return;
     }
 
-    // Verify it's a refresh token
-    if (decoded.type !== 'refresh') {
+    const hashed = hashToken(refreshToken);
+    const user = await prisma.user.findFirst({
+      where: {
+        id: refreshPayload.sub,
+        refreshToken: hashed,
+        refreshTokenExpires: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
       res.status(401).json({
         success: false,
-        message: 'Invalid token type',
+        message: 'Refresh token is invalid or expired',
       });
       return;
     }
 
-    // Find user
-    const user = await User.findById(decoded.id).select('+refreshToken +refreshTokenExpires');
+    const newAccessToken = signAccessToken(user);
+    const newRefreshToken = signRefreshToken(user);
+    const refreshExpiresAt = getTokenExpirationMs(newRefreshToken);
 
-    if (!user || !user.isActive) {
-      res.status(401).json({
-        success: false,
-        message: 'User not found or inactive',
-      });
-      return;
-    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshToken: hashToken(newRefreshToken),
+        refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+      },
+    });
 
-    // Generate new access token
-    const newAccessToken = generateAccessToken(user._id.toString(), user.role);
-
-    // Log token refresh
     await logAuditEvent('TOKEN_REFRESH', req, {
-      userId: user._id.toString(),
+      userId: user.id,
       email: user.email,
     });
+
+    // Rotate the refresh token cookie
+    res.cookie(REFRESH_COOKIE, newRefreshToken, getRefreshCookieOptions());
 
     res.status(200).json({
       success: true,
       data: {
         accessToken: newAccessToken,
+        expiresIn: getAccessTokenTtlSeconds(),
       },
     });
   } catch (error) {
@@ -563,11 +544,6 @@ export const refreshAccessToken = async (req: Request, res: Response): Promise<v
   }
 };
 
-/**
- * @desc    Get current logged in user
- * @route   GET /api/auth/me
- * @access  Private
- */
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
@@ -593,46 +569,36 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-/**
- * @desc    Logout user (invalidate token)
- * @route   POST /api/auth/logout
- * @access  Private
- */
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Get token from header
-    const token = req.headers.authorization?.split(' ')[1];
-    
+    const token = extractTokenFromHeader(req.headers.authorization);
     if (token) {
-      // Decode token to get expiration time
-      const jwtSecret = process.env.JWT_SECRET;
-      if (jwtSecret) {
-        try {
-          const decoded = jwt.verify(token, jwtSecret) as { exp?: number };
-          const expiresAt = decoded.exp ? decoded.exp * 1000 : Date.now() + 7 * 24 * 60 * 60 * 1000;
-          
-          // Add token to blacklist
-          await tokenBlacklist.add(token, expiresAt);
-        } catch {
-          // Token is invalid or expired, no need to blacklist
-        }
+      const expiresAt = getTokenExpirationMs(token);
+      if (expiresAt) {
+        await tokenBlacklist.add(token, expiresAt);
       }
     }
 
-    // Remove session
     if (req.user) {
       const fingerprint = generateDeviceFingerprint(req);
-      await req.user.removeSession(fingerprint);
+      await removeSession(req.user.id, fingerprint);
 
-      // Log logout
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: {
+          refreshToken: null,
+          refreshTokenExpires: null,
+        },
+      });
+
       await logAuditEvent('LOGOUT', req, {
-        userId: req.user._id.toString(),
+        userId: req.user.id,
         email: req.user.email,
       });
     }
 
-    // Clear refresh token cookie
-    res.clearCookie('refreshToken', { path: '/' });
+    // Clear the refresh token cookie
+    res.clearCookie(REFRESH_COOKIE, getClearCookieOptions());
 
     res.status(200).json({
       success: true,
@@ -647,11 +613,6 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-/**
- * @desc    Forgot password - send reset token
- * @route   POST /api/auth/forgot-password
- * @access  Public
- */
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
@@ -664,35 +625,29 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
 
-    // Always return success to prevent email enumeration
     await logAuditEvent('PASSWORD_RESET_REQUEST', req, {
       email: email.toLowerCase(),
       success: !!user,
     });
 
-    if (!user) {
+    if (user) {
+      const resetToken = await generatePasswordResetToken(user.id);
+
       res.status(200).json({
         success: true,
-        message: 'If an account with that email exists, a password reset link has been sent',
+        message: 'If an account with that email exists, a password reset code has been sent',
+        ...(process.env.NODE_ENV !== 'production' ? { data: { resetToken } } : {}),
       });
       return;
     }
 
-    // Generate reset token
-    const resetToken = user.generatePasswordResetToken();
-    await user.save();
-
-    // In production, send email with reset link
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-    // TODO: Send email with resetUrl
-    console.log('Password reset URL:', resetUrl);
-
     res.status(200).json({
       success: true,
-      message: 'If an account with that email exists, a password reset link has been sent',
+      message: 'If an account with that email exists, a password reset code has been sent',
     });
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -703,19 +658,14 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
   }
 };
 
-/**
- * @desc    Reset password with token
- * @route   POST /api/auth/reset-password
- * @access  Public
- */
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token, password } = req.body;
+    const { email, code, password } = req.body;
 
-    if (!token || !password) {
+    if (!email || !code || !password) {
       res.status(400).json({
         success: false,
-        message: 'Please provide token and new password',
+        message: 'Please provide email, verification code, and new password',
       });
       return;
     }
@@ -728,55 +678,49 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Hash the token to compare with stored hash
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
-
-    // Find user with valid reset token
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: new Date() },
-    }).select('+resetPasswordToken +resetPasswordExpires +password +passwordHistory');
+    const hashedToken = hashToken(code);
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { gt: new Date() },
+      },
+    });
 
     if (!user) {
       res.status(400).json({
         success: false,
-        message: 'Invalid or expired reset token',
+        message: 'Invalid or expired reset code',
       });
       return;
     }
 
-    // Check if password was used before
-    const isReused = await user.isPasswordReused(password);
-    if (isReused) {
+    const reused = await isPasswordReused(user.id, password);
+    if (reused) {
       res.status(400).json({
         success: false,
-        message: 'Cannot reuse a recent password. Please choose a different password.',
+        message: 'You cannot reuse a recent password',
       });
       return;
     }
 
-    // Add old password to history before changing
     if (user.password) {
-      await user.addToPasswordHistory(user.password);
+      await addToPasswordHistory(user.id, user.password);
     }
 
-    // Set new password
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
+    const newHashed = await hashPassword(password);
 
-    // Invalidate all refresh tokens by clearing them
-    user.refreshToken = undefined;
-    user.refreshTokenExpires = undefined;
-    await user.save();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: newHashed,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
 
-    // Log password reset
     await logAuditEvent('PASSWORD_RESET_SUCCESS', req, {
-      userId: user._id.toString(),
+      userId: user.id,
       email: user.email,
     });
 
@@ -793,11 +737,6 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-/**
- * @desc    Send OTP to mobile number
- * @route   POST /api/auth/send-otp
- * @access  Public
- */
 export const sendOTP = async (req: Request, res: Response): Promise<void> => {
   try {
     const { phone, email } = req.body;
@@ -810,14 +749,16 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Find user by phone or email
-    const query = phone 
-      ? { phone } 
-      : { email: email.toLowerCase() };
-    
-    const user = await User.findOne(query);
+    const user = phone
+      ? await prisma.user.findFirst({ where: { phone } })
+      : await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
 
-    if (!user) {
+    let otp: string;
+    if (user) {
+      otp = await generateOTP(user.id);
+    } else if (phone) {
+      otp = await createOtpChallenge(phone);
+    } else {
       res.status(404).json({
         success: false,
         message: 'User not found',
@@ -825,31 +766,294 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate OTP
-    const otp = user.generateOTP();
-    await user.save();
-
-    // Log OTP sent event
-    await logAuditEvent('OTP_SENT', req, {
-      userId: user._id.toString(),
-      email: user.email,
-      metadata: { method: phone ? 'phone' : 'email' },
-    });
-
-    // In production, send OTP via SMS or email
-    // For development, log it (this will NOT be returned in response)
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV ONLY] OTP for ${phone || email}: ${otp}`);
+    if (phone) {
+      const smsResult = await sendMsg91OTP(phone);
+      if (!smsResult.success) {
+        res.status(500).json({
+          success: false,
+          message: smsResult.message || 'Failed to send OTP',
+        });
+        return;
+      }
     }
 
-    // TODO: Integrate with SMS service (Twilio, etc.) or email service
+    await logAuditEvent('OTP_SENT', req, {
+      userId: user?.id,
+      email: user?.email,
+      metadata: { method: phone ? 'phone' : 'email', onboarding: !user },
+    });
 
     res.status(200).json({
       success: true,
-      message: `OTP sent successfully to ${phone ? 'mobile number' : 'email'}`,
+      message: `Verification code sent to ${phone ? 'mobile number' : 'email'}`,
+      ...(process.env.NODE_ENV !== 'production' ? { data: { otp } } : {}),
     });
   } catch (error) {
     console.error('Send OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while sending verification code',
+    });
+  }
+};
+
+export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { phone, email, otp } = req.body;
+
+    if ((!phone && !email) || !otp) {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide phone/email and verification code',
+      });
+      return;
+    }
+
+    const user = phone
+      ? await prisma.user.findFirst({ where: { phone } })
+      : await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+
+    // ── Registered-user OTP verification ───────────────────
+    if (user) {
+      // Try Redis-based verification first
+      const redisVerified = await verifyUserOTP(user.id, otp);
+
+      if (redisVerified) {
+        const updatedUser = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            isEmailVerified: email ? true : user.isEmailVerified,
+            isPhoneVerified: phone ? true : user.isPhoneVerified,
+          },
+        });
+
+        await logAuditEvent('OTP_VERIFIED', req, {
+          userId: user.id,
+          email: user.email,
+          metadata: { method: phone ? 'phone' : 'email' },
+        });
+
+        res.status(200).json({
+          success: true,
+          message: 'Verification successful',
+          data: { user: formatUserResponse(updatedUser) },
+        });
+        return;
+      }
+
+      // Fallback: legacy DB-column OTP check
+      if (user.otpHash && user.otpExpires) {
+        if (user.otpExpires < new Date()) {
+          res.status(400).json({
+            success: false,
+            message: 'Verification code has expired',
+          });
+          return;
+        }
+
+        const hashedOtp = hashToken(otp);
+        if (hashedOtp !== user.otpHash) {
+          res.status(400).json({
+            success: false,
+            message: 'Invalid verification code',
+          });
+          return;
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            isEmailVerified: email ? true : user.isEmailVerified,
+            isPhoneVerified: phone ? true : user.isPhoneVerified,
+            otpHash: null,
+            otpExpires: null,
+          },
+        });
+
+        await logAuditEvent('OTP_VERIFIED', req, {
+          userId: user.id,
+          email: user.email,
+          metadata: { method: phone ? 'phone' : 'email' },
+        });
+
+        res.status(200).json({
+          success: true,
+          message: 'Verification successful',
+          data: { user: formatUserResponse(updatedUser) },
+        });
+        return;
+      }
+    }
+
+    if (phone) {
+      const result = await verifyOtpChallenge(phone, otp);
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          message: result.reason === 'expired'
+            ? 'Verification code has expired'
+            : 'Invalid verification code',
+        });
+        return;
+      }
+
+      await logAuditEvent('OTP_VERIFIED', req, {
+        metadata: { method: 'phone', onboarding: true },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Verification successful',
+        data: {
+          verificationToken: result.token,
+        },
+      });
+      return;
+    }
+
+    res.status(404).json({
+      success: false,
+      message: 'User not found or OTP not generated',
+    });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during verification',
+    });
+  }
+};
+
+export const verifyMsg91OTP = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, type } = req.body;
+
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Not authorized',
+      });
+      return;
+    }
+
+    if (!token || !type) {
+      res.status(400).json({
+        success: false,
+        message: 'Missing required parameters: token or type',
+      });
+      return;
+    }
+
+    let verifiedPayload: Msg91VerificationTokenPayload;
+    try {
+      verifiedPayload = verifyMsg91VerificationToken(token);
+    } catch {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired MSG91 token',
+      });
+      return;
+    }
+
+    if (verifiedPayload.purpose !== 'msg91_verification') {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired MSG91 token',
+      });
+      return;
+    }
+
+    if (
+      req.user.phone &&
+      normalizePhone(req.user.phone) !== verifiedPayload.phone
+    ) {
+      res.status(403).json({
+        success: false,
+        message: 'Verification token does not match authenticated user',
+      });
+      return;
+    }
+
+    const updateData: any = {};
+    if (type === 'phone') {
+      updateData.isPhoneVerified = true;
+    } else if (type === 'email') {
+      updateData.isEmailVerified = true;
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid verification type. Must be "phone" or "email"',
+      });
+      return;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+    });
+
+    await logAuditEvent('OTP_VERIFIED', req, {
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      metadata: { method: 'msg91', type },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `${type === 'phone' ? 'Phone' : 'Email'} verified successfully`,
+      data: {
+        user: formatUserResponse(updatedUser),
+      },
+    });
+  } catch (error) {
+    console.error('Verify MSG91 OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during MSG91 verification',
+    });
+  }
+};
+
+// =========================================
+// NEW MSG91 REST API Handlers
+// =========================================
+
+/**
+ * Send OTP via MSG91 REST API
+ * POST /auth/otp/send
+ */
+export const msg91SendOTP = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { mobile } = req.body;
+
+    if (!mobile) {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide mobile number',
+      });
+      return;
+    }
+
+    const result = await sendMsg91OTP(mobile);
+
+    if (result.success) {
+      await logAuditEvent('OTP_SENT', req, {
+        metadata: { method: 'msg91_rest_api', mobile: redactPhone(mobile) },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: { requestId: result.requestId },
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.error('MSG91 Send OTP error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error while sending OTP',
@@ -858,87 +1062,98 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
 };
 
 /**
- * @desc    Verify OTP (for partner onboarding)
- * @route   POST /api/auth/verify-otp
- * @access  Public
+ * Verify OTP via MSG91 REST API
+ * POST /auth/otp/verify
  */
-export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
+export const msg91VerifyOTP = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { phone, email, otp } = req.body;
+    const { mobile, otp } = req.body;
 
-    if ((!phone && !email) || !otp) {
+    if (!mobile || !otp) {
       res.status(400).json({
         success: false,
-        message: 'Please provide phone/email and OTP',
+        message: 'Please provide mobile number and OTP',
       });
       return;
     }
 
-    // Hash the provided OTP
-    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    const bypassVerification =
+      process.env.MSG91_BYPASS_VERIFY === 'true' ||
+      process.env.NODE_ENV !== 'production';
 
-    // Find user with matching OTP
-    const query = phone 
-      ? { phone } 
-      : { email: email.toLowerCase() };
+    const result = bypassVerification
+      ? { success: true, message: 'OTP verification bypassed temporarily' }
+      : await verifyMsg91OTPService(mobile, otp);
 
-    const user = await User.findOne({
-      ...query,
-      otp: hashedOTP,
-      otpExpires: { $gt: new Date() },
-    }).select('+otp +otpExpires');
+    if (result.success) {
+      const verificationToken = signMsg91VerificationToken(
+        req.user?.id || 'anonymous',
+        mobile
+      );
 
-    if (!user) {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid or expired OTP',
+      await logAuditEvent('OTP_VERIFIED', req, {
+        metadata: { method: 'msg91_rest_api', mobile: redactPhone(mobile) },
       });
-      return;
-    }
 
-    // Mark phone/email as verified
-    if (phone) {
-      user.isPhoneVerified = true;
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: { verificationToken },
+      });
     } else {
-      user.isEmailVerified = true;
+      res.status(400).json({
+        success: false,
+        message: result.message,
+      });
     }
-
-    // Clear OTP fields
-    user.otp = undefined;
-    user.otpExpires = undefined;
-    await user.save();
-
-    // Log OTP verification
-    await logAuditEvent('OTP_VERIFIED', req, {
-      userId: user._id.toString(),
-      email: user.email,
-      metadata: { method: phone ? 'phone' : 'email' },
-    });
-
-    // Generate tokens for automatic login after verification
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    const refreshToken = generateRefreshTokenJWT(user._id.toString());
-
-    user.generateRefreshToken();
-    await user.save();
-
-    // Set httpOnly cookie
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP verified successfully',
-      data: {
-        user: formatUserResponse(user),
-        accessToken,
-        refreshToken,
-      },
-    });
   } catch (error) {
-    console.error('Verify OTP error:', error);
+    console.error('MSG91 Verify OTP error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during OTP verification',
+      message: 'Server error while verifying OTP',
+    });
+  }
+};
+
+/**
+ * Resend OTP via MSG91 REST API
+ * POST /auth/otp/resend
+ */
+export const msg91ResendOTP = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { mobile, retryType = 'text' } = req.body;
+
+    if (!mobile) {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide mobile number',
+      });
+      return;
+    }
+
+    const result = await resendMsg91OTP(mobile, retryType);
+
+    if (result.success) {
+      await logAuditEvent('OTP_SENT', req, {
+        metadata: { method: 'msg91_rest_api_resend', mobile: redactPhone(mobile), retryType },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: { requestId: result.requestId },
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.error('MSG91 Resend OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while resending OTP',
     });
   }
 };

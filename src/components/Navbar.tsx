@@ -1,31 +1,55 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Home, ShieldCheck, Briefcase, Calculator, Info, Phone, Menu, X } from 'lucide-react';
+import PrefetchLink from './shared/PrefetchLink';
+import {
+  preloadHome,
+  preloadWhyUs,
+  preloadServices,
+  preloadCalculator,
+  preloadAboutUs,
+  preloadContact,
+  preloadLogIn,
+} from '../utils/routePreloaders';
 
 const Navbar: React.FC = () => {
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const lastScrollY = useRef(0);
 
   useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    let rafId = 0;
+    let ticking = false;
+
+    const updateVisibility = () => {
+      setIsVisible(prev => {
+        const currentScrollY = window.scrollY;
+        const goingDown = currentScrollY > lastScrollY.current;
+        lastScrollY.current = currentScrollY;
+        if (goingDown && prev) return false;
+        if (!goingDown && !prev) return true;
+        return prev;
+      });
+      ticking = false;
+    };
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      
-      if (currentScrollY > lastScrollY.current) {
-        // Scrolling down
-        setIsVisible(false);
-      } else {
-        // Scrolling up
-        setIsVisible(true);
+      if (!ticking) {
+        rafId = requestAnimationFrame(updateVisibility);
+        ticking = true;
       }
-      
-      lastScrollY.current = currentScrollY;
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -46,27 +70,27 @@ const Navbar: React.FC = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex space-x-4">
-            <Link to="/" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            <PrefetchLink prefetchRoute={preloadHome} to="/" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Home size={16} /> Home
-            </Link>
-            <Link to="/why-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadWhyUs} to="/why-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <ShieldCheck size={16} /> Why Us?
-            </Link>
-            <Link to="/services" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadServices} to="/services" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Briefcase size={16} /> Services
-            </Link>
-            <Link to="/calculator" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadCalculator} to="/calculator" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Calculator size={16} /> EMI Calculator
-            </Link>
-            <Link to="/about-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadAboutUs} to="/about-us" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Info size={16} /> About Us
-            </Link>
-            <Link to="/contact" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadContact} to="/contact" className="text-gray-700 hover:text-black px-2 py-1 rounded-md text-sm font-medium flex items-center gap-1.5">
               <Phone size={16} /> Contact
-            </Link>
-            <Link to="/login" className="bg-black text-white hover:bg-gray-800 font-semibold py-2 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 ml-2">
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadLogIn} to="/login" className="bg-black text-white hover:bg-gray-800 font-semibold py-2 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 ml-2">
               Login
-            </Link>
+            </PrefetchLink>
           </div>
 
           {/* Mobile Menu Button */}
@@ -93,27 +117,27 @@ const Navbar: React.FC = () => {
       {isOpen && (
         <div className="md:hidden" id="mobile-menu">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white shadow-lg">
-            <Link to="/" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            <PrefetchLink prefetchRoute={preloadHome} to="/" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Home size={20} /> Home
-            </Link>
-            <Link to="/why-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadWhyUs} to="/why-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <ShieldCheck size={20} /> Why Us?
-            </Link>
-            <Link to="/services" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadServices} to="/services" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Briefcase size={20} /> Services
-            </Link>
-            <Link to="/calculator" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadCalculator} to="/calculator" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Calculator size={20} /> EMI Calculator
-            </Link>
-            <Link to="/about-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadAboutUs} to="/about-us" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Info size={20} /> About Us
-            </Link>
-            <Link to="/contact" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadContact} to="/contact" className="text-gray-700 hover:text-black block px-3 py-2 rounded-md text-base font-medium flex items-center gap-2" onClick={toggleMenu}>
               <Phone size={20} /> Contact
-            </Link>
-            <Link to="/login" className="bg-black text-white hover:bg-gray-800 block px-3 py-2 rounded-full text-base font-semibold text-center mt-2" onClick={toggleMenu}>
+            </PrefetchLink>
+            <PrefetchLink prefetchRoute={preloadLogIn} to="/login" className="bg-black text-white hover:bg-gray-800 block px-3 py-2 rounded-full text-base font-semibold text-center mt-2" onClick={toggleMenu}>
               Login
-            </Link>
+            </PrefetchLink>
           </div>
         </div>
       )}

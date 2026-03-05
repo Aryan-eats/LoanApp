@@ -1,5 +1,5 @@
 // Shared Types - Common types used across Admin and Partner dashboards
-import type { LoanProductCode } from '../data/loanProducts';
+import type { LoanProductCode } from '../data/loanProductsData';
 
 // Canonical LoanType references the loan products registry
 export type LoanType = LoanProductCode;
@@ -12,9 +12,7 @@ export type LeadStatus =
   | 'draft'
   | 'submitted' 
   | 'docs_pending'
-  | 'docs_collected' 
   | 'docs_uploaded'
-  | 'bank_logged'
   | 'bank_processing' 
   | 'approved' 
   | 'disbursed' 

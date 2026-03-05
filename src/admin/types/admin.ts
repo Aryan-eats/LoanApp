@@ -1,7 +1,7 @@
 // Admin Types for GPS India Financial Services Admin Dashboard
 // Re-exports shared types and adds admin-specific types
 
-import type { LoanProductCode } from '../../data/loanProducts';
+import type { LoanProductCode } from '../../data/loanProductsData';
 
 // Re-export shared types for convenience
 export type {
@@ -21,8 +21,8 @@ import type {
   AdminRole,
 } from '../../types/shared';
 
-// Admin-specific lead status (more granular than partner view)
-export type LeadStatus = 'submitted' | 'docs_collected' | 'bank_logged' | 'approved' | 'disbursed' | 'rejected';
+// Admin-specific lead status (matching backend Lead model)
+export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'bank_processing' | 'approved' | 'disbursed' | 'rejected';
 
 // Partner type (admin has more detailed categorization)
 export type PartnerType = 'freelancer' | 'used_car_dealer' | 'property_dealer' | 'builder' | 'sub_dsa';
@@ -63,6 +63,7 @@ export interface Lead {
   partnerName: string;
   status: LeadStatus;
   bankAssigned?: string;
+  preferredBank?: string;
   createdAt: string;
   updatedAt: string;
   timeline: LeadTimelineEvent[];
@@ -89,6 +90,10 @@ export interface LeadDocument {
   id: string;
   type: string;
   fileName: string;
+  fileSize?: string;
+  fileUrl?: string;
+  mimeType?: string;
+  r2ObjectKey?: string;
   uploadedBy: string;
   uploadedAt: string;
   status: DocumentStatus;
@@ -157,16 +162,95 @@ export interface Commission {
   paidAt?: string;
 }
 
+export type AuditEventType =
+  // Auth
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILED'
+  | 'LOGOUT'
+  | 'REGISTER'
+  | 'PASSWORD_RESET_REQUEST'
+  | 'PASSWORD_RESET_SUCCESS'
+  | 'PASSWORD_CHANGE'
+  | 'OTP_SENT'
+  | 'OTP_VERIFIED'
+  | 'ACCOUNT_LOCKED'
+  | 'TOKEN_REFRESH'
+  | 'SUSPICIOUS_ACTIVITY'
+  // Lead lifecycle
+  | 'LEAD_CREATED'
+  | 'LEAD_UPDATED'
+  | 'LEAD_STATUS_CHANGED'
+  | 'LEAD_DELETED'
+  | 'LEAD_ASSIGNED'
+  // Documents
+  | 'DOCUMENT_UPLOADED'
+  | 'DOCUMENT_VIEWED'
+  | 'DOCUMENT_DOWNLOADED'
+  | 'DOCUMENT_VERIFIED'
+  | 'DOCUMENT_REJECTED'
+  | 'DOCUMENT_DELETED'
+  // Partners
+  | 'PARTNER_UPDATED'
+  | 'PARTNER_APPROVED'
+  | 'PARTNER_SUSPENDED'
+  | 'PARTNER_KYC_UPDATED'
+  // Financials
+  | 'COMMISSION_CALCULATED'
+  | 'COMMISSION_PAID'
+  | 'COMMISSION_RATE_CHANGED'
+  // Consent & Data Rights
+  | 'CONSENT_GIVEN'
+  | 'CONSENT_WITHDRAWN'
+  | 'DATA_DELETION_REQUEST'
+  // Admin
+  | 'ADMIN_ROLE_CHANGED'
+  | 'ADMIN_USER_CREATED'
+  | 'ADMIN_USER_DELETED'
+  | 'BULK_EXPORT'
+  | 'PII_ACCESS'
+  | 'BANK_UPDATED'
+  | 'BANK_STATUS_CHANGED';
+
 export interface AuditLog {
   id: string;
-  timestamp: string;
+  event: AuditEventType;
   userName: string;
   userRole: string;
-  action: string;
-  entity: string;
-  entityId: string;
-  details: string;
-  ipAddress: string;
+  ip: string | null;
+  userAgent: string | null;
+  success: boolean;
+  failureReason: string | null;
+  metadata: Record<string, unknown> | null;
+  entityId: string | null;
+  entityType: string | null;
+  severity: string;
+  createdAt: string;
+}
+
+export interface AuditLogsPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AuditLogsResponse {
+  logs: AuditLog[];
+  pagination: AuditLogsPagination;
+  counts: {
+    loginEvents: number;
+    securityEvents: number;
+    authEvents: number;
+  };
+}
+
+export interface AuditLogsFilters {
+  event?: AuditEventType | '';
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
 }
 
 export interface AdminUser {

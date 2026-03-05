@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import {
   DocumentStatsCards,
@@ -6,13 +7,12 @@ import {
   DocumentLeadCard,
   DocumentPreviewModal,
 } from '../components/documents';
-import { leads } from '../data/placeholderData';
-import type { Lead, LeadDocument, DocumentStatus } from '../types/admin';
-import { FileText, X, Plus } from 'lucide-react';
+import type { Lead, LeadDocument, DocumentStatus, LeadStatus } from '../types/admin';
+import { FileText, X, Plus, Loader2, Link2, Copy, Check, Clock } from 'lucide-react';
 import {
   getProductsByCategory,
   type LoanCategory,
-} from '../../data/loanProducts';
+} from '../../data/loanProductsData';
 import {
   CreditCard,
   Business,
@@ -27,11 +27,10 @@ import {
   FlashOn,
   Construction,
 } from '@mui/icons-material';
+import { uploadLeadDocument, getDocumentDownloadUrl, deleteLeadDocument, updateDocumentStatus, bulkUpdateDocumentStatus, generateUploadToken } from '../../api/documentsApi';
+import { getLeads } from '../../api/leadsApi';
+import { getRequiredDocsForLoanCode } from '../../data/DocsReq';
 
-// Get leads that have documents
-const leadsWithDocs = leads.filter((lead) => lead.documents && lead.documents.length > 0);
-
-// Loan categories for the form
 const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
   { value: 'personal', label: 'Personal', icon: <CreditCard fontSize="small" /> },
   { value: 'business', label: 'Business', icon: <Business fontSize="small" /> },
@@ -49,23 +48,56 @@ const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNod
   { value: 'specialized', label: 'Specialized', icon: <FlashOn fontSize="small" /> },
 ];
 
-// Standard documents required for loans
-const standardDocuments = [
-  'PAN Card',
-  'Aadhaar Card',
-  'Bank Statement (6 months)',
-  'Salary Slip / ITR',
-  'Address Proof',
-  'Photo',
-];
+/** Map an API lead response to the admin Lead type */
+const mapApiLead = (apiLead: any): Lead => ({
+  id: apiLead.id,
+  customerId: apiLead.client?.id || apiLead.customerId || '',
+  customerName: apiLead.client?.fullName || apiLead.customerName || 'Unknown',
+  customerPhone: apiLead.client?.phone || apiLead.customerPhone || '',
+  customerEmail: apiLead.client?.email || apiLead.customerEmail || '',
+  loanType: apiLead.loanType,
+  loanAmount: Number(apiLead.loanAmount),
+  partnerId: apiLead.partnerId || 'DIRECT',
+  partnerName: apiLead.partnerName || 'Direct (Website)',
+  status: apiLead.status as LeadStatus,
+  bankAssigned: apiLead.bankAssigned,
+  preferredBank: apiLead.preferredBank,
+  createdAt: apiLead.createdAt,
+  updatedAt: apiLead.updatedAt,
+  timeline: (apiLead.timeline || []).map((e: any) => ({
+    id: e.id,
+    status: e.status,
+    timestamp: e.timestamp,
+    updatedBy: e.updatedBy,
+    note: e.note,
+  })),
+  documents: (apiLead.documents || []).map((d: any) => ({
+    id: d.id,
+    type: d.type,
+    fileName: d.fileName || '',
+    fileSize: d.fileSize,
+    fileUrl: d.fileUrl,
+    mimeType: d.mimeType,
+    r2ObjectKey: d.r2ObjectKey,
+    uploadedBy: d.uploadedBy || 'Partner',
+    uploadedAt: d.uploadedAt ? new Date(d.uploadedAt).toLocaleDateString() : '',
+    status: d.status as DocumentStatus,
+    url: d.fileUrl,
+  })),
+});
+
+/** Leads relevant to the documents page: docs_pending / docs_uploaded / any with documents */
+const DOC_RELEVANT_STATUSES: LeadStatus[] = ['docs_pending', 'docs_uploaded', 'bank_processing'];
 
 const DocumentsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [apiLeads, setApiLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | ''>('');
-  const [expandedLeads, setExpandedLeads] = useState<string[]>([leadsWithDocs[0]?.id || '']);
+  const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<{ doc: LeadDocument; lead: Lead } | null>(null);
-  
-  // Add Client Modal State
+  const hasAutoExpanded = useRef(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedClients, setAddedClients] = useState<Lead[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<LoanCategory | ''>('');
@@ -75,10 +107,59 @@ const DocumentsPage: React.FC = () => {
     loanAmount: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+  const [rejectModal, setRejectModal] = useState<{
+    docId: string;
+    leadId: string;
+    docType: string;
+    bulk?: boolean;
+    docIds?: string[];
+  } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadLinkModal, setUploadLinkModal] = useState<{
+    url: string;
+    docType: string;
+    customerName: string;
+    customerEmail: string;
+    expiresAt: string;
+  } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
-  // Memoized document stats
+  // ── API fetch ─────────────────────────────────────────────────────────────
+  const fetchDocLeads = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await getLeads({}, true); // isAdmin = true
+      if (response.success && response.data) {
+        const mapped: Lead[] = response.data.leads
+          .map(mapApiLead)
+          // Show leads that are docs_pending/docs_uploaded/bank_processing,
+          // or any lead that already has at least one document slot created.
+          .filter(
+            (l: Lead) =>
+              DOC_RELEVANT_STATUSES.includes(l.status) || l.documents.length > 0
+          );
+        setApiLeads(mapped);
+        // Auto-expand the first lead on first load only
+        if (!hasAutoExpanded.current && mapped.length > 0) {
+          setExpandedLeads([mapped[0].id]);
+          hasAutoExpanded.current = true;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch document leads:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDocLeads();
+  }, [fetchDocLeads]);
+
   const documentStats = useMemo(() => {
-    const allLeads = [...leads, ...addedClients];
+    const allLeads = [...apiLeads, ...addedClients];
     const allDocuments = allLeads.flatMap((lead) => lead.documents);
     return {
       total: allDocuments.length,
@@ -86,15 +167,16 @@ const DocumentsPage: React.FC = () => {
       verified: allDocuments.filter((d) => d.status === 'verified').length,
       rejected: allDocuments.filter((d) => d.status === 'rejected').length,
     };
-  }, [addedClients]);
+  }, [apiLeads, addedClients]);
 
-  // Combine placeholder leads with added clients
   const allLeadsWithDocs = useMemo(() => {
-    const addedWithDocs = addedClients.filter((lead) => lead.documents && lead.documents.length > 0);
-    return [...addedWithDocs, ...leadsWithDocs];
-  }, [addedClients]);
+    // addedClients that have already had documents generated
+    const addedWithDocs = addedClients.filter(
+      (lead) => DOC_RELEVANT_STATUSES.includes(lead.status) || lead.documents.length > 0
+    );
+    return [...addedWithDocs, ...apiLeads];
+  }, [apiLeads, addedClients]);
 
-  // Memoized filtered leads
   const filteredLeads = useMemo(() => {
     return allLeadsWithDocs.filter((lead) => {
       const matchesSearch =
@@ -109,9 +191,8 @@ const DocumentsPage: React.FC = () => {
 
       return matchesSearch && matchesStatus;
     });
-  }, [searchQuery, statusFilter]);
+  }, [allLeadsWithDocs, searchQuery, statusFilter]);
 
-  // Handlers with useCallback
   const toggleExpand = useCallback((leadId: string) => {
     setExpandedLeads((prev) =>
       prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
@@ -126,37 +207,232 @@ const DocumentsPage: React.FC = () => {
     }
   }, [expandedLeads.length, filteredLeads]);
 
-  const handleApprove = useCallback((docId: string, leadId: string) => {
-    // Placeholder: Would call API to approve document
-    console.log('Approving document:', docId, 'for lead:', leadId);
-    setSelectedDoc(null);
+  const handleApprove = useCallback(async (docId: string, leadId: string) => {
+    setIsProcessing(true);
+    try {
+      const response = await updateDocumentStatus(docId, 'verified');
+      if (response.success) {
+        const patchDoc = (d: LeadDocument) =>
+          d.id !== docId ? d : { ...d, status: 'verified' as DocumentStatus };
+        const patchLead = (lead: Lead) =>
+          lead.id !== leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+        setApiLeads((prev) => prev.map(patchLead));
+        setAddedClients((prev) => prev.map(patchLead));
+        setSelectedDoc(null);
+      } else {
+        alert(`Failed to verify: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Verification failed';
+      alert(message);
+    } finally {
+      setIsProcessing(false);
+    }
   }, []);
 
-  const handleReject = useCallback((docId: string, leadId: string) => {
-    // Placeholder: Would call API to reject document
-    console.log('Rejecting document:', docId, 'for lead:', leadId);
-    setSelectedDoc(null);
+  const handleRejectRequest = useCallback((docId: string, leadId: string, docType?: string) => {
+    setRejectModal({ docId, leadId, docType: docType || 'document' });
+    setRejectionReason('');
+  }, []);
+
+  const handleRejectConfirm = useCallback(async () => {
+    if (!rejectModal || !rejectionReason.trim()) return;
+
+    setIsProcessing(true);
+    try {
+      if (rejectModal.bulk && rejectModal.docIds) {
+        // Bulk reject
+        const response = await bulkUpdateDocumentStatus(
+          rejectModal.docIds,
+          'rejected',
+          rejectionReason.trim(),
+        );
+        if (response.success) {
+          const idsSet = new Set(rejectModal.docIds);
+          const patchDoc = (d: LeadDocument) =>
+            !idsSet.has(d.id) ? d : { ...d, status: 'rejected' as DocumentStatus };
+          const patchLead = (lead: Lead) =>
+            lead.id !== rejectModal.leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+          setApiLeads((prev) => prev.map(patchLead));
+          setAddedClients((prev) => prev.map(patchLead));
+        } else {
+          alert(`Failed to reject: ${response.message || 'Unknown error'}`);
+        }
+      } else {
+        // Single reject
+        const response = await updateDocumentStatus(
+          rejectModal.docId,
+          'rejected',
+          rejectionReason.trim(),
+        );
+        if (response.success) {
+          const patchDoc = (d: LeadDocument) =>
+            d.id !== rejectModal.docId ? d : { ...d, status: 'rejected' as DocumentStatus };
+          const patchLead = (lead: Lead) =>
+            lead.id !== rejectModal.leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+          setApiLeads((prev) => prev.map(patchLead));
+          setAddedClients((prev) => prev.map(patchLead));
+          setSelectedDoc(null);
+        } else {
+          alert(`Failed to reject: ${response.message || 'Unknown error'}`);
+        }
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Rejection failed';
+      alert(message);
+    } finally {
+      setIsProcessing(false);
+      setRejectModal(null);
+      setRejectionReason('');
+    }
+  }, [rejectModal, rejectionReason]);
+
+  const handleBulkVerify = useCallback(async (leadId: string, docIds: string[]) => {
+    if (docIds.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const response = await bulkUpdateDocumentStatus(docIds, 'verified');
+      if (response.success) {
+        const idsSet = new Set(docIds);
+        const patchDoc = (d: LeadDocument) =>
+          !idsSet.has(d.id) ? d : { ...d, status: 'verified' as DocumentStatus };
+        const patchLead = (lead: Lead) =>
+          lead.id !== leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+        setApiLeads((prev) => prev.map(patchLead));
+        setAddedClients((prev) => prev.map(patchLead));
+      } else {
+        alert(`Failed to verify: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Bulk verify failed';
+      alert(message);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  const handleBulkRejectRequest = useCallback((leadId: string, docIds: string[]) => {
+    if (docIds.length === 0) return;
+    setRejectModal({ docId: '', leadId, docType: `${docIds.length} document(s)`, bulk: true, docIds });
+    setRejectionReason('');
   }, []);
 
   const handleNotifyPartner = useCallback((lead: Lead, doc: LeadDocument) => {
-    // Placeholder: Would call API to send notification to partner
     console.log('Notifying partner for lead:', lead.id, 'document:', doc.type);
     alert(
       `Notification sent to partner "${lead.partnerName}" requesting ${doc.type} for ${lead.customerName}`
     );
   }, []);
 
-  const handleSendUploadLink = useCallback((lead: Lead, doc: LeadDocument) => {
-    // Placeholder: Would call API to send upload link to customer
-    console.log('Sending upload link to customer:', lead.customerEmail, 'for document:', doc.type);
-    alert(`Upload link sent to ${lead.customerEmail} for uploading ${doc.type}`);
+  const handleSendUploadLink = useCallback(async (_lead: Lead, doc: LeadDocument) => {
+    try {
+      const response = await generateUploadToken(doc.id);
+      if (response.success && response.data) {
+        setUploadLinkModal({
+          url: response.data.uploadUrl,
+          docType: response.data.document.type,
+          customerName: response.data.customer.name,
+          customerEmail: response.data.customer.email,
+          expiresAt: response.data.expiresAt,
+        });
+        setLinkCopied(false);
+      } else {
+        alert(`Failed to generate link: ${response.message || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to generate upload link';
+      alert(`Error: ${message}`);
+    }
   }, []);
 
   const handleViewDocument = useCallback((doc: LeadDocument, lead: Lead) => {
     setSelectedDoc({ doc, lead });
   }, []);
 
-  // Add Client handlers
+  const handleUploadFile = useCallback(async (leadId: string, docId: string, file: File) => {
+    setUploadingDocId(docId);
+    try {
+      const response = await uploadLeadDocument(leadId, docId, file);
+      if (response.success && response.data?.document) {
+        const updatedDoc = response.data.document;
+
+        const patchDoc = (d: LeadDocument) =>
+          d.id !== docId
+            ? d
+            : {
+                ...d,
+                fileName: updatedDoc.fileName,
+                uploadedBy: updatedDoc.uploadedBy || 'Admin',
+                uploadedAt: updatedDoc.uploadedAt
+                  ? new Date(updatedDoc.uploadedAt).toLocaleDateString()
+                  : new Date().toLocaleDateString(),
+                status: (updatedDoc.status as DocumentStatus) || 'uploaded',
+                url: updatedDoc.fileUrl || undefined,
+              };
+
+        const patchLead = (lead: Lead) =>
+          lead.id !== leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+        // Update in both addedClients and apiLeads
+        setAddedClients((prev) => prev.map(patchLead));
+        setApiLeads((prev) => prev.map(patchLead));
+
+        alert(`"${file.name}" uploaded successfully for ${updatedDoc.type || 'document'}`);
+      } else {
+        alert(`Error: ${response.message || 'Upload failed'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      alert(`Error: ${message}`);
+    } finally {
+      setUploadingDocId(null);
+    }
+  }, []);
+
+  const handleDownloadFile = useCallback(async (docId: string) => {
+    try {
+      const response = await getDocumentDownloadUrl(docId);
+      if (response.success && response.data?.url) {
+        // Open the pre-signed URL in a new tab to download
+        window.open(response.data.url, '_blank');
+      } else {
+        alert(response.message || 'Could not generate download link');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Download failed';
+      alert(`Error: ${message}`);
+    }
+  }, []);
+
+  const handleDeleteDocument = useCallback(async (leadId: string, docId: string) => {
+    try {
+      const response = await deleteLeadDocument(docId);
+      if (response.success) {
+        const patchDoc = (d: LeadDocument) =>
+          d.id !== docId
+            ? d
+            : { ...d, fileName: '', uploadedBy: '', uploadedAt: '', status: 'pending' as DocumentStatus, url: undefined };
+
+        const patchLead = (lead: Lead) =>
+          lead.id !== leadId ? lead : { ...lead, documents: lead.documents.map(patchDoc) };
+
+        setApiLeads((prev) => prev.map(patchLead));
+        setAddedClients((prev) => prev.map(patchLead));
+        setSelectedDoc(null);
+        alert('Document deleted successfully');
+      } else {
+        alert(`Error: ${response.message || 'Delete failed'}`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Delete failed';
+      alert(`Error: ${message}`);
+    }
+  }, []);
+
   const handleOpenAddModal = useCallback(() => {
     setShowAddModal(true);
     setFormData({ customerName: '', loanType: '', loanAmount: '' });
@@ -192,11 +468,12 @@ const DocumentsPage: React.FC = () => {
 
     const newClientId = `NEW-${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
-    
-    // Create documents checklist for the new client
-    const newDocuments: LeadDocument[] = standardDocuments.map((docType, index) => ({
+
+    // Derive required docs from the chosen loan type using DocsReq data
+    const requiredDocs = getRequiredDocsForLoanCode(formData.loanType);
+    const newDocuments: LeadDocument[] = requiredDocs.map((req, index) => ({
       id: `${newClientId}-D${index + 1}`,
-      type: docType,
+      type: req.name,
       fileName: '',
       uploadedBy: '',
       uploadedAt: '',
@@ -213,13 +490,13 @@ const DocumentsPage: React.FC = () => {
       loanAmount: Number(formData.loanAmount),
       partnerId: 'ADMIN',
       partnerName: 'Direct Entry',
-      status: 'submitted',
+      status: 'docs_pending',
       createdAt: today,
       updatedAt: today,
       timeline: [
         {
           id: 'T1',
-          status: 'submitted',
+          status: 'docs_pending',
           timestamp: new Date().toLocaleString(),
           updatedBy: 'Admin',
         },
@@ -233,17 +510,23 @@ const DocumentsPage: React.FC = () => {
   }, [formData, validateForm, handleCloseAddModal]);
 
   return (
-    <AdminLayout onAddLead={handleOpenAddModal} addButtonLabel="Add Client">
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-        <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
+    <AdminLayout onAddLead={() => navigate('/admin/docs/reqdoc')} addButtonLabel="Documents">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+          <p className="text-sm text-gray-500 mt-1">Review and verify customer documents</p>
+        </div>
+        <button
+          onClick={handleOpenAddModal}
+          className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Client
+        </button>
       </div>
 
-      {/* Stats Cards */}
       <DocumentStatsCards stats={documentStats} />
 
-      {/* Filters */}
       <DocumentFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -254,8 +537,11 @@ const DocumentsPage: React.FC = () => {
         onToggleExpandAll={handleToggleExpandAll}
       />
 
-      {/* Documents by Customer */}
-      {filteredLeads.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center items-center h-48">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
+      ) : filteredLeads.length > 0 ? (
         <div className="space-y-4">
           {filteredLeads.map((lead) => (
             <DocumentLeadCard
@@ -265,9 +551,18 @@ const DocumentsPage: React.FC = () => {
               onToggleExpand={() => toggleExpand(lead.id)}
               onViewDocument={(doc) => handleViewDocument(doc, lead)}
               onApprove={(docId) => handleApprove(docId, lead.id)}
-              onReject={(docId) => handleReject(docId, lead.id)}
+              onReject={(docId) => {
+                const doc = lead.documents.find((d) => d.id === docId);
+                handleRejectRequest(docId, lead.id, doc?.type);
+              }}
               onNotifyPartner={(doc) => handleNotifyPartner(lead, doc)}
               onSendUploadLink={(doc) => handleSendUploadLink(lead, doc)}
+              onUploadFile={handleUploadFile}
+              onDownloadFile={handleDownloadFile}
+              uploadingDocId={uploadingDocId}
+              onBulkVerify={(docIds) => handleBulkVerify(lead.id, docIds)}
+              onBulkReject={(docIds) => handleBulkRejectRequest(lead.id, docIds)}
+              isProcessing={isProcessing}
             />
           ))}
         </div>
@@ -279,23 +574,106 @@ const DocumentsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Document Preview Modal */}
       {selectedDoc && (
         <DocumentPreviewModal
           selectedDoc={selectedDoc}
           onClose={() => setSelectedDoc(null)}
           onApprove={() => handleApprove(selectedDoc.doc.id, selectedDoc.lead.id)}
-          onReject={() => handleReject(selectedDoc.doc.id, selectedDoc.lead.id)}
+          onReject={() => handleRejectRequest(selectedDoc.doc.id, selectedDoc.lead.id, selectedDoc.doc.type)}
           onNotifyPartner={() => handleNotifyPartner(selectedDoc.lead, selectedDoc.doc)}
           onSendUploadLink={() => handleSendUploadLink(selectedDoc.lead, selectedDoc.doc)}
+          onDownload={() => handleDownloadFile(selectedDoc.doc.id)}
+          onDelete={() => handleDeleteDocument(selectedDoc.lead.id, selectedDoc.doc.id)}
+          isProcessing={isProcessing}
         />
       )}
 
-      {/* Add Client Modal */}
+      {/* Upload Link Modal */}
+      {uploadLinkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Link2 className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Upload Link Generated</h2>
+                  <p className="text-sm text-gray-500">{uploadLinkModal.docType}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUploadLinkModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                <p className="text-sm text-gray-900">{uploadLinkModal.customerName}</p>
+                {uploadLinkModal.customerEmail && (
+                  <p className="text-xs text-gray-500">{uploadLinkModal.customerEmail}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Link</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={uploadLinkModal.url}
+                    className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-mono truncate"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(uploadLinkModal.url);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      linkCopied
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                  >
+                    {linkCopied ? (
+                      <><Check className="w-4 h-4" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-4 h-4" /> Copy</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800">
+                  <Clock className="w-3.5 h-3.5 inline -mt-0.5" /> This link expires on{' '}
+                  <strong>{new Date(uploadLinkModal.expiresAt).toLocaleString()}</strong>
+                  {' '}and can only be used once.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setUploadLinkModal(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
@@ -314,9 +692,7 @@ const DocumentsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-4 space-y-4">
-              {/* Client Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client Name <span className="text-red-500">*</span>
@@ -335,7 +711,6 @@ const DocumentsPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Loan Category */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Loan Category <span className="text-red-500">*</span>
@@ -364,7 +739,6 @@ const DocumentsPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Loan Type (Sub-type) */}
               {selectedCategory && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -390,7 +764,6 @@ const DocumentsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Loan Amount */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Loan Amount <span className="text-red-500">*</span>
@@ -414,27 +787,41 @@ const DocumentsPage: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1">Minimum: ₹50,000</p>
               </div>
 
-              {/* Documents Preview */}
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-sm font-medium text-gray-700 mb-2">Documents Checklist</p>
-                <p className="text-xs text-gray-500 mb-2">
-                  The following documents will be created as pending for this client:
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {standardDocuments.map((doc, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 text-xs text-gray-600 bg-white px-2 py-1.5 rounded border border-gray-200"
-                    >
-                      <FileText className="w-3 h-3 text-gray-400" />
-                      <span className="truncate">{doc}</span>
+                {formData.loanType ? (
+                  <>
+                    <p className="text-xs text-gray-500 mb-2">
+                      {getRequiredDocsForLoanCode(formData.loanType).length} document(s) will be
+                      created as pending for this client:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                      {getRequiredDocsForLoanCode(formData.loanType).map((req, index) => (
+                        <div
+                          key={index}
+                          className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded border ${
+                            req.mandatory
+                              ? 'text-gray-700 bg-white border-gray-200'
+                              : 'text-gray-400 bg-gray-50 border-dashed border-gray-200'
+                          }`}
+                        >
+                          <FileText className={`w-3 h-3 shrink-0 ${req.mandatory ? 'text-gray-400' : 'text-gray-300'}`} />
+                          <span className="truncate">{req.name}</span>
+                          {!req.mandatory && (
+                            <span className="ml-auto text-gray-300 font-light italic">opt</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">
+                    Select a loan type above to preview the required documents.
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
               <button
                 onClick={handleCloseAddModal}
@@ -447,6 +834,50 @@ const DocumentsPage: React.FC = () => {
                 className="px-4 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors"
               >
                 Add Client
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Reason Modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Reject Document</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Provide a reason for rejecting {rejectModal.docType}
+              </p>
+            </div>
+            <div className="p-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Rejection Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="e.g. Document is blurry, information doesn't match, expired document..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setRejectModal(null); setRejectionReason(''); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                disabled={isProcessing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectConfirm}
+                disabled={!rejectionReason.trim() || isProcessing}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              >
+                {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
+                Reject{rejectModal.bulk ? ' All' : ''}
               </button>
             </div>
           </div>

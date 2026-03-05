@@ -7,6 +7,7 @@
 
 import apiClient from './apiClient';
 import type { Partner, ApplicationStatus } from '../admin/types/admin';
+import type { PartnerProfile } from '../partner/types/partner-dashboard';
 
 export type { Partner, ApplicationStatus };
 
@@ -75,6 +76,10 @@ export interface ApiResponse<T> {
   data?: T;
 }
 
+export interface PartnerProfileResponse {
+  partner: PartnerProfile;
+}
+
 export interface GetPartnersParams {
   page?: number;
   limit?: number;
@@ -118,8 +123,16 @@ export const createPartner = async (data: {
  */
 export const getPartnerById = async (
   id: string
-): Promise<ApiResponse<{ partner: Partner }>> => {
+): Promise<ApiResponse<PartnerProfileResponse>> => {
   const response = await apiClient.get(`/partners/${id}`);
+  return response.data;
+};
+
+/**
+ * GET /api/partner/profile - Get current logged-in partner profile
+ */
+export const getCurrentPartnerProfile = async (): Promise<ApiResponse<PartnerProfileResponse>> => {
+  const response = await apiClient.get('/partner/profile');
   return response.data;
 };
 
@@ -237,6 +250,7 @@ export default {
   getPartners,
   createPartner,
   getPartnerById,
+  getCurrentPartnerProfile,
   updatePartner,
   updatePartnerStatus,
   getPartnerLeads,

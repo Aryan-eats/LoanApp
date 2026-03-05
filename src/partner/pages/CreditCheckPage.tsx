@@ -57,7 +57,6 @@ interface EligibilityFactor {
   weight: number;
 }
 
-// Mock eligibility check result
 const mockEligibilityResult: EligibilityResult = {
   isEligible: true,
   score: 78,
@@ -137,7 +136,6 @@ export default function CreditCheckPage() {
 
   const handleCheckEligibility = async () => {
     setIsChecking(true);
-    // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 2000));
     setResult(mockEligibilityResult);
     setIsChecking(false);
@@ -183,7 +181,6 @@ export default function CreditCheckPage() {
   if (showResult && result) {
     return (
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Eligibility Result</h1>
@@ -197,7 +194,6 @@ export default function CreditCheckPage() {
           </button>
         </div>
 
-        {/* Soft Check Disclaimer */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
           <Shield className="text-blue-600 flex-shrink-0" size={20} />
           <div>
@@ -209,7 +205,6 @@ export default function CreditCheckPage() {
           </div>
         </div>
 
-        {/* Result Summary */}
         <div className={`rounded-xl p-6 ${result.isEligible ? 'bg-green-50 border-2 border-green-200' : 'bg-red-50 border-2 border-red-200'}`}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -232,7 +227,6 @@ export default function CreditCheckPage() {
               </div>
             </div>
 
-            {/* Eligibility Score */}
             <div className="flex items-center gap-4">
               <div className="text-center">
                 <div className="relative w-20 h-20">
@@ -258,7 +252,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Loan Range */}
           {result.isEligible && (
             <div className="mt-6 pt-6 border-t border-green-200 grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="text-center p-3 bg-white/50 rounded-lg">
@@ -281,7 +274,6 @@ export default function CreditCheckPage() {
           )}
         </div>
 
-        {/* Eligibility Factors */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Eligibility Factors</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -303,7 +295,6 @@ export default function CreditCheckPage() {
           </div>
         </div>
 
-        {/* Eligible Banks */}
         {result.isEligible && (
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Eligible Banks & NBFCs</h3>
@@ -356,7 +347,6 @@ export default function CreditCheckPage() {
           </div>
         )}
 
-        {/* Next Steps */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
           <h3 className="text-lg font-semibold mb-2">Ready to Proceed?</h3>
           <p className="text-blue-100 text-sm mb-4">
@@ -373,13 +363,11 @@ export default function CreditCheckPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Credit Check / Eligibility</h1>
         <p className="text-slate-500 mt-1">Check your client's loan eligibility instantly</p>
       </div>
 
-      {/* Soft Check Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
         <Shield className="text-blue-600 flex-shrink-0" size={20} />
         <div>
@@ -391,12 +379,10 @@ export default function CreditCheckPage() {
         </div>
       </div>
 
-      {/* Eligibility Form */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <h2 className="text-lg font-semibold text-slate-800 mb-6">Client Information</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Client Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Client Name *</label>
             <div className="relative">
@@ -411,7 +397,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Mobile Number *</label>
             <div className="relative">
@@ -426,7 +411,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Employment Type */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Employment Type *</label>
             <div className="relative">
@@ -445,7 +429,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Monthly Income */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               <span className="flex items-center gap-1.5">
@@ -465,7 +448,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Loan Type */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Loan Type *</label>
             <select
@@ -483,7 +465,6 @@ export default function CreditCheckPage() {
             </select>
           </div>
 
-          {/* Loan Amount */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Required Loan Amount *</label>
             <div className="relative">
@@ -498,7 +479,6 @@ export default function CreditCheckPage() {
             </div>
           </div>
 
-          {/* Existing EMI */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               <span className="flex items-center gap-1.5">
@@ -519,7 +499,6 @@ export default function CreditCheckPage() {
           </div>
         </div>
 
-        {/* Check Button */}
         <div className="mt-8 flex items-center gap-4">
           <button
             onClick={handleCheckEligibility}
@@ -545,7 +524,6 @@ export default function CreditCheckPage() {
         </div>
       </div>
 
-      {/* How It Works */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">How Eligibility Check Works</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

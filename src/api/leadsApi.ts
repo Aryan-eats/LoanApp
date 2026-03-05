@@ -27,6 +27,8 @@ export interface CreateLeadData {
   loanType: string;
   loanAmount: number;
   tenure?: number;
+  // Customer preference
+  preferredBank?: string;
 }
 
 export interface LeadsResponse {
@@ -91,10 +93,20 @@ export const getLeadById = async (
 };
 
 /**
- * Create a new lead (partner only)
+ * Create a new lead (public endpoint for website, or partner endpoint)
+ * Website forms use /api/leads (public), partners use /api/partner/leads (auth required)
  */
-export const createLead = async (data: CreateLeadData): Promise<ApiResponse<{ lead: Lead }>> => {
-  const response = await apiClient.post('/partner/leads', data);
+export const createLead = async (data: CreateLeadData, isPartner = true): Promise<ApiResponse<{ lead: Lead }>> => {
+  const endpoint = isPartner ? '/partner/leads' : '/leads';
+  const response = await apiClient.post(endpoint, data);
+  return response.data;
+};
+
+/**
+ * Create a new lead as admin
+ */
+export const createAdminLead = async (data: CreateLeadData): Promise<ApiResponse<{ lead: Lead }>> => {
+  const response = await apiClient.post('/admin/leads', data);
   return response.data;
 };
 
@@ -155,13 +167,26 @@ export const getLeadStats = async (isAdmin = false): Promise<ApiResponse<LeadSta
   return response.data;
 };
 
+/**
+ * Update preferred bank for a lead (public endpoint for website users)
+ */
+export const updatePreferredBank = async (
+  id: string,
+  preferredBank: string
+): Promise<ApiResponse<{ lead: Lead }>> => {
+  const response = await apiClient.patch(`/leads/${id}/preferred-bank`, { preferredBank });
+  return response.data;
+};
+
 export default {
   getLeads,
   getLeadById,
   createLead,
+  createAdminLead,
   updateLead,
   updateLeadStatus,
   assignBank,
   deleteLead,
   getLeadStats,
+  updatePreferredBank,
 };

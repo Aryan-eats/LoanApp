@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Build output
+dist
+
+# Git
+.git
+.gitignore
+
+# Environment files (compose injects these)
+.env
+.env.local
+
+# IDE and OS
+.vscode
+.idea
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Documentation and production notes
+docs
+production
+*.md
+!README.md
+
+# Backend (not needed in frontend context)
+backend

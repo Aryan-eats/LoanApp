@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useDebounce } from '../../hooks';
 import { Link } from 'react-router-dom';
 import {
   Search,
@@ -33,9 +34,7 @@ import EmptyState from '../components/EmptyState';
 import { useLeadsStore } from '../../stores/leadsStore';
 import type { Lead, LeadStatus, LoanType } from '../types/partner-dashboard';
 import { buildLoanTypeLabels, buildLoanTypeOptions, getLoanProduct, getLoanIcon, categoryLabels, type LoanCategory } from '../../data/loanProducts';
-import { useEffect } from 'react';
 
-// Dynamic labels from registry - supports all loan products
 const loanTypeLabels = buildLoanTypeLabels(true);
 
 const statusOptions: { value: LeadStatus; label: string }[] = [
@@ -48,7 +47,6 @@ const statusOptions: { value: LeadStatus; label: string }[] = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-// Loan category options for filter
 const loanCategoryOptions: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
   { value: 'personal', label: 'Personal', icon: <CreditCard fontSize="small" /> },
   { value: 'business', label: 'Business', icon: <Business fontSize="small" /> },
@@ -66,10 +64,8 @@ const loanCategoryOptions: { value: LoanCategory; label: string; icon: React.Rea
   { value: 'specialized', label: 'Specialized', icon: <Stars fontSize="small" /> },
 ];
 
-// Dynamic options from registry - supports all loan products
 const loanTypeOptions = buildLoanTypeOptions().map(opt => ({ value: opt.value as LoanType, label: opt.label, icon: opt.icon }));
 
-// Format currency
 const formatCurrency = (amount: number): string => {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
@@ -78,6 +74,7 @@ const formatCurrency = (amount: number): string => {
 
 export default function MyLeadsPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<LeadStatus[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<LoanCategory[]>([]);
@@ -86,15 +83,12 @@ export default function MyLeadsPage() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showLeadDetails, setShowLeadDetails] = useState(false);
 
-  // Get leads from store
   const { leads, fetchLeads } = useLeadsStore();
 
-  // Fetch leads on mount
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
-  // Get filtered sub-types based on selected categories
   const getFilteredSubTypes = () => {
     if (selectedCategories.length === 0) {
       return loanTypeOptions;
@@ -105,16 +99,14 @@ export default function MyLeadsPage() {
     });
   };
 
-  // Filter leads (client-side filtering on top of API data)
   const filteredLeads = (leads as Lead[]).filter((lead) => {
     const matchesSearch =
-      lead.client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.client.phone.includes(searchQuery) ||
-      lead.id.toLowerCase().includes(searchQuery.toLowerCase());
+      lead.client.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      lead.client.phone.includes(debouncedSearchQuery) ||
+      lead.id.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
 
     const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(lead.status);
     
-    // Check category match
     const leadProduct = getLoanProduct(lead.loanType);
     const matchesCategory = selectedCategories.length === 0 || 
       (leadProduct && selectedCategories.includes(leadProduct.category));
@@ -136,7 +128,6 @@ export default function MyLeadsPage() {
         ? prev.filter((c) => c !== category) 
         : [...prev, category];
       
-      // Clear sub-type selections that don't belong to selected categories
       if (newCategories.length > 0) {
         setSelectedLoanTypes((prevTypes) => 
           prevTypes.filter((type) => {
@@ -173,7 +164,6 @@ export default function MyLeadsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">My Leads</h1>
@@ -188,10 +178,8 @@ export default function MyLeadsPage() {
         </Link>
       </div>
 
-      {/* Search and Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
           <div className="flex-1 relative">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -203,7 +191,6 @@ export default function MyLeadsPage() {
             />
           </div>
 
-          {/* Filter Button */}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`inline-flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
@@ -223,11 +210,9 @@ export default function MyLeadsPage() {
           </button>
         </div>
 
-        {/* Expanded Filters */}
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-slate-100">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
                 <div className="flex flex-wrap gap-2">
@@ -247,7 +232,6 @@ export default function MyLeadsPage() {
                 </div>
               </div>
 
-              {/* Date Range Filter */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Date Range</label>
                 <div className="flex items-center gap-2">
@@ -274,7 +258,6 @@ export default function MyLeadsPage() {
               </div>
             </div>
 
-            {/* Loan Category Filter */}
             <div className="mt-6">
               <label className="block text-sm font-medium text-slate-700 mb-2">Loan Category</label>
               <div className="flex flex-wrap gap-2">
@@ -295,7 +278,6 @@ export default function MyLeadsPage() {
               </div>
             </div>
 
-            {/* Loan Sub-Type Filter */}
             <div className="mt-6">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Loan Sub-Type
@@ -326,7 +308,6 @@ export default function MyLeadsPage() {
               </div>
             </div>
 
-            {/* Clear Filters */}
             {activeFiltersCount > 0 && (
               <div className="mt-4 flex items-center justify-end">
                 <button
@@ -342,7 +323,6 @@ export default function MyLeadsPage() {
         )}
       </div>
 
-      {/* Results Summary */}
       <div className="flex items-center justify-between text-sm text-slate-500">
         <p>
           Showing <span className="font-medium text-slate-700">{filteredLeads.length}</span> of{' '}
@@ -350,7 +330,6 @@ export default function MyLeadsPage() {
         </p>
       </div>
 
-      {/* Leads Table */}
       {filteredLeads.length > 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -443,7 +422,6 @@ export default function MyLeadsPage() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between">
             <p className="text-sm text-slate-500">Page 1 of 1</p>
             <div className="flex items-center gap-2">
@@ -480,11 +458,9 @@ export default function MyLeadsPage() {
         </div>
       )}
 
-      {/* Lead Details Modal */}
       {showLeadDetails && selectedLead && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">Lead Details</h2>
@@ -498,9 +474,7 @@ export default function MyLeadsPage() {
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              {/* Status Banner */}
               <div className="flex items-center justify-between mb-6 p-4 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <StatusBadge status={selectedLead.status} />
@@ -516,7 +490,6 @@ export default function MyLeadsPage() {
                 )}
               </div>
 
-              {/* Client Info */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">Client Information</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -541,7 +514,6 @@ export default function MyLeadsPage() {
                 </div>
               </div>
 
-              {/* Loan Info */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">Loan Details</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -583,7 +555,6 @@ export default function MyLeadsPage() {
                 </div>
               </div>
 
-              {/* Timeline */}
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">Timeline</h3>
                 <div className="space-y-3">
@@ -620,7 +591,6 @@ export default function MyLeadsPage() {
                 </div>
               </div>
 
-              {/* Commission Info */}
               {selectedLead.commission && (
                 <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
                   <div className="flex items-center justify-between">
@@ -642,7 +612,6 @@ export default function MyLeadsPage() {
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowLeadDetails(false)}

@@ -7,3 +7,4 @@ export { default as CommissionsPage } from './CommissionsPage';
 export { default as UsersPage } from './UsersPage';
 export { default as AuditLogsPage } from './AuditLogsPage';
 export { default as SettingsPage } from './SettingsPage';
+export { default as ReqDocPage } from './ReqDocPage';

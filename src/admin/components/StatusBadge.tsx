@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ApplicationStatus, LeadStatus, DocumentStatus, CommissionStatus } from '../types/admin';
 
-type StatusType = ApplicationStatus | LeadStatus | DocumentStatus | CommissionStatus | 'active' | 'inactive' | 'uploaded' | 'processing';
+type StatusType = ApplicationStatus | LeadStatus | DocumentStatus | CommissionStatus | 'active' | 'inactive' | 'uploaded' | 'processing' | 'draft';
 
 interface StatusBadgeProps {
   status: StatusType;
@@ -16,11 +16,14 @@ const statusConfig: Record<StatusType, { label: string; className: string }> = {
   under_review: { label: 'Under Review', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   suspended: { label: 'Suspended', className: 'bg-gray-100 text-gray-700 border-gray-300' },
   
-  // Lead Status
+  // Lead Status (backend-compatible values)
+  draft: { label: 'Draft', className: 'bg-gray-100 text-gray-500 border-gray-200' },
   submitted: { label: 'Submitted', className: 'bg-gray-100 text-gray-700 border-gray-300' },
-  docs_collected: { label: 'Docs Collected', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  bank_logged: { label: 'Bank Logged', className: 'bg-purple-50 text-purple-700 border-purple-200' },
+  docs_pending: { label: 'Docs Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  docs_uploaded: { label: 'Docs Uploaded', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  bank_processing: { label: 'Bank Processing', className: 'bg-purple-50 text-purple-700 border-purple-200' },
   disbursed: { label: 'Disbursed', className: 'bg-green-50 text-green-700 border-green-200' },
+
   
   // Document Status
   verified: { label: 'Verified', className: 'bg-green-50 text-green-700 border-green-200' },

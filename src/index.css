@@ -6,9 +6,12 @@
 
 @layer utilities {
   @keyframes pulse-glow {
-    0%, 100% {
+
+    0%,
+    100% {
       box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
     }
+
     50% {
       box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
     }
@@ -16,5 +19,18 @@
 
   .animate-pulse-glow {
     animation: pulse-glow 2.5s infinite ease-in-out;
+  }
+
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee 35s linear infinite;
   }
 }

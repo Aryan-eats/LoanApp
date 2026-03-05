@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { PartnerFormData } from '../../types/partner';
+import { useOTPVerification } from '../../hooks/useOTPVerification';
 
 interface StepBasicIdentityProps {
   formData: PartnerFormData;
@@ -22,8 +23,41 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
   onNext,
 }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isVerifying, setIsVerifying] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
+  const [resendTimer, setResendTimer] = useState(0);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // MSG91 REST API integration (replaces widget)
+  const { sendOTP, verifyOTP, resendOTP, loading: _otpLoading, error: otpError } = useOTPVerification({
+    onSuccess: (data: { verificationToken?: string }) => {
+      console.log('OTP verification successful:', data);
+      updateFormData({
+        otpVerified: true,
+        phoneVerificationToken: data.verificationToken || 'verified',
+      });
+      setIsVerifying(false);
+      setErrors((prev) => ({ ...prev, mobileNumber: '' }));
+    },
+    onError: (error: string) => {
+      console.error('OTP verification failed:', error);
+      setIsVerifying(false);
+      setErrors((prev) => ({
+        ...prev,
+        mobileNumber: error || 'Verification failed. Please try again.',
+      }));
+    },
+  });
+
+  // Resend countdown timer
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const interval = setInterval(() => {
+      setResendTimer((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const validateField = (name: string, value: string): string => {
     switch (name) {
@@ -67,21 +101,88 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
     setErrors((prev) => ({ ...prev, [name]: error }));
   };
 
-  const handleSendOtp = () => {
+  const handleVerifyMobile = async () => {
+    if (isVerifying || formData.otpVerified || otpSent) return;
+
     const mobileError = validateField('mobileNumber', formData.mobileNumber);
     if (mobileError) {
       setErrors((prev) => ({ ...prev, mobileNumber: mobileError }));
       return;
     }
-    // Placeholder for OTP send logic
-    console.log('Sending OTP to:', formData.mobileNumber);
-    setOtpSent(true);
+
+    setIsVerifying(true);
+    setErrors((prev) => ({ ...prev, mobileNumber: '' }));
+
+    const sent = await sendOTP(formData.mobileNumber);
+    setIsVerifying(false);
+
+    if (sent) {
+      setOtpSent(true);
+      setResendTimer(30);
+      // Auto-focus first OTP input
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
+    } else {
+      setErrors((prev) => ({ ...prev, mobileNumber: 'Failed to send OTP. Please try again.' }));
+    }
   };
 
-  const handleVerifyOtp = () => {
-    // Placeholder for OTP verification
-    if (otp.length === 6) {
-      updateFormData({ otpVerified: true });
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+    if (value && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pastedData) return;
+    const newOtp = [...otp];
+    for (let i = 0; i < pastedData.length; i++) {
+      newOtp[i] = pastedData[i];
+    }
+    setOtp(newOtp);
+    const focusIndex = Math.min(pastedData.length, 5);
+    otpInputRefs.current[focusIndex]?.focus();
+  };
+
+  const handleVerifyOTP = async () => {
+    const otpString = otp.join('');
+    if (otpString.length !== 6) return;
+
+    setIsVerifying(true);
+    setErrors((prev) => ({ ...prev, mobileNumber: '' }));
+    const verified = await verifyOTP(formData.mobileNumber, otpString);
+    if (!verified) {
+      setIsVerifying(false);
+      // Error is already set by the hook's onError callback
+      if (!otpError) {
+        setErrors((prev) => ({ ...prev, mobileNumber: 'Invalid OTP. Please try again.' }));
+      }
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (resendTimer > 0) return;
+    const sent = await resendOTP(formData.mobileNumber);
+    if (sent) {
+      setResendTimer(30);
+      setOtp(['', '', '', '', '', '']);
+      setErrors((prev) => ({ ...prev, mobileNumber: '' }));
+    } else {
+      // Error is already set by the hook
+      if (!otpError) {
+        setErrors((prev) => ({ ...prev, mobileNumber: 'Failed to resend OTP. Please try again.' }));
+      }
     }
   };
 
@@ -103,6 +204,10 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
     // Check if any errors exist
     const hasErrors = Object.values(newErrors).some((error) => error !== '');
     if (!hasErrors) {
+      if (!formData.otpVerified) {
+        setErrors((prev) => ({ ...prev, mobileNumber: 'Please verify your mobile number.' }));
+        return;
+      }
       onNext();
     }
   };
@@ -136,7 +241,7 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
         )}
       </div>
 
-      {/* Mobile Number with OTP */}
+      {/* Mobile Number with MSG91 Verification */}
       <div>
         <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700 mb-1">
           Mobile Number <span className="text-red-500">*</span>
@@ -152,50 +257,79 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
               onChange={handleChange}
               onBlur={handleBlur}
               maxLength={10}
+              disabled={formData.otpVerified || otpSent}
               className={`w-full pl-12 pr-4 py-2.5 border rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-colors ${
                 errors.mobileNumber ? 'border-red-500' : 'border-gray-300'
-              }`}
+              } ${formData.otpVerified || otpSent ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               placeholder="10-digit mobile number"
             />
           </div>
-          <button
-            type="button"
-            onClick={handleSendOtp}
-            disabled={otpSent && formData.otpVerified}
-            className="px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-          >
-            {formData.otpVerified ? 'Verified' : otpSent ? 'Resend' : 'Send OTP'}
-          </button>
+          {!otpSent && !formData.otpVerified && (
+            <button
+              type="button"
+              onClick={handleVerifyMobile}
+              disabled={isVerifying}
+              className="px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+            >
+              {isVerifying ? 'Sending...' : 'Verify Mobile'}
+            </button>
+          )}
+          {formData.otpVerified && (
+            <span className="px-4 py-2.5 bg-green-100 text-green-700 text-sm font-medium rounded-lg whitespace-nowrap flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Verified ✓
+            </span>
+          )}
         </div>
-        {errors.mobileNumber && (
-          <p className="mt-1 text-sm text-red-500">{errors.mobileNumber}</p>
-        )}
 
-        {/* OTP Input */}
+        {/* Inline OTP Input */}
         {otpSent && !formData.otpVerified && (
-          <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
-              Enter OTP sent to your mobile
-            </label>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                id="otp"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                maxLength={6}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent tracking-widest text-center"
-                placeholder="------"
-              />
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              {otp.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={(el) => { otpInputRefs.current[index] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(index, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                  onPaste={index === 0 ? handleOtpPaste : undefined}
+                  className="w-10 h-10 text-center border border-gray-300 rounded-lg text-gray-900 text-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                />
+              ))}
               <button
                 type="button"
-                onClick={handleVerifyOtp}
-                className="px-4 py-2.5 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                onClick={handleVerifyOTP}
+                disabled={otp.some((d) => !d) || isVerifying}
+                className="px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
               >
-                Verify
+                {isVerifying ? 'Verifying...' : 'Verify'}
               </button>
             </div>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-green-600">OTP sent to +91 {formData.mobileNumber}</p>
+              {resendTimer > 0 ? (
+                <span className="text-sm text-gray-500">Retry in {resendTimer}s</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendOTP}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Resend OTP
+                </button>
+              )}
+            </div>
           </div>
+        )}
+
+        {errors.mobileNumber && (
+          <p className="mt-1 text-sm text-red-500">{errors.mobileNumber}</p>
         )}
 
         {formData.otpVerified && (
@@ -203,7 +337,7 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
-            Mobile number verified
+            Verified successfully
           </p>
         )}
       </div>
@@ -327,7 +461,7 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
 
       {/* Privacy Note */}
       <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
-        <svg className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
         </svg>
         <p className="text-xs text-gray-500">

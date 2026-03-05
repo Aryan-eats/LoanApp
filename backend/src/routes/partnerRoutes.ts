@@ -8,6 +8,7 @@ import {
   getLeadStats,
   updateLeadStatus,
 } from '../controllers/leadController.js';
+import { getCurrentPartnerProfile } from '../controllers/partnerController.js';
 
 const router = Router();
 
@@ -18,6 +19,9 @@ router.use(authorize('partner'));
 /**
  * Lead Management Routes
  */
+
+// GET /api/partner/profile - Get current partner profile
+router.get('/profile', getCurrentPartnerProfile);
 
 // Get lead statistics (must be before /:id route)
 router.get('/leads/stats', getLeadStats);

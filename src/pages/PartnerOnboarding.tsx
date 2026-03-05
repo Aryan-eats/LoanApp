@@ -46,14 +46,20 @@ const PartnerOnboarding: React.FC = () => {
     setSubmitError(null);
 
     try {
-      // Prepare data for API
+      if (!formData.password) {
+        setSubmitError('Password is required. Please go back and fill in your password.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const registrationData: PartnerRegistrationData = {
         fullName: formData.fullName,
         mobileNumber: formData.mobileNumber,
         email: formData.email,
-        password: formData.password || '', // Password should be collected in the form
+        password: formData.password,
         partnerType: formData.partnerType,
         city: formData.city,
+        phoneVerificationToken: formData.phoneVerificationToken,
         businessName: formData.businessName,
         businessAddress: formData.businessAddress,
         yearsInOperation: formData.yearsInOperation,
@@ -75,19 +81,11 @@ const PartnerOnboarding: React.FC = () => {
       const response = await registerPartner(registrationData);
 
       if (response.success && response.data) {
-        // Store tokens - accessToken in localStorage for auth, refreshToken handled by cookie
-        if (response.data.accessToken) {
-          localStorage.setItem('token', response.data.accessToken);
-        }
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        
         setIsSubmitted(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (error: unknown) {
       console.error('Partner registration error:', error);
-      
-      // Use centralized error parser
       const { parseApiError } = await import('../utils/parseApiError');
       setSubmitError(parseApiError(error, 'Registration failed. Please try again.'));
     } finally {
@@ -102,7 +100,6 @@ const PartnerOnboarding: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-12">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Partner Onboarding
@@ -112,10 +109,8 @@ const PartnerOnboarding: React.FC = () => {
           </p>
         </div>
 
-        {/* Step Indicator */}
         <StepIndicator steps={steps} currentStep={currentStep} />
 
-        {/* Form Container */}
         <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6 sm:p-8 mt-8">
           {currentStep === 1 && (
             <StepBasicIdentity
@@ -155,7 +150,6 @@ const PartnerOnboarding: React.FC = () => {
           )}
         </div>
 
-        {/* Trust Indicator */}
         <div className="mt-6 text-center">
           <div className="inline-flex items-center gap-2 text-sm text-gray-500">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

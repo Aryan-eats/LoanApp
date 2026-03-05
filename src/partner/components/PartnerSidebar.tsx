@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import PrefetchLink from '../../components/PrefetchLink';
 import {
   LayoutDashboard,
   UserPlus,
@@ -14,6 +15,8 @@ import {
   ChevronRight,
   LogOut,
 } from 'lucide-react';
+import { useLeadsStore } from '../../stores/leadsStore';
+import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
   id: string;
@@ -23,27 +26,45 @@ interface NavItem {
   badge?: number;
 }
 
-const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/partner' },
-  { id: 'add-client', label: 'Add Client', icon: <UserPlus size={20} />, path: '/partner/add-client' },
-  { id: 'leads', label: 'My Leads', icon: <FileText size={20} />, path: '/partner/leads', badge: 3 },
-  { id: 'eligibility', label: 'Credit Check', icon: <CheckCircle size={20} />, path: '/partner/eligibility' },
-  { id: 'documents', label: 'Documents', icon: <Upload size={20} />, path: '/partner/documents' },
-  { id: 'commissions', label: 'Commissions', icon: <Wallet size={20} />, path: '/partner/commissions' },
-  { id: 'bank-offers', label: 'Bank Offers', icon: <Building2 size={20} />, path: '/partner/bank-offers' },
-  { id: 'profile', label: 'Profile & KYC', icon: <User size={20} />, path: '/partner/profile' },
-  { id: 'support', label: 'Support', icon: <HelpCircle size={20} />, path: '/partner/support' },
-];
-
 export default function PartnerSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
+  const { leads, fetchLeads } = useLeadsStore();
+  const { logout } = useAuthStore();
+  const navigate = useNavigate();
+
+  // Fetch leads on mount to get the count
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+
+  // Calculate pending leads count (leads that need attention)
+  const pendingLeadsCount = leads.filter(
+    l => ['submitted', 'docs_pending'].includes(l.status)
+  ).length;
+
+  const navItems: NavItem[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/partner' },
+    { id: 'add-client', label: 'Add Client', icon: <UserPlus size={20} />, path: '/partner/add-client' },
+    { id: 'leads', label: 'My Leads', icon: <FileText size={20} />, path: '/partner/leads', badge: pendingLeadsCount > 0 ? pendingLeadsCount : undefined },
+    { id: 'credit-check', label: 'Credit Check', icon: <CheckCircle size={20} />, path: '/partner/credit-check' },
+    { id: 'documents', label: 'Documents', icon: <Upload size={20} />, path: '/partner/documents' },
+    { id: 'commissions', label: 'Commissions', icon: <Wallet size={20} />, path: '/partner/commissions' },
+    { id: 'bank-offers', label: 'Bank Offers', icon: <Building2 size={20} />, path: '/partner/bank-offers' },
+    { id: 'profile', label: 'Profile & KYC', icon: <User size={20} />, path: '/partner/profile' },
+    { id: 'support', label: 'Support', icon: <HelpCircle size={20} />, path: '/partner/support' },
+  ];
 
   const isActive = (path: string) => {
     if (path === '/partner') {
       return location.pathname === '/partner';
     }
     return location.pathname.startsWith(path);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
   };
 
   return (
@@ -75,7 +96,7 @@ export default function PartnerSidebar() {
       {/* Navigation */}
       <nav className="p-3 space-y-1 overflow-y-auto h-[calc(100vh-8rem)]">
         {navItems.map((item) => (
-          <Link
+          <PrefetchLink
             key={item.id}
             to={item.path}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative ${
@@ -112,13 +133,14 @@ export default function PartnerSidebar() {
                 {item.label}
               </div>
             )}
-          </Link>
+          </PrefetchLink>
         ))}
       </nav>
 
       {/* Logout Section */}
       <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-slate-200 bg-white">
         <button
+          onClick={handleLogout}
           className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all w-full ${
             isCollapsed ? 'justify-center' : ''
           }`}

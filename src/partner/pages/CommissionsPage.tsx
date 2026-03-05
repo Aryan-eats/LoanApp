@@ -29,7 +29,6 @@ const formatCurrency = (amount: number): string => {
   return `₹${amount.toLocaleString('en-IN')}`;
 };
 
-// Calculate summary from commissions
 const calculateSummary = () => {
   const totalEarned = commissions.reduce((sum, c) => sum + c.commissionAmount, 0);
   const totalPaid = commissions
@@ -39,7 +38,6 @@ const calculateSummary = () => {
     .filter((c) => c.status === 'pending' || c.status === 'processing')
     .reduce((sum, c) => sum + c.commissionAmount, 0);
   
-  // Mock this month's data
   const thisMonth = 78000;
   const lastMonth = 65000;
   const growth = ((thisMonth - lastMonth) / lastMonth) * 100;
@@ -66,7 +64,6 @@ export default function CommissionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Commissions</h1>
@@ -78,7 +75,6 @@ export default function CommissionsPage() {
         </button>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Total Earned"
@@ -110,7 +106,6 @@ export default function CommissionsPage() {
         />
       </div>
 
-      {/* Earnings Overview */}
       <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl p-6 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
@@ -131,9 +126,7 @@ export default function CommissionsPage() {
         </div>
       </div>
 
-      {/* Commission Breakdown Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* By Loan Type */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">By Loan Type</h3>
           <div className="space-y-3">
@@ -158,7 +151,6 @@ export default function CommissionsPage() {
           </div>
         </div>
 
-        {/* Monthly Trend */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 lg:col-span-2">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Monthly Earnings</h3>
           <div className="flex items-end gap-2 h-40">
@@ -192,13 +184,10 @@ export default function CommissionsPage() {
         </div>
       </div>
 
-      {/* Commission Table */}
       <div className="bg-white rounded-xl border border-slate-200">
-        {/* Table Header */}
         <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="text-lg font-semibold text-slate-800">Commission History</h3>
           
-          {/* Filters */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
               {statusOptions.map((option) => (
@@ -218,7 +207,6 @@ export default function CommissionsPage() {
           </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -290,7 +278,6 @@ export default function CommissionsPage() {
           </table>
         </div>
 
-        {/* Table Footer */}
         <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
           <p className="text-sm text-slate-500">
             Showing {filteredCommissions.length} of {commissions.length} entries
@@ -305,7 +292,6 @@ export default function CommissionsPage() {
         </div>
       </div>
 
-      {/* Payout Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
         <div className="flex items-start gap-3">
           <Info className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />

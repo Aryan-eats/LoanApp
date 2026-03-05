@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import useAuthStore from '../stores/authStore';
+import { getAccessToken } from '../api/apiClient';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -18,17 +19,24 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   const location = useLocation();
   const { user, isAuthenticated, isLoading, checkAuth } = useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
+  const didCheck = useRef(false);
 
   useEffect(() => {
+    // Run exactly once on mount to avoid re-render loops
+    if (didCheck.current) return;
+    didCheck.current = true;
+
     const validateAuth = async () => {
-      if (!isAuthenticated) {
+      // Re-check auth if persisted state says authenticated but in-memory token is missing.
+      if (!isAuthenticated || !getAccessToken()) {
         await checkAuth();
       }
       setIsChecking(false);
     };
 
     validateAuth();
-  }, [isAuthenticated, checkAuth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Show loading while checking authentication
   if (isLoading || isChecking) {
@@ -42,18 +50,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
 
   // Check if user role is allowed
   if (!allowedRoles.includes(user.role)) {
-    // Redirect to appropriate dashboard based on role
-    if (user.role === 'admin') {
-      return <Navigate to="/admin" replace />;
-    }
-    if (user.role === 'partner') {
-      return <Navigate to="/partner" replace />;
-    }
-    // Fallback to login if role is unknown
-    return <Navigate to="/login" replace />;
+    // User is authenticated but doesn't have permission for this route
+    // Redirect to a dedicated forbidden page to avoid redirect loops
+    return <Navigate to="/forbidden" state={{ from: location, roleRequired: allowedRoles }} replace />;
   }
 
   return <>{children}</>;
 };
 
 export default ProtectedRoute;
+

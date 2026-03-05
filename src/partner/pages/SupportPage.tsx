@@ -74,7 +74,6 @@ export default function SupportPage() {
   );
 
   const handleSubmitTicket = () => {
-    // Handle ticket submission
     setShowNewTicket(false);
     setNewTicketForm({
       subject: '',
@@ -86,13 +85,11 @@ export default function SupportPage() {
 
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
-    // Handle message send
     setNewMessage('');
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Help & Support</h1>
@@ -107,7 +104,6 @@ export default function SupportPage() {
         </button>
       </div>
 
-      {/* Contact Options */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
           <div className="flex items-start gap-4">
@@ -157,7 +153,6 @@ export default function SupportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* My Tickets */}
         <div className="bg-white rounded-xl border border-slate-200">
           <div className="px-5 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-4">
@@ -214,7 +209,6 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {/* Ticket Detail / FAQ */}
         {selectedTicket ? (
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -233,10 +227,8 @@ export default function SupportPage() {
               </button>
             </div>
 
-            {/* Ticket Timeline */}
             <div className="p-5 max-h-72 overflow-y-auto border-b border-slate-100">
               <div className="space-y-4">
-                {/* Initial Message */}
                 <div className="flex gap-3">
                   <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-sm font-semibold">Y</span>
@@ -250,7 +242,6 @@ export default function SupportPage() {
                   </div>
                 </div>
 
-                {/* Messages */}
                 {selectedTicket.messages.map((message) => (
                   <div key={message.id} className="flex gap-3">
                     <div
@@ -282,7 +273,6 @@ export default function SupportPage() {
               </div>
             </div>
 
-            {/* Reply Input */}
             {selectedTicket.status !== 'closed' && selectedTicket.status !== 'resolved' && (
               <div className="p-4">
                 <div className="flex items-end gap-2">
@@ -345,7 +335,6 @@ export default function SupportPage() {
         )}
       </div>
 
-      {/* New Ticket Modal */}
       {showNewTicket && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden">

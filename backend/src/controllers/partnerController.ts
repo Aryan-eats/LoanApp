@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
-import User, { IUser } from '../models/User.js';
-import Lead from '../models/Lead.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
-import mongoose from 'mongoose';
+import type { User } from '@prisma/client';
+import prisma from '../config/prisma.js';
+import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
+import { cacheWrap, cacheDelete } from '../utils/cache.js';
 
 // Format partner response for API - matching frontend Partner type
-const formatPartnerResponse = (user: IUser) => ({
-  id: user._id.toString(),
+const formatPartnerResponse = (user: User, leadsSubmitted = 0) => ({
+  id: user.id,
   fullName: `${user.firstName} ${user.lastName}`,
   firstName: user.firstName,
   lastName: user.lastName,
@@ -21,7 +21,7 @@ const formatPartnerResponse = (user: IUser) => ({
   isEmailVerified: user.isEmailVerified,
   isPhoneVerified: user.isPhoneVerified,
   kycStatus: user.kycStatus || 'pending',
-  leadsSubmitted: 0, // Will be populated with aggregate
+  leadsSubmitted,
   joinedDate: user.createdAt.toISOString().split('T')[0],
   panNumber: user.panNumber || '',
   aadhaarNumber: user.aadhaarNumber,
@@ -44,66 +44,65 @@ const formatPartnerResponse = (user: IUser) => ({
  */
 export const getPartners = async (req: Request, res: Response): Promise<void> => {
   try {
-    const query: Record<string, unknown> = { role: 'partner' };
+    const where: Record<string, unknown> = { role: 'partner' };
 
-    // Filter by status
     if (req.query.status) {
       if (req.query.status === 'approved') {
-        query.isActive = true;
+        where.isActive = true;
       } else if (req.query.status === 'pending') {
-        query.isActive = false;
+        where.isActive = false;
       } else if (req.query.status === 'rejected') {
-        query.isActive = false;
-        query.kycStatus = 'rejected';
+        where.isActive = false;
+        where.kycStatus = 'rejected';
       }
     }
 
-    // Filter by partner type
     if (req.query.partnerType) {
-      query.partnerType = req.query.partnerType;
+      where.partnerType = req.query.partnerType;
     }
 
-    // Filter by city
     if (req.query.city) {
-      query.city = new RegExp(req.query.city as string, 'i');
+      where.city = { contains: req.query.city as string, mode: 'insensitive' };
     }
 
-    // Search
     if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search as string, 'i');
-      query.$or = [
-        { firstName: searchRegex },
-        { lastName: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex },
+      const search = req.query.search as string;
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    // Pagination
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
-      User.find(query).select('-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
-      User.countDocuments(query),
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
     ]);
 
-    // Get lead counts for each partner
-    const partnerIds = users.map((u) => u._id);
-    const leadCounts = await Lead.aggregate([
-      { $match: { partnerId: { $in: partnerIds } } },
-      { $group: { _id: '$partnerId', count: { $sum: 1 } } },
-    ]);
+    const partnerIds = users.map((u) => u.id);
+    const leadCounts = await prisma.lead.groupBy({
+      by: ['partnerId'],
+      where: { partnerId: { in: partnerIds } },
+      _count: { _all: true },
+    });
 
     const leadCountMap = new Map(
-      leadCounts.map((lc) => [lc._id.toString(), lc.count])
+      leadCounts.map((lc) => [lc.partnerId, lc._count._all])
     );
 
-    const partners = users.map((user) => ({
-      ...formatPartnerResponse(user),
-      leadsSubmitted: leadCountMap.get(user._id.toString()) || 0,
-    }));
+    const partners = users.map((user) =>
+      formatPartnerResponse(user, leadCountMap.get(user.id) || 0)
+    );
 
     res.status(200).json({
       success: true,
@@ -132,32 +131,66 @@ export const getPartners = async (req: Request, res: Response): Promise<void> =>
 export const getPartnerById = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
 
-    const user = await User.findOne({ _id: partnerId, role: 'partner' }).select('-password');
+    const user = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
 
     if (!user) {
       res.status(404).json({ success: false, message: 'Partner not found' });
       return;
     }
 
-    // Get lead count
-    const leadCount = await Lead.countDocuments({ partnerId: user._id });
+    const leadCount = await prisma.lead.count({ where: { partnerId: user.id } });
 
     res.status(200).json({
       success: true,
       data: {
-        partner: {
-          ...formatPartnerResponse(user),
-          leadsSubmitted: leadCount,
-        },
+        partner: formatPartnerResponse(user, leadCount),
       },
     });
   } catch (error) {
     console.error('Get partner error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * @desc    Get current partner profile
+ * @route   GET /api/partner/profile
+ * @access  Private/Partner
+ */
+export const getCurrentPartnerProfile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Not authorized' });
+      return;
+    }
+
+    if (req.user.role !== 'partner') {
+      res.status(403).json({ success: false, message: 'Only partners can access this resource' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id: req.user.id, role: 'partner' },
+    });
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'Partner not found' });
+      return;
+    }
+
+    const leadCount = await prisma.lead.count({ where: { partnerId: user.id } });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        partner: formatPartnerResponse(user, leadCount),
+      },
+    });
+  } catch (error) {
+    console.error('Get current partner profile error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -170,16 +203,26 @@ export const getPartnerById = async (req: Request, res: Response): Promise<void>
 export const updatePartner = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
 
     const allowedFields = [
-      'firstName', 'lastName', 'phone', 'city', 'state', 'pincode',
-      'partnerType', 'businessName', 'businessAddress', 'gstNumber',
-      'panNumber', 'aadhaarNumber', 'accountHolderName', 'bankName',
-      'accountNumber', 'ifscCode', 'isActive', 'internalNotes',
+      'firstName',
+      'lastName',
+      'phone',
+      'city',
+      'state',
+      'pincode',
+      'partnerType',
+      'businessName',
+      'businessAddress',
+      'gstNumber',
+      'panNumber',
+      'aadhaarNumber',
+      'accountHolderName',
+      'bankName',
+      'accountNumber',
+      'ifscCode',
+      'isActive',
+      'internalNotes',
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -189,22 +232,30 @@ export const updatePartner = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    const user = await User.findOneAndUpdate(
-      { _id: partnerId, role: 'partner' },
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).select('-password');
+    const existing = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
 
-    if (!user) {
+    if (!existing) {
       res.status(404).json({ success: false, message: 'Partner not found' });
       return;
     }
 
-    // Log audit event
+    const user = await prisma.user.update({
+      where: { id: partnerId },
+      data: updateData,
+    });
+
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
-        userId: req.user._id.toString(),
-        metadata: { action: 'UPDATE_PARTNER', partnerId, changes: Object.keys(updateData) },
+      await logAuditEvent('PARTNER_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          changedFields: Object.keys(updateData),
+          previousActive: existing.isActive,
+          newActive: updateData.isActive ?? existing.isActive,
+        },
       });
     }
 
@@ -227,11 +278,6 @@ export const updatePartner = async (req: Request, res: Response): Promise<void> 
 export const updatePartnerStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
-
     const { status, reason } = req.body;
 
     if (!status || !['approved', 'rejected', 'suspended', 'pending'].includes(status)) {
@@ -242,33 +288,51 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
       return;
     }
 
+    const existing = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
+
+    if (!existing) {
+      res.status(404).json({ success: false, message: 'Partner not found' });
+      return;
+    }
+
     const updateData: Record<string, unknown> = {
       isActive: status === 'approved',
     };
+
+    if (status === 'approved') {
+      updateData.onboardingStatus = 'approved';
+      updateData.onboardingCompletedAt = new Date();
+    } else if (status === 'rejected' || status === 'pending') {
+      updateData.onboardingStatus = status;
+    }
 
     if (status === 'rejected') {
       updateData.kycStatus = 'rejected';
       if (reason) updateData.internalNotes = reason;
     }
 
-    const user = await User.findOneAndUpdate(
-      { _id: partnerId, role: 'partner' },
-      { $set: updateData },
-      { new: true }
-    ).select('-password');
+    const user = await prisma.user.update({
+      where: { id: partnerId },
+      data: updateData,
+    });
 
-    if (!user) {
-      res.status(404).json({ success: false, message: 'Partner not found' });
-      return;
-    }
-
-    // Log audit event
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
-        userId: req.user._id.toString(),
-        metadata: { action: `PARTNER_${status.toUpperCase()}`, partnerId, reason },
+      const eventType = status === 'approved' ? 'PARTNER_APPROVED'
+        : (status === 'suspended' || status === 'rejected') ? 'PARTNER_SUSPENDED'
+        : 'PARTNER_UPDATED';
+      await logAuditEvent(eventType as any, req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        severity: eventType === 'PARTNER_SUSPENDED' ? 'HIGH' : 'MEDIUM',
+        metadata: { status, reason, previousActive: existing.isActive },
       });
     }
+
+    // Partner counts changed — bust the stats cache
+    await cacheDelete('partner:stats');
 
     res.status(200).json({
       success: true,
@@ -289,43 +353,55 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
 export const getPartnerLeads = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
 
-    // Verify partner exists
-    const partner = await User.findOne({ _id: partnerId, role: 'partner' });
+    const partner = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
     if (!partner) {
       res.status(404).json({ success: false, message: 'Partner not found' });
       return;
     }
 
-    // Get query params for filtering
-    const query: Record<string, unknown> = { partnerId: new mongoose.Types.ObjectId(partnerId) };
-
+    const where: Record<string, unknown> = { partnerId };
     if (req.query.status) {
-      query.status = req.query.status;
+      where.status = req.query.status;
     }
 
-    // Pagination
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
 
     const [leads, total] = await Promise.all([
-      Lead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Lead.countDocuments(query),
+      prisma.lead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.lead.count({ where }),
     ]);
 
     res.status(200).json({
       success: true,
       data: {
         leads: leads.map((lead) => ({
-          id: lead._id.toString(),
-          client: lead.client,
+          id: lead.id,
+          client: {
+            fullName: lead.clientFullName,
+            phone: lead.clientPhone,
+            email: lead.clientEmail,
+            dateOfBirth: lead.clientDateOfBirth || undefined,
+            panNumber: lead.clientPanNumber || undefined,
+            aadhaarNumber: lead.clientAadhaar || undefined,
+            employmentType: lead.clientEmployment || undefined,
+            monthlyIncome: lead.clientIncome ? Number(lead.clientIncome) : undefined,
+            companyName: lead.clientCompany || undefined,
+            workExperience: lead.clientExperience || undefined,
+            city: lead.clientCity || undefined,
+            pincode: lead.clientPincode || undefined,
+          },
           loanType: lead.loanType,
-          loanAmount: lead.loanAmount,
+          loanAmount: Number(lead.loanAmount),
           status: lead.status,
           bankAssigned: lead.bankAssigned,
           createdAt: lead.createdAt,
@@ -352,32 +428,38 @@ export const getPartnerLeads = async (req: Request, res: Response): Promise<void
 export const getPartnerCommissions = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
+
+    const partner = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
+
+    if (!partner) {
+      res.status(404).json({ success: false, message: 'Partner not found' });
       return;
     }
 
-    // Get all disbursed leads with commission
-    const leads = await Lead.find({
-      partnerId: new mongoose.Types.ObjectId(partnerId),
-      status: 'disbursed',
-      'commission.amount': { $exists: true, $gt: 0 },
-    }).sort({ updatedAt: -1 });
+    const leads = await prisma.lead.findMany({
+      where: {
+        partnerId,
+        status: 'disbursed',
+        commissionAmount: { gt: 0 },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
 
     const commissions = leads.map((lead) => ({
-      id: lead._id.toString(),
-      leadId: lead._id.toString(),
-      clientName: lead.client.fullName,
+      id: lead.id,
+      leadId: lead.id,
+      clientName: lead.clientFullName,
       loanType: lead.loanType,
-      disbursedAmount: lead.disbursedAmount || lead.loanAmount,
-      commissionRate: lead.commission?.rate || 0,
-      commissionAmount: lead.commission?.amount || 0,
-      status: lead.commission?.status || 'pending',
-      paidAt: lead.commission?.paidAt,
+      disbursedAmount: Number(lead.disbursedAmount || lead.loanAmount),
+      commissionRate: Number(lead.commissionRate || 0),
+      commissionAmount: Number(lead.commissionAmount || 0),
+      status: lead.commissionStatus || 'pending',
+      paidAt: lead.commissionPaidAt || undefined,
       createdAt: lead.createdAt,
     }));
 
-    // Calculate totals
     const totalCommission = commissions.reduce((sum, c) => sum + c.commissionAmount, 0);
     const paidCommission = commissions
       .filter((c) => c.status === 'paid')
@@ -410,21 +492,25 @@ export const getPartnerCommissions = async (req: Request, res: Response): Promis
 export const updatePartnerProfile = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
 
-    // Check authorization - admin or self
-    if (req.user && req.user.role !== 'admin' && req.user._id.toString() !== partnerId) {
+    if (req.user && req.user.role !== 'admin' && req.user.id !== partnerId) {
       res.status(403).json({ success: false, message: 'Not authorized to update this profile' });
       return;
     }
 
     const allowedFields = [
-      'firstName', 'lastName', 'phone', 'city', 'state', 'pincode',
-      'businessName', 'businessAddress', 'accountHolderName', 'bankName',
-      'accountNumber', 'ifscCode',
+      'firstName',
+      'lastName',
+      'phone',
+      'city',
+      'state',
+      'pincode',
+      'businessName',
+      'businessAddress',
+      'accountHolderName',
+      'bankName',
+      'accountNumber',
+      'ifscCode',
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -434,15 +520,27 @@ export const updatePartnerProfile = async (req: Request, res: Response): Promise
       }
     }
 
-    const user = await User.findOneAndUpdate(
-      { _id: partnerId, role: 'partner' },
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).select('-password');
+    const existing = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
 
-    if (!user) {
+    if (!existing) {
       res.status(404).json({ success: false, message: 'Partner not found' });
       return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: partnerId },
+      data: updateData,
+    });
+
+    if (req.user) {
+      await logAuditEvent('PARTNER_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: { changedFields: Object.keys(updateData), selfUpdate: req.user.id === partnerId },
+      });
     }
 
     res.status(200).json({
@@ -464,18 +562,13 @@ export const updatePartnerProfile = async (req: Request, res: Response): Promise
 export const submitPartnerKYC = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
 
-    // Check authorization - admin or self
-    if (req.user && req.user.role !== 'admin' && req.user._id.toString() !== partnerId) {
+    if (req.user && req.user.role !== 'admin' && req.user.id !== partnerId) {
       res.status(403).json({ success: false, message: 'Not authorized' });
       return;
     }
 
-    const { panNumber, aadhaarNumber, panDocument, aadhaarDocument, photoDocument } = req.body;
+    const { panNumber, aadhaarNumber } = req.body;
 
     const updateData: Record<string, unknown> = {
       kycStatus: 'pending',
@@ -483,21 +576,33 @@ export const submitPartnerKYC = async (req: Request, res: Response): Promise<voi
 
     if (panNumber) updateData.panNumber = panNumber;
     if (aadhaarNumber) updateData.aadhaarNumber = aadhaarNumber;
-    
-    // Store document URLs/references if provided
-    if (panDocument) updateData.panDocument = panDocument;
-    if (aadhaarDocument) updateData.aadhaarDocument = aadhaarDocument;
-    if (photoDocument) updateData.photoDocument = photoDocument;
 
-    const user = await User.findOneAndUpdate(
-      { _id: partnerId, role: 'partner' },
-      { $set: updateData },
-      { new: true }
-    ).select('-password');
+    const existing = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
 
-    if (!user) {
+    if (!existing) {
       res.status(404).json({ success: false, message: 'Partner not found' });
       return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: partnerId },
+      data: updateData,
+    });
+
+    if (req.user) {
+      await logAuditEvent('PARTNER_KYC_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          panProvided: !!panNumber,
+          aadhaarProvided: !!aadhaarNumber,
+          ...(panNumber ? { panRedacted: redactPAN(panNumber) } : {}),
+          ...(aadhaarNumber ? { aadhaarRedacted: redactAadhaar(aadhaarNumber) } : {}),
+        },
+      });
     }
 
     res.status(200).json({
@@ -519,11 +624,6 @@ export const submitPartnerKYC = async (req: Request, res: Response): Promise<voi
 export const updatePartnerKYCStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const partnerId = req.params.id as string;
-    if (!mongoose.Types.ObjectId.isValid(partnerId)) {
-      res.status(400).json({ success: false, message: 'Invalid partner ID' });
-      return;
-    }
-
     const { status, rejectionReason } = req.body;
 
     if (!status || !['pending', 'verified', 'rejected'].includes(status)) {
@@ -534,11 +634,19 @@ export const updatePartnerKYCStatus = async (req: Request, res: Response): Promi
       return;
     }
 
+    const existing = await prisma.user.findFirst({
+      where: { id: partnerId, role: 'partner' },
+    });
+
+    if (!existing) {
+      res.status(404).json({ success: false, message: 'Partner not found' });
+      return;
+    }
+
     const updateData: Record<string, unknown> = {
       kycStatus: status,
     };
 
-    // If approved, also activate the partner
     if (status === 'verified') {
       updateData.isActive = true;
     }
@@ -547,22 +655,21 @@ export const updatePartnerKYCStatus = async (req: Request, res: Response): Promi
       updateData.kycRejectionReason = rejectionReason;
     }
 
-    const user = await User.findOneAndUpdate(
-      { _id: partnerId, role: 'partner' },
-      { $set: updateData },
-      { new: true }
-    ).select('-password');
+    const user = await prisma.user.update({
+      where: { id: partnerId },
+      data: updateData,
+    });
 
-    if (!user) {
-      res.status(404).json({ success: false, message: 'Partner not found' });
-      return;
-    }
-
-    // Log audit event
     if (req.user) {
-      await logAuditEvent('REGISTER', req, {
-        userId: req.user._id.toString(),
-        metadata: { action: `KYC_${status.toUpperCase()}`, partnerId, rejectionReason },
+      await logAuditEvent('PARTNER_KYC_UPDATED', req, {
+        userId: req.user.id,
+        entityId: partnerId,
+        entityType: 'partner',
+        metadata: {
+          kycStatus: status,
+          previousKycStatus: existing.kycStatus,
+          rejectionReason: rejectionReason || undefined,
+        },
       });
     }
 
@@ -584,32 +691,30 @@ export const updatePartnerKYCStatus = async (req: Request, res: Response): Promi
  */
 export const getPartnerStats = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [
-      totalPartners,
-      activePartners,
-      pendingPartners,
-      byType,
-    ] = await Promise.all([
-      User.countDocuments({ role: 'partner' }),
-      User.countDocuments({ role: 'partner', isActive: true }),
-      User.countDocuments({ role: 'partner', isActive: false }),
-      User.aggregate([
-        { $match: { role: 'partner' } },
-        { $group: { _id: '$partnerType', count: { $sum: 1 } } },
-      ]),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        stats: {
+    const data = await cacheWrap(
+      'partner:stats',
+      async () => {
+        const [totalPartners, activePartners, pendingPartners, byType] = await Promise.all([
+          prisma.user.count({ where: { role: 'partner' } }),
+          prisma.user.count({ where: { role: 'partner', isActive: true } }),
+          prisma.user.count({ where: { role: 'partner', isActive: false } }),
+          prisma.user.groupBy({
+            by: ['partnerType'],
+            where: { role: 'partner' },
+            _count: { _all: true },
+          }),
+        ]);
+        return {
           total: totalPartners,
           active: activePartners,
           pending: pendingPartners,
-          byType: byType.map((t) => ({ type: t._id || 'unknown', count: t.count })),
-        },
+          byType: byType.map((t) => ({ type: t.partnerType || 'unknown', count: t._count._all })),
+        };
       },
-    });
+      60 // 60-second TTL
+    );
+
+    res.status(200).json({ success: true, data: { stats: data } });
   } catch (error) {
     console.error('Get partner stats error:', error);
     res.status(500).json({ success: false, message: 'Server error' });

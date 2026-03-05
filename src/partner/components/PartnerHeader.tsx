@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Bell, Search, ChevronDown, Menu, X } from 'lucide-react';
-import { partnerProfile, notifications } from '../data/placeholderData';
+import { useAuthStore } from '../../stores/authStore';
+import { usePartnerProfileStore } from '../../stores/partnerProfileStore';
+import type { KYCStatus } from '../types/partner-dashboard';
 
 interface PartnerHeaderProps {
   onMenuToggle?: () => void;
@@ -19,23 +22,36 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const navigate = useNavigate();
+  const { user, logout } = useAuthStore();
+  const { partnerInfo, fetchProfile } = usePartnerProfileStore();
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-  const badge = partnerTypeBadges[partnerProfile.partnerType];
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'lead_update':
-        return '📋';
-      case 'commission':
-        return '💰';
-      case 'document':
-        return '📄';
-      case 'system':
-        return '🔔';
-      default:
-        return '📌';
+  // Fetch partner info via shared store (uses TTL cache)
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfile(user.id, {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      });
     }
+  }, [user, fetchProfile]);
+
+  // Use auth user as fallback while loading
+  const displayInfo = partnerInfo || {
+    fullName: user ? `${user.firstName} ${user.lastName}` : 'Partner',
+    email: user?.email || '',
+    partnerType: 'freelancer',
+    partnerCode: user?.id ? `GPS-${user.id.slice(-8).toUpperCase()}` : '',
+    kycStatus: 'pending' as KYCStatus,
+  };
+
+  const badge = partnerTypeBadges[displayInfo.partnerType] || partnerTypeBadges.freelancer;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
   };
 
   return (
@@ -81,11 +97,6 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
               className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 relative transition-colors"
             >
               <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-xs font-medium rounded-full flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
             </button>
 
             {/* Notifications Dropdown */}
@@ -93,40 +104,10 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="font-semibold text-slate-800">Notifications</h3>
-                  <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                    Mark all read
-                  </button>
                 </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.slice(0, 5).map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${
-                        !notification.isRead ? 'bg-blue-50/50' : ''
-                      }`}
-                    >
-                      <div className="flex gap-3">
-                        <span className="text-lg">{getNotificationIcon(notification.type)}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">
-                            {notification.title}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-slate-400 mt-1">{notification.createdAt}</p>
-                        </div>
-                        {!notification.isRead && (
-                          <span className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-4 py-3 border-t border-slate-100">
-                  <button className="w-full text-center text-sm text-blue-600 hover:text-blue-700 font-medium">
-                    View all notifications
-                  </button>
+                <div className="px-4 py-8 text-center text-slate-500">
+                  <Bell size={32} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-sm">No new notifications</p>
                 </div>
               </div>
             )}
@@ -143,14 +124,14 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
             >
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-semibold">
-                  {partnerProfile.fullName.charAt(0)}
+                  {displayInfo.fullName.charAt(0)}
                 </span>
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-slate-700 leading-tight">
-                  {partnerProfile.fullName}
+                  {displayInfo.fullName}
                 </p>
-                <p className="text-xs text-slate-500">{partnerProfile.partnerCode}</p>
+                <p className="text-xs text-slate-500">{displayInfo.partnerCode}</p>
               </div>
               <ChevronDown size={16} className="text-slate-400 hidden md:block" />
             </button>
@@ -159,41 +140,44 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
             {showProfile && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="px-4 py-3 border-b border-slate-100">
-                  <p className="font-medium text-slate-800">{partnerProfile.fullName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{partnerProfile.email}</p>
+                  <p className="font-medium text-slate-800">{displayInfo.fullName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{displayInfo.email}</p>
                   <div className="flex items-center gap-1.5 mt-2">
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        partnerProfile.kycStatus === 'verified' ? 'bg-green-500' : 'bg-amber-500'
+                        displayInfo.kycStatus === 'verified' ? 'bg-green-500' : 'bg-amber-500'
                       }`}
                     ></span>
                     <span className="text-xs text-slate-600 capitalize">
-                      KYC {partnerProfile.kycStatus}
+                      KYC {displayInfo.kycStatus}
                     </span>
                   </div>
                 </div>
                 <div className="py-1">
-                  <a
-                    href="/partner/profile"
+                  <Link
+                    to="/partner/profile"
                     className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                   >
                     My Profile
-                  </a>
-                  <a
-                    href="/partner/commissions"
+                  </Link>
+                  <Link
+                    to="/partner/commissions"
                     className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                   >
                     My Earnings
-                  </a>
-                  <a
-                    href="/partner/support"
+                  </Link>
+                  <Link
+                    to="/partner/support"
                     className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                   >
                     Help & Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-slate-100 py-1">
-                  <button className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                  <button 
+                    onClick={handleLogout}
+                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
                     Logout
                   </button>
                 </div>

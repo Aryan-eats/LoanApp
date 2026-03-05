@@ -44,24 +44,20 @@ const CommissionsPage: React.FC = () => {
   const totalPaid = commissions.filter(c => c.status === 'paid').reduce((acc, c) => acc + c.commissionAmount, 0);
 
   const handleApprove = (commId: string) => {
-    // Placeholder: Would call API to approve commission
     console.log('Approving commission:', commId);
   };
 
   const handlePay = (commId: string) => {
-    // Placeholder: Would call API to mark commission as paid
     console.log('Paying commission:', commId);
   };
 
   return (
     <AdminLayout>
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Commissions & Payouts</h1>
         <p className="text-sm text-gray-500 mt-1">Manage partner commissions and payout tracking</p>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between">
@@ -120,7 +116,6 @@ const CommissionsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-white rounded-xl border border-gray-200 mb-6">
         <div className="border-b border-gray-200 px-4">
           <nav className="flex gap-6">
@@ -147,10 +142,8 @@ const CommissionsPage: React.FC = () => {
           </nav>
         </div>
 
-        {/* Commissions Tab */}
         {activeTab === 'commissions' && (
           <div className="p-4">
-            {/* Filters */}
             <div className="flex flex-col lg:flex-row gap-4 mb-4">
               <div className="flex-1">
                 <div className="relative">
@@ -186,7 +179,6 @@ const CommissionsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -273,7 +265,6 @@ const CommissionsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Commission Slabs Tab */}
         {activeTab === 'slabs' && (
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
@@ -331,7 +322,6 @@ const CommissionsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Commission Detail Modal */}
       {selectedCommission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedCommission(null)} />

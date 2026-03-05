@@ -1,48 +1,49 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
+import { hashPassword } from '../services/userService.js';
 
 dotenv.config();
 
 const createAdmin = async () => {
   try {
-    const mongoUri = process.env.MONGODB_URI;
-    if (!mongoUri) {
-      throw new Error('MONGODB_URI is not defined in environment variables');
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@loanapp.com';
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+      throw new Error('ADMIN_PASSWORD is required');
     }
 
-    await mongoose.connect(mongoUri);
-    console.log('Connected to MongoDB');
-
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@loanapp.com' });
+    const existingAdmin = await prisma.user.findUnique({
+      where: { email: adminEmail },
+    });
     if (existingAdmin) {
-      console.log('Admin user already exists!');
-      console.log('Email: admin@loanapp.com');
-      process.exit(0);
+      console.log('Admin user already exists.');
+      console.log(`Email: ${adminEmail}`);
+      return;
     }
 
-    // Create admin user
-    const admin = await User.create({
-      email: 'admin@loanapp.com',
-      password: 'Admin@123456',
-      firstName: 'Admin',
-      lastName: 'User',
-      phone: '9999999999',
-      role: 'admin',
-      isActive: true,
-      isEmailVerified: true,
+    const admin = await prisma.user.create({
+      data: {
+        email: adminEmail,
+        password: await hashPassword(adminPassword),
+        firstName: 'Admin',
+        lastName: 'User',
+        phone: '9999999999',
+        role: 'admin',
+        isActive: true,
+        isEmailVerified: true,
+      },
     });
 
-    console.log('✅ Admin user created successfully!');
-    console.log('Email: admin@loanapp.com');
-    console.log('Password: Admin@123456');
-    console.log('\n⚠️  Please change the password after first login!');
-    
-    process.exit(0);
+    console.log('Admin user created successfully.');
+    console.log(`Email: ${admin.email}`);
+    console.log('Password configured from ADMIN_PASSWORD.');
+    process.exitCode = 0;
   } catch (error) {
     console.error('Error creating admin:', error);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await prisma.$disconnect();
   }
 };
 
