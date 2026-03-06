@@ -13,7 +13,11 @@ const buildStore = (prefix: string) => {
 
   return new RedisStore({
     // @ts-expect-error - ioredis sendCommand is compatible
-    sendCommand: (...args: string[]) => getRedisClient().call(...args),
+    sendCommand: async (...args: string[]) => {
+      const redis = await getRedisClient();
+      const call = redis.call as (...redisArgs: string[]) => Promise<unknown>;
+      return call(...args);
+    },
     prefix: `rl:${prefix}:`,
   });
 };

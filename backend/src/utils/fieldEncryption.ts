@@ -22,6 +22,24 @@ const isEncrypted = (value: string): boolean => value.startsWith(`${ENCRYPTION_P
 
 const generateIv = (): Buffer => crypto.randomBytes(12);
 
+const decodeBase64Strict = (value: string, label: string): Buffer => {
+  if (!value) {
+    throw new Error(`Invalid encrypted payload ${label}`);
+  }
+
+  const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  if (!base64Pattern.test(value)) {
+    throw new Error(`Invalid encrypted payload ${label}`);
+  }
+
+  const decoded = Buffer.from(value, 'base64');
+  if (decoded.length === 0 || decoded.toString('base64') !== value) {
+    throw new Error(`Invalid encrypted payload ${label}`);
+  }
+
+  return decoded;
+};
+
 export const encryptString = (value: string | null | undefined): string | null | undefined => {
   if (value === null || value === undefined) return value;
   if (value === '') return value;
@@ -53,9 +71,17 @@ export const decryptString = (value: string | null | undefined): string | null |
     throw new Error('Invalid encrypted payload format');
   }
 
-  const iv = Buffer.from(parts[2], 'base64');
-  const tag = Buffer.from(parts[3], 'base64');
-  const ciphertext = Buffer.from(parts[4], 'base64');
+  const iv = decodeBase64Strict(parts[2], 'iv');
+  const tag = decodeBase64Strict(parts[3], 'tag');
+  const ciphertext = decodeBase64Strict(parts[4], 'ciphertext');
+
+  if (iv.length !== 12) {
+    throw new Error('Invalid encrypted payload iv');
+  }
+
+  if (tag.length !== 16) {
+    throw new Error('Invalid encrypted payload tag');
+  }
 
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);

@@ -34,8 +34,10 @@ describe('LeadDetailsModal', () => {
       />
     );
 
-    expect(screen.getByText('Lead L-100')).toBeInTheDocument();
-    expect(screen.getAllByText('Ravi Sharma')).toHaveLength(2);
+    expect(screen.getByRole('dialog', { name: 'Lead L-100' })).toBeInTheDocument();
+    expect(screen.getByText('Customer Information')).toBeInTheDocument();
+    expect(screen.getByText('Partner Information')).toBeInTheDocument();
+    expect(screen.getByText('ravi@example.com')).toBeInTheDocument();
 
     const dialog = screen.getByRole('dialog');
     const backdrop = dialog.parentElement?.firstElementChild as HTMLElement;
@@ -50,14 +52,14 @@ describe('LeadDetailsModal', () => {
 
     render(
       <LeadDetailsModal
-        lead={buildLead({ status: 'submitted' })}
+        lead={buildLead({ status: 'submitted', bankAssigned: 'HDFC Bank' })}
         onClose={vi.fn()}
         onStatusUpdate={onStatusUpdate}
         onBankAssign={vi.fn()}
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText('Add a note (optional)'), {
+    fireEvent.change(screen.getByRole('textbox'), {
       target: { value: 'documents checked' },
     });
 
@@ -86,6 +88,6 @@ describe('LeadDetailsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /^HDFC Bank\b/i }));
 
     expect(onBankAssign).toHaveBeenCalledTimes(1);
-    expect(onBankAssign).toHaveBeenCalledWith('L-100', 'HDFC Bank');
+    expect(onBankAssign).toHaveBeenCalledWith('L-100', 'HDFC Bank', 'HDFC');
   });
 });

@@ -4,6 +4,14 @@ import prisma from '../config/prisma.js';
 import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
 import { cacheWrap, cacheDelete } from '../utils/cache.js';
 
+// Derive the frontend-visible status from DB fields
+const derivePartnerStatus = (user: User): string => {
+  if (user.isActive) return 'approved';
+  if (user.kycStatus === 'rejected') return 'rejected';
+  if (user.onboardingStatus === 'approved') return 'suspended';
+  return 'pending';
+};
+
 // Format partner response for API - matching frontend Partner type
 const formatPartnerResponse = (user: User, leadsSubmitted = 0) => ({
   id: user.id,
@@ -16,7 +24,7 @@ const formatPartnerResponse = (user: User, leadsSubmitted = 0) => ({
   city: user.city || '',
   state: user.state,
   pincode: user.pincode,
-  status: user.isActive ? 'approved' : 'pending',
+  status: derivePartnerStatus(user),
   isActive: user.isActive,
   isEmailVerified: user.isEmailVerified,
   isPhoneVerified: user.isPhoneVerified,
@@ -51,9 +59,15 @@ export const getPartners = async (req: Request, res: Response): Promise<void> =>
         where.isActive = true;
       } else if (req.query.status === 'pending') {
         where.isActive = false;
+        where.kycStatus = { not: 'rejected' };
+        where.onboardingStatus = { not: 'approved' };
       } else if (req.query.status === 'rejected') {
         where.isActive = false;
         where.kycStatus = 'rejected';
+      } else if (req.query.status === 'suspended') {
+        where.isActive = false;
+        where.onboardingStatus = 'approved';
+        where.kycStatus = { not: 'rejected' };
       }
     }
 
@@ -304,14 +318,17 @@ export const updatePartnerStatus = async (req: Request, res: Response): Promise<
     if (status === 'approved') {
       updateData.onboardingStatus = 'approved';
       updateData.onboardingCompletedAt = new Date();
-    } else if (status === 'rejected' || status === 'pending') {
-      updateData.onboardingStatus = status;
-    }
-
-    if (status === 'rejected') {
+      updateData.kycStatus = 'verified';
+    } else if (status === 'rejected') {
+      updateData.onboardingStatus = 'rejected';
       updateData.kycStatus = 'rejected';
       if (reason) updateData.internalNotes = reason;
+    } else if (status === 'pending') {
+      updateData.onboardingStatus = 'pending';
+      updateData.kycStatus = 'pending';
     }
+    // For 'suspended', isActive is already set to false above.
+    // onboardingStatus stays 'approved' so we can distinguish from pending.
 
     const user = await prisma.user.update({
       where: { id: partnerId },

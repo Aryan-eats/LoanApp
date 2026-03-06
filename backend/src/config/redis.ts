@@ -8,13 +8,15 @@
 import { Redis } from 'ioredis';
 
 let client: Redis | null = null;
+let connectPromise: Promise<Redis> | null = null;
 
 /**
  * Returns the shared Redis instance.
  * Creates the connection lazily on first call.
  */
-export const getRedisClient = (): Redis => {
-  if (client) return client;
+export const getRedisClient = async (): Promise<Redis> => {
+  if (client?.status === 'ready') return client;
+  if (connectPromise) return connectPromise;
 
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
@@ -25,7 +27,7 @@ export const getRedisClient = (): Redis => {
   }
 
   client = new Redis(redisUrl, {
-    lazyConnect: false,            // connect immediately on construction
+    lazyConnect: true,
     maxRetriesPerRequest: 3,
     connectTimeout: 5_000,         // fail fast if Redis is unreachable
     // commandTimeout is intentionally omitted: setting it causes queued commands
@@ -60,7 +62,19 @@ export const getRedisClient = (): Redis => {
     console.log('⚠️  Redis connection closed');
   });
 
-  return client;
+  connectPromise = client
+    .connect()
+    .then(() => client as Redis)
+    .catch((err: Error) => {
+      client?.disconnect();
+      client = null;
+      throw err;
+    })
+    .finally(() => {
+      connectPromise = null;
+    });
+
+  return connectPromise;
 };
 
 /**
@@ -80,7 +94,7 @@ export const isRedisAvailable = (): boolean => !!process.env.REDIS_URL;
  */
 export const checkRedisMemory = async (): Promise<void> => {
   try {
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     const info = await redis.info('memory');
     const usedMatch = info.match(/used_memory:(\d+)/);
     const maxMatch  = info.match(/maxmemory:(\d+)/);
@@ -107,9 +121,17 @@ export const checkRedisMemory = async (): Promise<void> => {
  * Call this during application shutdown.
  */
 export const disconnectRedis = async (): Promise<void> => {
+  if (connectPromise) {
+    try {
+      await connectPromise;
+    } catch {
+      // Ignore startup failures during teardown.
+    }
+  }
   if (client) {
     await client.quit();
     client = null;
+    connectPromise = null;
     console.log('✅ Redis disconnected');
   }
 };

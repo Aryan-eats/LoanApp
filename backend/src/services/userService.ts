@@ -1,7 +1,7 @@
 ﻿import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import type { Prisma, User } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import type { User } from '@prisma/client';
+import prisma, { type ExtendedTransactionClient } from '../config/prisma.js';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 const PASSWORD_HISTORY_LIMIT = 5;
@@ -93,7 +93,8 @@ export const generateOTP = async (userId: string): Promise<string> => {
 
   if (isRedisAvailable()) {
     // Store in Redis with automatic TTL - no DB write needed
-    await getRedisClient().set(
+    const redis = await getRedisClient();
+    await redis.set(
       `${USER_OTP_PREFIX}${userId}`,
       hashedOtp,
       'EX',
@@ -124,7 +125,7 @@ export const verifyUserOTP = async (
   const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
 
   if (isRedisAvailable()) {
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     const stored = await redis.get(`${USER_OTP_PREFIX}${userId}`);
     if (!stored) return false;
     if (stored !== hashedOtp) return false;
@@ -183,9 +184,9 @@ export const addToPasswordHistory = async (
 export const addSession = async (
   userId: string,
   session: { deviceFingerprint: string; userAgent: string; ip: string },
-  tx?: Prisma.TransactionClient
+  tx?: ExtendedTransactionClient
 ): Promise<void> => {
-  const runSession = async (client: Prisma.TransactionClient) => {
+  const runSession = async (client: ExtendedTransactionClient) => {
     await client.activeSession.upsert({
       where: {
         userId_deviceFingerprint: {

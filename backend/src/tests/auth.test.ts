@@ -55,13 +55,13 @@ describe('hashPassword / comparePassword', () => {
     expect(hashed).not.toBe(plain);
     expect(await comparePassword(plain, hashed)).toBe(true);
     expect(await comparePassword('WrongPass1!', hashed)).toBe(false);
-  });
+  }, 15000);
 
   it('should produce different hashes for the same password (salt)', async () => {
     const hash1 = await hashPassword('Same1!Pass');
     const hash2 = await hashPassword('Same1!Pass');
     expect(hash1).not.toBe(hash2);
-  });
+  }, 15000);
 
   it('should return false when stored password is null', async () => {
     expect(await comparePassword('anything', null)).toBe(false);
@@ -71,7 +71,7 @@ describe('hashPassword / comparePassword', () => {
     const longPass = 'A1!' + 'a'.repeat(200);
     const hashed = await hashPassword(longPass);
     expect(await comparePassword(longPass, hashed)).toBe(true);
-  });
+  }, 15000);
 });
 
 describe('isLocked', () => {

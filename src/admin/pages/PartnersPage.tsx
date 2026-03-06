@@ -13,43 +13,56 @@ const partnerTypeLabels: Record<PartnerType, string> = {
   sub_dsa: 'Sub-DSA',
 };
 
+const PAGE_SIZE = 20;
+
 const PartnersPage: React.FC = () => {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | ''>('');
   const [typeFilter, setTypeFilter] = useState<PartnerType | ''>('');
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     action: 'approve' | 'reject' | 'suspend' | null;
     partner: Partner | null;
   }>({ isOpen: false, action: null, partner: null });
 
-  useEffect(() => {
-    const fetchPartners = async () => {
-      try {
-        const response = await getPartners();
-        if (response.success && response.data) {
-          setPartners(response.data.partners);
+  const fetchPartners = async (p = page) => {
+    setLoading(true);
+    try {
+      const params: Record<string, string | number> = { page: p, limit: PAGE_SIZE };
+      if (statusFilter) params.status = statusFilter;
+      if (typeFilter) params.partnerType = typeFilter;
+      if (searchQuery) params.search = searchQuery;
+
+      const response = await getPartners(params);
+      if (response.success && response.data) {
+        setPartners(response.data.partners);
+        if (response.data.pagination) {
+          setTotalPages(response.data.pagination.pages);
+          setTotalCount(response.data.pagination.total);
         }
-      } catch (error) {
-        console.error('Failed to fetch partners:', error);
       }
-    };
-    fetchPartners();
-  }, []);
+    } catch (error) {
+      console.error('Failed to fetch partners:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const filteredPartners = partners.filter((partner) => {
-    const matchesSearch = 
-      partner.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      partner.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      partner.city.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = !statusFilter || partner.status === statusFilter;
-    const matchesType = !typeFilter || partner.partnerType === typeFilter;
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, typeFilter]);
 
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  useEffect(() => {
+    fetchPartners(page);
+  }, [page, searchQuery, statusFilter, typeFilter]);
+
+  const filteredPartners = partners;
 
   const handleAction = (action: 'approve' | 'reject' | 'suspend', partner: Partner) => {
     setConfirmModal({ isOpen: true, action, partner });
@@ -66,11 +79,7 @@ const PartnersPage: React.FC = () => {
       };
       
       await updatePartnerStatus(confirmModal.partner.id, statusMap[confirmModal.action]);
-      
-      const response = await getPartners();
-      if (response.success && response.data) {
-        setPartners(response.data.partners);
-      }
+      await fetchPartners(page);
     } catch (error) {
       console.error('Action failed:', error);
     }
@@ -86,7 +95,7 @@ const PartnersPage: React.FC = () => {
           <p className="text-sm text-gray-500 mt-1">Manage partner applications and accounts</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">{filteredPartners.length} partners</span>
+          <span className="text-sm text-gray-500">{totalCount} partners</span>
         </div>
       </div>
 
@@ -224,12 +233,39 @@ const PartnersPage: React.FC = () => {
           </table>
         </div>
 
-        {filteredPartners.length === 0 && (
+        {filteredPartners.length === 0 && !loading && (
           <div className="p-8 text-center">
             <svg className="w-12 h-12 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             <p className="mt-2 text-sm text-gray-500">No partners found</p>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3">
+            <p className="text-sm text-gray-500">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

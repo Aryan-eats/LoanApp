@@ -53,12 +53,12 @@ const flushTestKeys = async (pattern: string) => {
 
 // --- suite setup / teardown --------------------------------
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!isSafeRedisTarget()) return;
   if (!isRedisAvailable()) {
     throw new Error('REDIS_URL is not configured – cannot run Redis integration tests');
   }
-  redis = getRedisClient();
+  redis = await getRedisClient();
 });
 
 afterAll(async () => {
@@ -70,6 +70,7 @@ afterAll(async () => {
   await flushTestKeys(`otp_vtoken:${NAMESPACE}*`);
   await flushTestKeys(`user_otp:${NAMESPACE}*`);
   await flushTestKeys('rl:test:*');
+  await tokenBlacklist.clear();
 
   await disconnectRedis();
 });
@@ -151,6 +152,10 @@ describeRedis('Redis Caching', () => {
 describeRedis('Redis Token Blacklisting', () => {
   const testToken = `${NAMESPACE}token-abc123`;
 
+  beforeEach(async () => {
+    await tokenBlacklist.clear();
+  });
+
   it('reports a token as NOT blacklisted before adding', async () => {
     expect(await tokenBlacklist.isBlacklisted(testToken)).toBe(false);
   });
@@ -201,7 +206,11 @@ describeRedis('Redis Rate Limiting', () => {
     // Directly instantiate a store to test that it works with our client
     const store = new RedisStore({
       // @ts-expect-error - ioredis sendCommand is compatible
-      sendCommand: (...args: string[]) => getRedisClient().call(...args),
+      sendCommand: async (...args: string[]) => {
+        const redisClient = await getRedisClient();
+        const call = redisClient.call as (...redisArgs: string[]) => Promise<unknown>;
+        return call(...args);
+      },
       prefix: 'rl:test:',
     });
 

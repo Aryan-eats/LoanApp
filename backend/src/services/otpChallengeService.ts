@@ -23,7 +23,7 @@ const hashOtp = (otp: string): string =>
 const redisCreateOtp = async (phone: string): Promise<string> => {
   const otp = crypto.randomInt(100000, 999999).toString();
   const otpHash = hashOtp(otp);
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
 
   // Store hashed OTP with TTL; also clear any stale verification token
   await redis.set(`${PREFIX_OTP}${phone}`, otpHash, 'EX', OTP_TTL_SECONDS);
@@ -36,7 +36,7 @@ const redisVerifyOtp = async (
   phone: string,
   otp: string
 ): Promise<{ success: boolean; token?: string; reason?: string }> => {
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
   const stored = await redis.get(`${PREFIX_OTP}${phone}`);
 
   if (!stored) return { success: false, reason: 'expired' };
@@ -56,7 +56,7 @@ const redisVerifyOtp = async (
 };
 
 const redisConsumeToken = async (phone: string, token: string): Promise<boolean> => {
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
   const stored = await redis.get(`${PREFIX_VTOKEN}${phone}`);
   if (!stored || stored !== token) return false;
 

@@ -119,6 +119,7 @@ export interface Lead {
   partnerName?: string;
   status: LeadStatus;
   bankAssigned?: string;
+  bankCode?: string;
   bankLogo?: string;
   preferredBank?: string;
   sanctionedAmount?: number;
