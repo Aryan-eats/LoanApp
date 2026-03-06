@@ -22,7 +22,11 @@ export function useLocalStorage<T>(
 
   const [storedValue, setStoredValue] = useState<T>(readValue);
   const initialValueRef = useRef(initialValue);
-  initialValueRef.current = initialValue;
+
+  // Sync ref after render (not during) to satisfy React 19 hook rules
+  useEffect(() => {
+    initialValueRef.current = initialValue;
+  });
 
   const setValue = useCallback((value: SetValue<T>) => {
     setStoredValue(prev => {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Document storage service – Cloudflare R2 + PostgreSQL metadata.
  *
  * Provides upload, download-URL generation, deletion, and listing
@@ -60,10 +60,15 @@ export const buildLeadObjectKey = (leadId: string, filename: string): string =>
  */
 export const sanitiseFilename = (original: string): string => {
   const timestamp = Date.now();
+  // Strip obvious attack patterns before normalizing the remaining filename.
+  const scrubbed = original
+    .replace(/\.{2,}/g, '_')
+    .replace(/on[a-z]+/gi, '_')
+    .replace(/[<>"'`;$\\/\x00\r\n]/g, '_');
   // Keep only alphanumerics, dots, hyphens, underscores
-  const safe = original.replace(/[^a-zA-Z0-9.\-_]/g, '_').substring(0, 200);
+  const safe = scrubbed.replace(/[^a-zA-Z0-9.\-_]/g, '_').substring(0, 200);
   // Fallback when the sanitised name is empty or contains no meaningful chars
-  const meaningful = safe.replace(/^_+$/, ''); // all-underscore → empty
+  const meaningful = safe.replace(/^_+$/, ''); // all-underscore -> empty
   const name = meaningful.length > 0 ? safe : 'file';
   // Prefix with timestamp to avoid collisions
   return `${timestamp}-${name}`;
@@ -148,7 +153,7 @@ export const uploadLeadDocument = async (
 
   await client.send(new PutObjectCommand(params));
 
-  // 2. Update the row in Postgres (no ephemeral URL stored – generate on demand)
+  // 2. Update the row in Postgres (no ephemeral URL stored - generate on demand)
   const updatedDoc = await prisma.leadDocument.update({
     where: { id: documentId },
     data: {

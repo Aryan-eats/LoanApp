@@ -1,901 +1,546 @@
-# External API Integrations Required for Production
+# Backend API Performance Review
 
-> GPS India Loan Portal - API Integration Guide
-> Generated: January 2026
-
----
-
-## Current Status Summary
-
-| Feature | Current Implementation | Production Ready? | Priority |
-|---------|----------------------|-------------------|----------|
-| EMI Calculator | RapidAPI (configured) | Partial - needs API key | Low |
-| OTP/SMS | Placeholder (logged to console) | **NO** | **P0** |
-| Email (Password Reset) | Placeholder | **NO** | **P0** |
-| Document Storage | Not implemented | **NO** | **P1** |
-| KYC Verification | Manual status update | **NO** | **P1** |
-| Credit Check | Mock data (hardcoded) | **NO** | **P2** |
+> GPS India Loan Portal — Performance Audit
+> Generated: March 2026
 
 ---
 
-## Phase 1: MVP Required (P0)
+## 1. Database & Queries
 
-### 1. OTP/SMS Gateway
+---
 
-**Current State:** OTP is generated and logged to console in development
+### 🔴 [Critical] — Auth Middleware Hits DB on Every Single Request
+
+- **File/Endpoint:** `backend/src/middleware/auth.ts` → ALL protected routes
+- **Problem:** The `protect` middleware calls `prisma.user.findUnique({ where: { id: payload.sub } })` on **every authenticated request**. With the field-encryption Prisma extension active, this also triggers a decrypt cycle on ~9 fields. This is the single biggest latency contributor. Every API call pays a ~20-50ms tax for a full User row read + decryption.
+- **Fix:** Cache the user object in Redis keyed by user ID with a short TTL (30-60s), and invalidate on profile/role/status changes:
 
 ```typescript
-// backend/src/controllers/authController.ts:849
-// TODO: Integrate with SMS service (Twilio, etc.) or email service
-console.log(`[DEV ONLY] OTP for ${phone || email}: ${otp}`);
-```
+// middleware/auth.ts
+import { cacheWrap, cacheDelete } from '../utils/cache.js';
 
-**Required for:**
-- Partner phone verification during onboarding
-- Password reset via OTP
-- Transaction notifications (future)
-
-#### Integration Options
-
-| Provider | Cost per SMS | India Coverage | Best For |
-|----------|--------------|----------------|----------|
-| **MSG91** | ~₹0.15-0.20 | Excellent (India-focused) | Indian market, DLT compliant |
-| **Twilio** | ~₹0.60 | Good | Global reach, reliability |
-| **Kaleyra** | ~₹0.20-0.25 | Excellent | Enterprise India |
-| **AWS SNS** | ~₹0.50 | Good | AWS ecosystem |
-
-#### Recommended: MSG91 (India-focused)
-
-**Why MSG91?**
-- Pre-registered with Indian DLT (Distributed Ledger Technology) - required by TRAI
-- Cheapest for India
-- Good API documentation
-- Template-based OTP (required by regulations)
-
-**Environment Variables:**
-```env
-# Add to backend/.env
-MSG91_AUTH_KEY=your-auth-key
-MSG91_TEMPLATE_ID=your-otp-template-id
-MSG91_SENDER_ID=GPSIND
-```
-
-**Implementation Code:**
-```typescript
-// backend/src/services/smsService.ts
-import axios from 'axios';
-
-interface SendOTPResponse {
-  success: boolean;
-  message: string;
-  request_id?: string;
-}
-
-export const sendOTP = async (phone: string, otp: string): Promise<SendOTPResponse> => {
-  const authKey = process.env.MSG91_AUTH_KEY;
-  const templateId = process.env.MSG91_TEMPLATE_ID;
-  const senderId = process.env.MSG91_SENDER_ID || 'GPSIND';
-
-  if (!authKey || !templateId) {
-    throw new Error('SMS configuration missing');
-  }
-
-  try {
-    const response = await axios.post(
-      'https://control.msg91.com/api/v5/otp',
-      {
-        template_id: templateId,
-        mobile: `91${phone}`, // Add country code
-        authkey: authKey,
-        otp: otp,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    return {
-      success: response.data.type === 'success',
-      message: response.data.message,
-      request_id: response.data.request_id,
-    };
-  } catch (error) {
-    console.error('SMS send error:', error);
-    return {
-      success: false,
-      message: 'Failed to send OTP',
-    };
-  }
-};
-```
-
-**Update authController.ts:**
-```typescript
-// Replace the console.log with actual SMS sending
-import { sendOTP as sendSMS } from '../services/smsService.js';
-
-// In sendOTP function (line ~846-852)
-if (process.env.NODE_ENV === 'production') {
-  const smsResult = await sendSMS(phone, otp);
-  if (!smsResult.success) {
-    throw new Error('Failed to send OTP via SMS');
-  }
-} else {
-  console.log(`[DEV ONLY] OTP for ${phone || email}: ${otp}`);
-}
-```
-
-#### Alternative: Twilio
-
-**Environment Variables:**
-```env
-TWILIO_ACCOUNT_SID=your-account-sid
-TWILIO_AUTH_TOKEN=your-auth-token
-TWILIO_PHONE_NUMBER=+1234567890
-```
-
-**Implementation Code:**
-```typescript
-// backend/src/services/twilioService.ts
-import twilio from 'twilio';
-
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
+const user = await cacheWrap(
+  `auth:user:${payload.sub}`,
+  () => prisma.user.findUnique({ where: { id: payload.sub } }),
+  60 // 60-second TTL
 );
-
-export const sendOTP = async (phone: string, otp: string): Promise<boolean> => {
-  try {
-    await client.messages.create({
-      body: `Your GPS India Finance OTP is: ${otp}. Valid for 5 minutes. Do not share with anyone.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: `+91${phone}`,
-    });
-    return true;
-  } catch (error) {
-    console.error('Twilio error:', error);
-    return false;
-  }
-};
 ```
 
-**Package to install:**
-```bash
-cd backend && npm install twilio
-```
+Invalidate `auth:user:{userId}` in `updateProfile`, `updateUser`, `updatePartnerStatus`, etc.
+
+Alternatively, embed `isActive` in the JWT claims and only hit DB when you need the full user object (not on every request).
+
+- **Expected Impact:** Eliminates 1 DB query + decryption per request. **~60-80% reduction in baseline latency** for all protected routes.
 
 ---
 
-### 2. Email Service
+### 🔴 [Critical] — Audit Log Checksum Queries the Last Log on Every Write
 
-**Current State:** Password reset emails are not sent (only URL logged)
+- **File/Endpoint:** `backend/src/utils/auditLogger.ts` → Every audit-logged route
+- **Problem:** `getLastChecksum()` calls `prisma.auditLog.findFirst({ orderBy: { createdAt: 'desc' } })` on **every audit event**. Since audit logging is fire-and-forget on most routes (login, lead CRUD, document ops), this adds a sequential DB read to every mutating endpoint. Under concurrent requests, audit writes can also race, producing duplicate checksums.
+- **Fix:** Cache the last checksum in Redis (or a module-level variable) and update it after each write:
 
 ```typescript
-// backend/src/controllers/authController.ts:698
-console.log(`Password reset URL: ${resetUrl}`);
+let lastChecksumCache: string | null = null;
+
+const getLastChecksum = async (): Promise<string | null> => {
+  if (lastChecksumCache !== null) return lastChecksumCache;
+  // Bootstrap from DB only once
+  const last = await prisma.auditLog.findFirst({
+    orderBy: { createdAt: 'desc' },
+    select: { checksum: true },
+  });
+  lastChecksumCache = last?.checksum ?? null;
+  return lastChecksumCache;
+};
+
+// After creating the audit log entry:
+lastChecksumCache = checksum;
 ```
 
-**Required for:**
-- Password reset emails
-- Welcome emails
-- Lead status notifications
-- Commission notifications
+- **Expected Impact:** Removes 1 DB query per audit event. Since most routes emit 1-3 audit events, this saves **1-3 extra DB round trips per request**.
 
-#### Integration Options
+---
 
-| Provider | Free Tier | Paid | Best For |
-|----------|-----------|------|----------|
-| **SendGrid** | 100/day | $14.95/mo for 40K | Best API, reliability |
-| **AWS SES** | 62K/mo (EC2) | $0.10/1000 | AWS ecosystem |
-| **Resend** | 3K/mo | $20/mo for 50K | Modern DX |
-| **Mailgun** | 5K/mo (3 mo) | $35/mo for 50K | Transactional focus |
+### 🔴 [Critical] — `listUsers` Returns All Users With No Pagination
 
-#### Recommended: SendGrid
+- **File/Endpoint:** `backend/src/controllers/adminController.ts` → `GET /api/admin/users`
+- **Problem:** `prisma.user.findMany({ orderBy: { createdAt: 'desc' } })` returns **all users** with **all columns** (including encrypted fields that must be decrypted). No pagination, no field selection. As user count grows, this becomes extremely slow.
+- **Fix:** Add pagination and select only needed fields:
 
-**Environment Variables:**
-```env
-# Add to backend/.env
-SENDGRID_API_KEY=SG.your-api-key
-FROM_EMAIL=noreply@gpsindiafinance.com
-FROM_NAME=GPS India Finance
-```
-
-**Implementation Code:**
 ```typescript
-// backend/src/services/emailService.ts
-import sgMail from '@sendgrid/mail';
+export const listUsers = async (req: Request, res: Response): Promise<void> => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const skip = (page - 1) * limit;
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-
-interface EmailOptions {
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}
-
-export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
-  try {
-    await sgMail.send({
-      to: options.to,
-      from: {
-        email: process.env.FROM_EMAIL || 'noreply@gpsindiafinance.com',
-        name: process.env.FROM_NAME || 'GPS India Finance',
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      select: {
+        id: true, email: true, firstName: true, lastName: true,
+        phone: true, role: true, isActive: true, isEmailVerified: true,
+        createdAt: true,
       },
-      subject: options.subject,
-      text: options.text,
-      html: options.html || options.text,
-    });
-    return true;
-  } catch (error) {
-    console.error('SendGrid error:', error);
-    return false;
-  }
-};
+    }),
+    prisma.user.count(),
+  ]);
 
-export const sendPasswordResetEmail = async (
-  email: string,
-  resetUrl: string,
-  userName: string
-): Promise<boolean> => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Password Reset Request</h2>
-      <p>Hello ${userName},</p>
-      <p>You requested to reset your password. Click the button below to proceed:</p>
-      <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #000; color: #fff; text-decoration: none; border-radius: 4px; margin: 16px 0;">
-        Reset Password
-      </a>
-      <p style="color: #666; font-size: 14px;">
-        This link expires in 10 minutes. If you didn't request this, please ignore this email.
-      </p>
-      <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-      <p style="color: #999; font-size: 12px;">
-        GPS India Financial Services<br>
-        This is an automated message, please do not reply.
-      </p>
-    </div>
-  `;
-
-  return sendEmail({
-    to: email,
-    subject: 'Password Reset - GPS India Finance',
-    text: `Reset your password using this link: ${resetUrl}. This link expires in 10 minutes.`,
-    html,
-  });
-};
-
-export const sendWelcomeEmail = async (
-  email: string,
-  userName: string
-): Promise<boolean> => {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Welcome to GPS India Finance!</h2>
-      <p>Hello ${userName},</p>
-      <p>Thank you for registering as a partner. Your account is now under review.</p>
-      <p>Once approved, you'll be able to:</p>
-      <ul>
-        <li>Submit loan leads</li>
-        <li>Track application status</li>
-        <li>Earn commissions on disbursed loans</li>
-      </ul>
-      <p>We'll notify you once your KYC is verified.</p>
-      <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-      <p style="color: #999; font-size: 12px;">
-        GPS India Financial Services
-      </p>
-    </div>
-  `;
-
-  return sendEmail({
-    to: email,
-    subject: 'Welcome to GPS India Finance Partner Program',
-    text: `Welcome ${userName}! Your partner account is under review. We'll notify you once approved.`,
-    html,
+  res.status(200).json({
+    success: true,
+    data: { users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } },
   });
 };
 ```
 
-**Package to install:**
-```bash
-cd backend && npm install @sendgrid/mail
-npm install --save-dev @types/sendgrid
-```
+- **Expected Impact:** Reduces data transfer by 70-90%, eliminates unnecessary field decryption.
 
 ---
 
-## Phase 2: Core Functionality (P1)
+### 🔴 [Critical] — `listPartners` (Admin) Fetches All Partners + N+1 Lead Count
 
-### 3. Document Storage (AWS S3)
+- **File/Endpoint:** `backend/src/controllers/adminController.ts` → `GET /api/admin/partners`
+- **Problem:** Fetches **all partners** (no pagination), then does a separate `groupBy` for lead counts. Both queries fetch all data. Also returns all columns including encrypted PAN/Aadhaar/account numbers that get decrypted.
+- **Fix:** Add pagination (same pattern as `getPartners` in partnerController, which already does it), add `select` to avoid decrypting sensitive fields unless explicitly needed.
+- **Expected Impact:** ~80% faster for large partner lists.
 
-**Required for:**
-- KYC document uploads (PAN, Aadhaar, etc.)
-- Income proof documents
-- Bank statements
-- Partner onboarding documents
+---
 
-**Environment Variables:**
-```env
-# Add to backend/.env
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET=gps-india-documents
-```
+### 🟡 [Medium] — `getLeads` Always Includes Documents & Timeline
 
-**Implementation Code:**
+- **File/Endpoint:** `backend/src/controllers/leadController.ts` → `GET /api/partner/leads`, `GET /api/admin/leads`
+- **Problem:** Every lead list query uses `include: { documents: true, timeline: true }`, joining 2 extra tables. For a list view showing 20 leads, this pulls potentially 100+ document rows and 200+ timeline rows that the list UI doesn't display.
+- **Fix:** Only include relations when getting a single lead. For list endpoints, omit them or use `_count`:
+
 ```typescript
-// backend/src/services/s3Service.ts
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import crypto from 'crypto';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'ap-south-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+// For list endpoint
+const leads = await prisma.lead.findMany({
+  where, orderBy: { [sortField]: sortOrder },
+  skip, take: limit,
+  include: {
+    _count: { select: { documents: true, timeline: true } },
   },
 });
-
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'gps-india-documents';
-
-interface UploadResult {
-  success: boolean;
-  key?: string;
-  url?: string;
-  error?: string;
-}
-
-export const uploadDocument = async (
-  file: Buffer,
-  fileName: string,
-  mimeType: string,
-  folder: string = 'documents'
-): Promise<UploadResult> => {
-  try {
-    // Generate unique key
-    const uniqueId = crypto.randomBytes(8).toString('hex');
-    const key = `${folder}/${uniqueId}-${fileName}`;
-
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: key,
-        Body: file,
-        ContentType: mimeType,
-        // Encrypt at rest
-        ServerSideEncryption: 'AES256',
-      })
-    );
-
-    return {
-      success: true,
-      key,
-    };
-  } catch (error) {
-    console.error('S3 upload error:', error);
-    return {
-      success: false,
-      error: 'Failed to upload document',
-    };
-  }
-};
-
-export const getSignedDownloadUrl = async (
-  key: string,
-  expiresIn: number = 3600 // 1 hour default
-): Promise<string | null> => {
-  try {
-    const command = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-
-    return await getSignedUrl(s3Client, command, { expiresIn });
-  } catch (error) {
-    console.error('S3 signed URL error:', error);
-    return null;
-  }
-};
-
-export const deleteDocument = async (key: string): Promise<boolean> => {
-  try {
-    await s3Client.send(
-      new DeleteObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: key,
-      })
-    );
-    return true;
-  } catch (error) {
-    console.error('S3 delete error:', error);
-    return false;
-  }
-};
-
-// Generate presigned URL for direct upload from frontend
-export const getPresignedUploadUrl = async (
-  fileName: string,
-  mimeType: string,
-  folder: string = 'documents'
-): Promise<{ uploadUrl: string; key: string } | null> => {
-  try {
-    const uniqueId = crypto.randomBytes(8).toString('hex');
-    const key = `${folder}/${uniqueId}-${fileName}`;
-
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: mimeType,
-      ServerSideEncryption: 'AES256',
-    });
-
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 min
-
-    return { uploadUrl, key };
-  } catch (error) {
-    console.error('S3 presigned URL error:', error);
-    return null;
-  }
-};
 ```
 
-**Packages to install:**
+- **Expected Impact:** Reduces query time and payload size by ~50-70% on list endpoints.
+
+---
+
+### 🟡 [Medium] — `updateLead` Reads Full Lead Again After Transaction
+
+- **File/Endpoint:** `backend/src/controllers/leadController.ts` → `PUT /api/partner/leads/:id`
+- **Problem:** After `$transaction` (which already updates the lead), there's an additional `findUnique` with includes. The updated lead should be returned from the transaction instead.
+- **Fix:** Return the updated lead from inside the transaction or use the `returning` pattern:
+
+```typescript
+const updatedLead = await prisma.$transaction(async (tx) => {
+  const updated = await tx.lead.update({
+    where: { id: leadId },
+    data: updateData,
+    include: { documents: true, timeline: true },
+  });
+  if (statusChanged) { /* create timeline */ }
+  return updated;
+});
+```
+
+- **Expected Impact:** Eliminates 1 extra DB query per lead update.
+
+---
+
+### 🟡 [Medium] — `getPartnerById` Makes 2 Sequential Queries
+
+- **File/Endpoint:** `backend/src/controllers/partnerController.ts` → `GET /api/partners/:id`
+- **Problem:** First finds the user, then counts leads in a separate sequential query.
+- **Fix:** Use `Promise.all` or include `_count`:
+
+```typescript
+const user = await prisma.user.findFirst({
+  where: { id: partnerId, role: 'partner' },
+  include: { _count: { select: { leads: true } } },
+});
+```
+
+- **Expected Impact:** Reduces from 2 DB round trips to 1.
+
+---
+
+### 🟡 [Medium] — `getCurrentPartnerProfile` is Duplicate of `getPartnerById`
+
+- **File/Endpoint:** `backend/src/controllers/partnerController.ts` → `GET /api/partner/profile`
+- **Problem:** Fetches the user again from DB even though `req.user` is already populated by the auth middleware. Then makes a separate lead count query.
+- **Fix:** Use `req.user` directly and issue only the lead count:
+
+```typescript
+const leadCount = await prisma.lead.count({ where: { partnerId: req.user.id } });
+res.json({ success: true, data: { partner: formatPartnerResponse(req.user, leadCount) } });
+```
+
+- **Expected Impact:** Eliminates 1 unnecessary DB query.
+
+---
+
+### 🟡 [Medium] — Missing Composite Index for Lead Search
+
+- **File/Endpoint:** `backend/src/controllers/leadController.ts` → `GET /api/partner/leads` (with `search` param)
+- **Problem:** Text search on `clientFullName`, `clientPhone`, `clientEmail` uses `contains` + `mode: insensitive` which triggers sequential scans. No trigram/GIN index exists.
+- **Fix:** Add a PostgreSQL GIN trigram index in a migration:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX leads_client_search_trgm ON leads
+  USING GIN (client_full_name gin_trgm_ops, client_phone gin_trgm_ops, client_email gin_trgm_ops);
+```
+
+- **Expected Impact:** 5-10x faster text search as data grows.
+
+---
+
+### 🟡 [Medium] — No `select` on User Queries → Unnecessary Decryption
+
+- **File/Endpoint:** Multiple — `adminController.ts`, `partnerController.ts`, `profileController.ts`
+- **Problem:** Most user queries fetch all 40+ columns. The field-encryption extension runs decrypt on ~9 fields (aadhaarNumber, panNumber, gstNumber, accountNumber, ifscCode, upiId, otpHash, resetPasswordToken, refreshToken) for every read. Many endpoints don't need these fields.
+- **Fix:** Always use `select` to fetch only needed columns. This skips decryption for fields not selected.
+- **Expected Impact:** 30-50% faster user reads by avoiding unnecessary AES-256-GCM decryption.
+
+---
+
+## 2. Caching
+
+---
+
+### 🔴 [Critical] — No Response Compression
+
+- **File/Endpoint:** `backend/src/index.ts` → All routes
+- **Problem:** No `compression` middleware is installed. JSON responses (especially lead lists, audit logs, partner lists) are sent uncompressed. A typical 20-lead response with documents/timeline can be 50-100KB raw.
+- **Fix:**
+
 ```bash
-cd backend && npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+npm install compression @types/compression
 ```
+
+```typescript
+import compression from 'compression';
+app.use(compression()); // Add before routes
+```
+
+- **Expected Impact:** 60-80% reduction in response payload size → directly reduces "ms" times seen by clients.
 
 ---
 
-### 4. PAN Verification API
+### 🟡 [Medium] — `getLeadStats` / `getStats` Cache TTL Too Short
 
-**Required for:**
-- Partner KYC verification
-- Customer identity verification
+- **File/Endpoint:** `leadController.ts` (30s), `adminController.ts` (60s)
+- **Problem:** Stats are expensive (multiple `groupBy` + `count` queries) but cached for only 30-60 seconds. Under active admin usage, the cache is constantly cold.
+- **Fix:** Increase TTL to 5 minutes and invalidate on lead creation/status change (you already call `cacheDelete` on mutations — just extend TTL):
 
-#### Recommended: Karza
-
-**Environment Variables:**
-```env
-KARZA_API_KEY=your-api-key
-KARZA_BASE_URL=https://api.karza.in
+```typescript
+const data = await cacheWrap(cacheKey, fetchStats, 300); // 5 minutes
 ```
 
-**Implementation Code:**
+- **Expected Impact:** 80% cache hit rate improvement for dashboard endpoints.
+
+---
+
+### 🟡 [Medium] — `getProfile` is Uncached Despite Being Called on Every Page Load
+
+- **File/Endpoint:** `backend/src/controllers/profileController.ts` → `GET /api/profile`
+- **Problem:** Hits DB every time. This is typically called on every page navigation to verify the session.
+- **Fix:** Since `protect` middleware already loads `req.user`, just use that:
+
 ```typescript
-// backend/src/services/kycService.ts
-import axios from 'axios';
+export const getProfile = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user) { res.status(401).json(/*...*/); return; }
+  res.status(200).json({ success: true, data: { user: formatUserResponse(req.user) } });
+};
+```
 
-interface PANVerificationResult {
-  success: boolean;
-  verified: boolean;
-  name?: string;
-  nameMatch?: boolean;
-  error?: string;
-}
+- **Expected Impact:** Eliminates 1 DB query per page load.
 
-export const verifyPAN = async (
-  panNumber: string,
-  expectedName: string
-): Promise<PANVerificationResult> => {
-  try {
-    const response = await axios.post(
-      `${process.env.KARZA_BASE_URL}/v2/pan`,
-      {
-        pan: panNumber.toUpperCase(),
-        consent: 'Y',
-      },
-      {
-        headers: {
-          'x-karza-key': process.env.KARZA_API_KEY,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+---
 
-    if (response.data.status_code === 101) {
-      const registeredName = response.data.result.name;
-      // Fuzzy name matching (simple version)
-      const nameMatch = registeredName
-        .toLowerCase()
-        .includes(expectedName.toLowerCase().split(' ')[0]);
+### 🟢 [Minor] — No HTTP Cache Headers for Static-ish Resources
 
-      return {
-        success: true,
-        verified: true,
-        name: registeredName,
-        nameMatch,
-      };
+- **File/Endpoint:** `GET /api/documents/req-docs`, `GET /api/admin/banks`, `GET /api/documents/req-docs/flat`
+- **Problem:** Reference data (doc requirements, bank list) changes rarely but no `Cache-Control` headers are set. Clients refetch on every visit.
+- **Fix:** Add `Cache-Control` headers:
+
+```typescript
+res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+```
+
+- **Expected Impact:** Reduces redundant API calls from browser/frontend.
+
+---
+
+## 3. Payload & Serialization
+
+---
+
+### 🔴 [Critical] — `getUser` and `createUser` Return Full User Object (Including Hashed Password)
+
+- **File/Endpoint:** `backend/src/controllers/adminController.ts` → `GET /api/admin/users/:id`, `POST /api/admin/users`
+- **Problem:** `res.json({ data: { user } })` returns the raw Prisma object including `password`, `refreshToken`, `resetPasswordToken`, `otpHash`, and all encrypted fields. This is both a security issue and a payload bloat problem.
+- **Fix:** Use `formatUserResponse()` (already exists in authService.ts) for all user-returning endpoints, or add `select` to the query.
+- **Expected Impact:** Reduces payload size and eliminates sensitive data exposure.
+
+---
+
+### 🟡 [Medium] — `getPartnerCommissions` Fetches All Disbursed Leads Without Pagination
+
+- **File/Endpoint:** `backend/src/controllers/partnerController.ts` → `GET /api/partners/:id/commissions`
+- **Problem:** Fetches all disbursed leads for a partner with no pagination. Returns all lead columns when only commission-related fields are needed.
+- **Fix:** Add pagination and select only necessary fields:
+
+```typescript
+const leads = await prisma.lead.findMany({
+  where: { partnerId, status: 'disbursed', commissionAmount: { gt: 0 } },
+  orderBy: { updatedAt: 'desc' },
+  skip, take: limit,
+  select: {
+    id: true, clientFullName: true, loanType: true,
+    disbursedAmount: true, loanAmount: true,
+    commissionRate: true, commissionAmount: true,
+    commissionStatus: true, commissionPaidAt: true, createdAt: true,
+  },
+});
+```
+
+- **Expected Impact:** Faster response, smaller payload.
+
+---
+
+## 4. Concurrency & Async
+
+---
+
+### 🔴 [Critical] — Audit Logging Blocks the Response
+
+- **File/Endpoint:** Multiple controllers — every route that calls `logAuditEvent` **after** `res.json()`
+- **Problem:** While many controllers do `res.json()` then `await logAuditEvent(...)`, Express has already written the response headers but the handler still `await`s the audit DB write. If audit logging is slow (which it is, due to the checksum query), it delays the handler's `return` and ties up the event loop. More critically, several controllers call `logAuditEvent` **before** sending the response (e.g., login flow takes multiple audit calls).
+- **Fix:** Make audit logging fully fire-and-forget. Don't `await` it after the response:
+
+```typescript
+res.status(200).json({ success: true, data });
+// Fire-and-forget — don't await
+logAuditEvent('LEAD_UPDATED', req, opts).catch(err =>
+  console.error('Audit log failed:', err)
+);
+```
+
+Better yet, push audit events to a Redis queue and process them in a background worker.
+
+- **Expected Impact:** Eliminates audit logging latency from response time. **50-200ms saved per request** with audit events.
+
+---
+
+### 🟡 [Medium] — Login Flow Has 5-6 Sequential DB Operations
+
+- **File/Endpoint:** `backend/src/controllers/authController.ts` → `POST /api/auth/login`
+- **Problem:** Login executes sequentially: find user → compare password → resetLoginAttempts → generate fingerprint → checkSuspiciousActivity → update user (lastLogin + refreshToken) → addSession → logAuditEvent → sign tokens. Many of these can be parallelized.
+- **Fix:** After password verification, parallelize the non-dependent operations:
+
+```typescript
+// After isMatch confirmed
+const fingerprint = generateDeviceFingerprint(req); // sync
+
+const refreshToken = signRefreshToken(user as User);
+const accessToken = signAccessToken(user as User);
+
+// Parallelize DB writes
+await Promise.all([
+  resetLoginAttempts(user.id),
+  prisma.user.update({
+    where: { id: user.id },
+    data: {
+      lastLogin: new Date(),
+      refreshToken: hashToken(refreshToken),
+      refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+    },
+  }),
+  addSession(user.id, {
+    deviceFingerprint: fingerprint,
+    userAgent: req.headers['user-agent'] || '',
+    ip: getClientIP(req),
+  }),
+]);
+
+// Send response first, then audit
+res.json({ success: true, data: { ... } });
+logAuditEvent('LOGIN_SUCCESS', req, { ... }).catch(console.error);
+```
+
+- **Expected Impact:** Reduces login latency by ~30-40%.
+
+---
+
+### 🟡 [Medium] — `bcrypt.genSalt(12)` is CPU-Intensive
+
+- **File/Endpoint:** `backend/src/services/userService.ts` → Registration, password reset
+- **Problem:** Salt rounds of 12 takes ~250ms on a typical server. This is a blocking CPU operation in the event loop.
+- **Fix:** Reduce to 10 rounds (still secure, ~60ms) or offload to a worker thread:
+
+```typescript
+const salt = await bcrypt.genSalt(10); // ~60ms instead of ~250ms
+```
+
+- **Expected Impact:** 3-4x faster registration/password operations.
+
+---
+
+## 5. Code Structure
+
+---
+
+### 🔴 [Critical] — Field Encryption Extension Runs on Every Query for Every Model
+
+- **File/Endpoint:** `backend/src/utils/fieldEncryption.ts` → All Prisma operations
+- **Problem:** The `$allModels.$allOperations` hook runs on **every Prisma query** and checks `shouldHandleModel`. Even for models without encrypted fields (LeadDocument, LeadTimeline, AuditLog, Bank, etc.), the hook is invoked. For models with encrypted fields, it iterates through all fields on every read/write. This is especially impactful because `auth.ts` loads a full User on every request.
+- **Fix:** The `basePrisma` pattern is already used for some queries but inconsistently. Ensure:
+  1. Use `basePrisma` for all queries on tables without encrypted fields (Lead, LeadDocument, LeadTimeline, AuditLog, Bank, etc.)
+  2. For the auth middleware user lookup, if you cache the user (fix #1), this becomes moot. Otherwise, use `select` to exclude encrypted fields you don't need.
+- **Expected Impact:** Eliminates unnecessary extension overhead on ~60% of queries.
+
+---
+
+### 🟡 [Medium] — Security Headers Middleware is After Routes
+
+- **File/Endpoint:** `backend/src/index.ts`
+- **Problem:** The security headers middleware (`X-Content-Type-Options`, `X-Frame-Options`, etc.) is registered **after** all routes. Express middleware runs in order, so these headers are never applied to API responses. They only reach the 404 handler.
+- **Fix:** Move the middleware **before** the routes:
+
+```typescript
+// Move BEFORE app.use('/api', ...) routes
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+```
+
+- **Expected Impact:** Security fix (not performance), but also avoids a wasteful middleware call that never hits real routes.
+
+---
+
+### 🟡 [Medium] — `getAllowedOrigins()` is Called on Every Request
+
+- **File/Endpoint:** `backend/src/index.ts`
+- **Problem:** `getAllowedOrigins()` parses `process.env.ALLOWED_ORIGINS` and splits the string on **every request**. This is inside the CORS `origin` callback.
+- **Fix:** Compute once at startup:
+
+```typescript
+const allowedOrigins = getAllowedOrigins();
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-
-    return {
-      success: true,
-      verified: false,
-      error: 'PAN not found or invalid',
-    };
-  } catch (error) {
-    console.error('PAN verification error:', error);
-    return {
-      success: false,
-      verified: false,
-      error: 'Verification service unavailable',
-    };
-  }
-};
-
-// Bank account verification via penny drop
-export const verifyBankAccount = async (
-  accountNumber: string,
-  ifscCode: string,
-  accountHolderName: string
-): Promise<{ success: boolean; verified: boolean; registeredName?: string }> => {
-  try {
-    const response = await axios.post(
-      `${process.env.KARZA_BASE_URL}/v2/bankacc`,
-      {
-        accountNumber,
-        ifsc: ifscCode,
-        consent: 'Y',
-      },
-      {
-        headers: {
-          'x-karza-key': process.env.KARZA_API_KEY,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (response.data.status_code === 101) {
-      return {
-        success: true,
-        verified: true,
-        registeredName: response.data.result.accountName,
-      };
-    }
-
-    return { success: true, verified: false };
-  } catch (error) {
-    console.error('Bank verification error:', error);
-    return { success: false, verified: false };
-  }
-};
+  },
+  // ...
+}));
 ```
+
+- **Expected Impact:** Minor per-request savings, but clean code practice.
 
 ---
 
-## Phase 3: Enhanced Features (P2)
+## 6. Security That Impacts Performance
 
-### 5. Credit Score / Eligibility Check API
+---
 
-**Current State:** Uses mock data in `CreditCheckPage.tsx`
+### 🔴 [Critical] — Token Blacklist Check + DB User Lookup on Every Request
+
+- **File/Endpoint:** `backend/src/middleware/auth.ts` → All protected routes
+- **Problem:** Every authenticated request does: (1) Redis `EXISTS` for token blacklist, (2) DB `findUnique` for user + field decryption. Combined, this adds ~25-50ms baseline to every API call.
+- **Fix:**
+  1. Cache user in Redis (as described in fix #1)
+  2. Consider using short-lived JWTs (5min) without blacklist checks — if a token is compromised, it auto-expires quickly. Only check blacklist for refresh tokens.
+- **Expected Impact:** Eliminates 1 Redis + 1 DB call per request.
+
+---
+
+### 🟡 [Medium] — `isPasswordReused` Calls `bcrypt.compare` Up to 5 Times
+
+- **File/Endpoint:** `backend/src/services/userService.ts` → Password change/reset
+- **Problem:** Iterates through up to 5 password history entries, calling `bcrypt.compare` on each. With cost factor 12, this can take ~1.25 seconds.
+- **Fix:** Reduce bcrypt cost to 10 (see fix above) and/or parallelize comparisons:
 
 ```typescript
-// src/partner/pages/CreditCheckPage.tsx:139-140
-await new Promise((resolve) => setTimeout(resolve, 2000));
-setResult(mockEligibilityResult);  // Hardcoded fake data
+const results = await Promise.all(
+  history.map(entry => bcrypt.compare(newPassword, entry.hash))
+);
+return results.some(Boolean);
 ```
 
-#### Integration Options
-
-| Provider | Type | Features | Pricing |
-|----------|------|----------|---------|
-| **Perfios** | Aggregator | Multi-bureau, bank statement analysis | Per inquiry |
-| **Finbox** | Aggregator | Credit + income verification | Per inquiry |
-| **CRIF High Mark** | Bureau (direct) | Credit score, report | Per inquiry |
-| **Experian** | Bureau (direct) | Credit score, fraud check | Per inquiry |
-
-#### Recommended: Perfios (for soft pull)
-
-**Environment Variables:**
-```env
-PERFIOS_CLIENT_ID=your-client-id
-PERFIOS_CLIENT_SECRET=your-client-secret
-PERFIOS_BASE_URL=https://api.perfios.com
-```
-
-**Implementation Code:**
-```typescript
-// backend/src/services/creditService.ts
-import axios from 'axios';
-
-interface CreditCheckResult {
-  success: boolean;
-  eligible: boolean;
-  score?: number;
-  maxLoanAmount?: number;
-  factors?: Array<{
-    factor: string;
-    status: 'positive' | 'neutral' | 'negative';
-    description: string;
-  }>;
-  error?: string;
-}
-
-export const checkCreditEligibility = async (
-  phone: string,
-  panNumber: string,
-  monthlyIncome: number,
-  loanAmount: number,
-  loanType: string
-): Promise<CreditCheckResult> => {
-  try {
-    // Step 1: Get access token
-    const tokenResponse = await axios.post(
-      `${process.env.PERFIOS_BASE_URL}/oauth/token`,
-      {
-        client_id: process.env.PERFIOS_CLIENT_ID,
-        client_secret: process.env.PERFIOS_CLIENT_SECRET,
-        grant_type: 'client_credentials',
-      }
-    );
-
-    const accessToken = tokenResponse.data.access_token;
-
-    // Step 2: Initiate soft credit check
-    const creditResponse = await axios.post(
-      `${process.env.PERFIOS_BASE_URL}/v1/credit-check/soft`,
-      {
-        pan: panNumber,
-        mobile: phone,
-        consent: true,
-        loan_type: loanType,
-        loan_amount: loanAmount,
-        monthly_income: monthlyIncome,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const data = creditResponse.data;
-
-    return {
-      success: true,
-      eligible: data.eligible,
-      score: data.credit_score,
-      maxLoanAmount: data.max_eligible_amount,
-      factors: data.factors,
-    };
-  } catch (error) {
-    console.error('Credit check error:', error);
-    return {
-      success: false,
-      eligible: false,
-      error: 'Credit check service unavailable',
-    };
-  }
-};
-```
-
-**Note:** Credit bureau integrations typically require:
-- Enterprise agreement/contract
-- Compliance certifications
-- Minimum volume commitments
+- **Expected Impact:** Reduces password change from ~1.25s to ~0.25s (parallel + lower cost).
 
 ---
 
-### 6. Aadhaar eKYC (DigiLocker)
+### 🟡 [Medium] — Connection Pool Not Configured
 
-**Required for:**
-- Full KYC verification
-- Address verification
-- Photo verification
-
-**Note:** Aadhaar verification requires:
-- ASA (Authentication Service Agency) license OR
-- Integration via licensed provider (Karza, Signzy, etc.)
-- User consent flow (OTP-based)
+- **File/Endpoint:** `backend/src/config/prisma.ts`
+- **Problem:** `new Pool({ connectionString })` uses `pg` defaults (max 10 connections). Under load, this can become a bottleneck. No `min`, `max`, `idleTimeoutMillis`, or `connectionTimeoutMillis` configured.
+- **Fix:**
 
 ```typescript
-// backend/src/services/aadhaarService.ts
-// This is a simplified example - actual implementation requires licensed provider
-
-export const initiateAadhaarVerification = async (
-  aadhaarNumber: string,
-  userId: string
-): Promise<{ success: boolean; requestId: string }> => {
-  // 1. Generate consent request
-  // 2. Send OTP to Aadhaar-linked mobile
-  // 3. Return request ID for OTP verification
-
-  // Implementation depends on your KYC provider (Karza, Signzy, etc.)
-  throw new Error('Implement with licensed KYC provider');
-};
-
-export const verifyAadhaarOTP = async (
-  requestId: string,
-  otp: string
-): Promise<{
-  success: boolean;
-  name?: string;
-  address?: string;
-  photo?: string; // Base64 encoded
-}> => {
-  // Verify OTP and fetch eKYC data
-  throw new Error('Implement with licensed KYC provider');
-};
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: parseInt(process.env.DB_POOL_MAX || '20'),
+  min: parseInt(process.env.DB_POOL_MIN || '5'),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 ```
 
----
-
-## Optional: Build In-House
-
-### EMI Calculator (Recommended to Build Locally)
-
-Instead of relying on external API, build a simple local calculator:
-
-```typescript
-// src/utils/emiCalculator.ts
-
-interface EMIResult {
-  emi: number;
-  totalInterest: number;
-  totalPayment: number;
-  amortizationSchedule?: Array<{
-    month: number;
-    principal: number;
-    interest: number;
-    balance: number;
-  }>;
-}
-
-export const calculateEMI = (
-  principal: number,
-  annualRate: number,
-  tenureYears: number,
-  includeSchedule: boolean = false
-): EMIResult => {
-  const monthlyRate = annualRate / 12 / 100;
-  const tenureMonths = tenureYears * 12;
-
-  // EMI = P × r × (1+r)^n / ((1+r)^n - 1)
-  const emi =
-    (principal * monthlyRate * Math.pow(1 + monthlyRate, tenureMonths)) /
-    (Math.pow(1 + monthlyRate, tenureMonths) - 1);
-
-  const totalPayment = emi * tenureMonths;
-  const totalInterest = totalPayment - principal;
-
-  const result: EMIResult = {
-    emi: Math.round(emi),
-    totalInterest: Math.round(totalInterest),
-    totalPayment: Math.round(totalPayment),
-  };
-
-  if (includeSchedule) {
-    result.amortizationSchedule = [];
-    let balance = principal;
-
-    for (let month = 1; month <= tenureMonths; month++) {
-      const interestPayment = balance * monthlyRate;
-      const principalPayment = emi - interestPayment;
-      balance -= principalPayment;
-
-      result.amortizationSchedule.push({
-        month,
-        principal: Math.round(principalPayment),
-        interest: Math.round(interestPayment),
-        balance: Math.max(0, Math.round(balance)),
-      });
-    }
-  }
-
-  return result;
-};
-```
-
-**Benefits:**
-- No API costs
-- No external dependency
-- Instant calculation
-- No rate limiting
+- **Expected Impact:** Prevents connection pool exhaustion under concurrent load.
 
 ---
 
-## Estimated Monthly Costs
+### 🟡 [Medium] — Two Prisma Clients (Two Connection Pools)
 
-| Service | Volume | Monthly Cost (INR) |
-|---------|--------|-------------------|
-| SMS (MSG91) | 5,000 OTPs | ₹750-1,000 |
-| Email (SendGrid) | 10,000 emails | ₹1,200 |
-| AWS S3 | 50 GB storage | ₹150 |
-| PAN Verification (Karza) | 500 checks | ₹2,000-4,000 |
-| Bank Verification | 200 checks | ₹1,000-2,000 |
-| Credit Score (soft) | 200 checks | ₹8,000-16,000 |
-| **Total** | | **₹13,000-25,000/month** |
+- **File/Endpoint:** `backend/src/config/prisma.ts`
+- **Problem:** `basePrisma` creates a **second** PrismaClient with its own `adapter` — but it shares the same `pg` Pool. While the Pool is shared, having two Prisma client instances doubles Prisma's internal overhead (prepared statements, query engine instances). The `adapter` reference is to the same Pool, but the Prisma overhead is duplicated.
+- **Fix:** Consider using a single Prisma client and selectively bypassing encryption by using raw queries or `select` to exclude encrypted fields when needed. If you must keep `basePrisma`, at least document that they share the pool.
+- **Expected Impact:** Reduces memory footprint and startup time.
 
 ---
 
-## Implementation Checklist
+## Priority Action List (Top 5 Fixes)
 
-### Phase 1 (Week 1-2)
-- [ ] Create MSG91 account and get DLT registration
-- [ ] Implement SMS service for OTP
-- [ ] Create SendGrid account
-- [ ] Implement email service for password reset
-- [ ] Test OTP flow end-to-end
-- [ ] Test password reset flow end-to-end
-
-### Phase 2 (Week 3-4)
-- [ ] Set up AWS S3 bucket with proper IAM policies
-- [ ] Implement document upload/download service
-- [ ] Add document upload to partner onboarding
-- [ ] Create Karza account
-- [ ] Implement PAN verification
-- [ ] Add PAN verification to KYC flow
-
-### Phase 3 (Week 5-6)
-- [ ] Evaluate credit score providers
-- [ ] Sign enterprise agreement
-- [ ] Implement credit check API
-- [ ] Replace mock data in CreditCheckPage
-- [ ] Implement bank account verification
-
-### Optional
-- [ ] Replace RapidAPI EMI with local calculation
-- [ ] Add Aadhaar eKYC (if required)
+| Priority | Fix | Estimated Effort | Impact |
+|----------|-----|-----------------|--------|
+| **1** | Cache user in auth middleware (Redis, 60s TTL) | 1-2 hours | Eliminates DB hit on every request |
+| **2** | Add `compression` middleware | 10 minutes | 60-80% smaller responses |
+| **3** | Make audit logging fire-and-forget (don't `await` after response) + cache last checksum | 1 hour | 50-200ms off every mutating request |
+| **4** | Add `select` to user queries to avoid unnecessary decryption; paginate `listUsers`/`listPartners` | 2-3 hours | 50-70% faster admin endpoints |
+| **5** | Remove `include: { documents, timeline }` from lead list endpoints | 30 minutes | 50% smaller lead list responses |
 
 ---
 
-## Environment Variables Summary
+## Architecture Suggestion
 
-Add these to `backend/.env`:
+The biggest structural issue is that **every request pays a "tax" of: Redis blacklist check + DB user lookup + field decryption + audit log write (with checksum query)**. That's 3-4 DB/Redis round trips before actual business logic even starts.
 
-```env
-# ============================================
-# EXTERNAL API CONFIGURATION
-# ============================================
+**Recommended architecture change:**
 
-# SMS Service (MSG91 - Recommended for India)
-MSG91_AUTH_KEY=your-auth-key
-MSG91_TEMPLATE_ID=your-template-id
-MSG91_SENDER_ID=GPSIND
-
-# OR Twilio (Global)
-# TWILIO_ACCOUNT_SID=your-account-sid
-# TWILIO_AUTH_TOKEN=your-auth-token
-# TWILIO_PHONE_NUMBER=+1234567890
-
-# Email Service (SendGrid)
-SENDGRID_API_KEY=SG.your-api-key
-FROM_EMAIL=noreply@gpsindiafinance.com
-FROM_NAME=GPS India Finance
-
-# Document Storage (AWS S3)
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET=gps-india-documents
-
-# KYC Verification (Karza)
-KARZA_API_KEY=your-api-key
-KARZA_BASE_URL=https://api.karza.in
-
-# Credit Check (Perfios) - Optional
-# PERFIOS_CLIENT_ID=your-client-id
-# PERFIOS_CLIENT_SECRET=your-client-secret
-# PERFIOS_BASE_URL=https://api.perfios.com
-```
+1. **Embed claims in JWT**: Put `role`, `isActive`, `email` in the access token. For most read-only routes, you don't need the full DB user — just verify the JWT signature (pure CPU, <1ms).
+2. **Lazy user loading**: Only fetch the full user from DB when a controller actually needs `req.user` fields beyond what's in the JWT. Expose a `req.loadUser()` helper that fetches + caches.
+3. **Async audit pipeline**: Push audit events to a Redis Stream or a simple in-process queue. A background worker drains the queue and writes to Postgres in batches. This fully decouples audit writes from request latency.
+4. **Configure the PG pool properly** with min/max connections and add monitoring.
 
 ---
 
-## Security Notes
+## Performance Score
 
-1. **Never commit API keys** - Use environment variables
-2. **Encrypt PII at rest** - S3 server-side encryption enabled
-3. **Use presigned URLs** - Don't expose S3 bucket publicly
-4. **Log API calls** - Audit trail for compliance
-5. **Rate limit external calls** - Prevent cost overruns
-6. **Handle failures gracefully** - Fallback strategies for API outages
+| | Score (1-10) |
+|---|---|
+| **Before fixes** | **4/10** — Functional but every request carries 3-4 unnecessary DB calls, no compression, expensive encryption on every read, blocking audit writes |
+| **After top 5 fixes** | **7.5/10** — Most hot paths cached, responses compressed, audit decoupled, admin pages paginated |
+| **After all fixes** | **9/10** — JWT-claim-based auth, async audit pipeline, proper indices, optimal queries |

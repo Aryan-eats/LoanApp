@@ -1,7 +1,7 @@
-import bcrypt from 'bcryptjs';
+﻿import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { User } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma, { type ExtendedTransactionClient } from '../config/prisma.js';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 const PASSWORD_HISTORY_LIMIT = 5;
@@ -92,8 +92,9 @@ export const generateOTP = async (userId: string): Promise<string> => {
   const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
 
   if (isRedisAvailable()) {
-    // Store in Redis with automatic TTL – no DB write needed
-    await getRedisClient().set(
+    // Store in Redis with automatic TTL - no DB write needed
+    const redis = await getRedisClient();
+    await redis.set(
       `${USER_OTP_PREFIX}${userId}`,
       hashedOtp,
       'EX',
@@ -124,7 +125,7 @@ export const verifyUserOTP = async (
   const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
 
   if (isRedisAvailable()) {
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     const stored = await redis.get(`${USER_OTP_PREFIX}${userId}`);
     if (!stored) return false;
     if (stored !== hashedOtp) return false;
@@ -132,7 +133,7 @@ export const verifyUserOTP = async (
     return true;
   }
 
-  // Fallback – check DB columns (handled by caller via user.otpHash / user.otpExpires)
+  // Fallback - check DB columns (handled by caller via user.otpHash / user.otpExpires)
   return false; // signal caller to use legacy DB path
 };
 
@@ -182,10 +183,11 @@ export const addToPasswordHistory = async (
 
 export const addSession = async (
   userId: string,
-  session: { deviceFingerprint: string; userAgent: string; ip: string }
+  session: { deviceFingerprint: string; userAgent: string; ip: string },
+  tx?: ExtendedTransactionClient
 ): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
-    await tx.activeSession.upsert({
+  const runSession = async (client: ExtendedTransactionClient) => {
+    await client.activeSession.upsert({
       where: {
         userId_deviceFingerprint: {
           userId,
@@ -206,18 +208,24 @@ export const addSession = async (
       },
     });
 
-    const sessions = await tx.activeSession.findMany({
+    const sessions = await client.activeSession.findMany({
       where: { userId },
       orderBy: { lastActive: 'desc' },
     });
 
     if (sessions.length > SESSION_LIMIT) {
       const toDelete = sessions.slice(SESSION_LIMIT).map((s) => s.id);
-      await tx.activeSession.deleteMany({
+      await client.activeSession.deleteMany({
         where: { id: { in: toDelete } },
       });
     }
-  });
+  };
+
+  if (tx) {
+    await runSession(tx);
+  } else {
+    await prisma.$transaction(runSession);
+  }
 };
 
 export const removeSession = async (

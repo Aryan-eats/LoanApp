@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Upload,
@@ -34,6 +34,7 @@ export default function CustomerUploadPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFile, setUploadingFile] = useState<{ name: string; size: number } | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Validate token on mount
@@ -79,12 +80,13 @@ export default function CustomerUploadPage() {
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        alert('File is too large. Maximum size is 10 MB.');
+        alert(`File is too large (${formatFileSize(file.size)}). Maximum size is 10 MB.`);
         return;
       }
 
       setUploadingDocId(docId);
       setUploadProgress(0);
+      setUploadingFile({ name: file.name, size: file.size });
 
       try {
         const formData = new FormData();
@@ -121,6 +123,7 @@ export default function CustomerUploadPage() {
       } finally {
         setUploadingDocId(null);
         setUploadProgress(0);
+        setUploadingFile(null);
       }
     },
     [token]
@@ -137,7 +140,7 @@ export default function CustomerUploadPage() {
   const uploadedDocs = tokenInfo?.documents.filter((d) => d.status === 'uploaded' || d.status === 'verified') || [];
   const allUploaded = tokenInfo ? pendingDocs.length === 0 : false;
 
-  // ── Page States ────────────────────────────────────────────────────────
+  // -- Page States --------------------------------------------------------
 
   if (state === 'loading') {
     return (
@@ -180,7 +183,7 @@ export default function CustomerUploadPage() {
     );
   }
 
-  // ── Main Upload View ───────────────────────────────────────────────────
+  // -- Main Upload View ---------------------------------------------------
 
   return (
     <PageShell>
@@ -310,6 +313,12 @@ export default function CustomerUploadPage() {
                     {/* Progress Bar */}
                     {isUploading && (
                       <div className="mt-3">
+                        {uploadingFile && (
+                          <p className="text-xs text-gray-500 mb-1.5 truncate">
+                            {uploadingFile.name}
+                            <span className="text-gray-400 ml-1">({formatFileSize(uploadingFile.size)})</span>
+                          </p>
+                        )}
                         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-blue-500 rounded-full transition-all duration-300"

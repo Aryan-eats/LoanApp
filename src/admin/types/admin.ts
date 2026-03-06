@@ -63,6 +63,7 @@ export interface Lead {
   partnerName: string;
   status: LeadStatus;
   bankAssigned?: string;
+  bankCode?: string;
   preferredBank?: string;
   createdAt: string;
   updatedAt: string;
@@ -228,10 +229,11 @@ export interface AuditLog {
 }
 
 export interface AuditLogsPagination {
-  page: number;
   limit: number;
   total: number;
-  totalPages: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+  currentCursor: string | null;
 }
 
 export interface AuditLogsResponse {
@@ -249,7 +251,8 @@ export interface AuditLogsFilters {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
-  page?: number;
+  cursor?: string;
+  since?: string;
   limit?: number;
 }
 

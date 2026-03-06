@@ -65,27 +65,29 @@ export const useApplicationForm = () => {
   }, []);
   
   // State for Form Data
-  const [formData, setFormData] = useState<ApplicationFormData>({
+  const [formData, setFormData] = useState<ApplicationFormData>(() => ({
     name: '',
     phone: '',
     city: '',
-    loanType: '',
+    loanType: location.state?.loanType || '',
     loanSubType: '',
     loanAmount: '',
     salaryType: '',
-  });
+  }));
 
   // State for Submission Status
   const [status, setStatus] = useState('');
   const [showPopup, setShowPopup] = useState(false);
 
   // Effect to pre-fill loan type from navigation state
+  // Sync loanType when location.state changes after initial mount
   useEffect(() => {
     if (location.state?.loanType) {
-      setFormData(prev => ({
-        ...prev,
-        loanType: location.state.loanType
-      }));
+      setFormData(prev =>
+        prev.loanType === location.state.loanType
+          ? prev
+          : { ...prev, loanType: location.state.loanType }
+      );
     }
   }, [location.state]);
 

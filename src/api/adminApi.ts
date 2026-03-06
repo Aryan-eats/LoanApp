@@ -137,16 +137,20 @@ export interface AuditLogEntry {
 export interface AuditLogsData {
   logs: AuditLogEntry[];
   pagination: {
-    page: number;
     limit: number;
     total: number;
-    totalPages: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+    currentCursor: string | null;
   };
   counts: {
+    total: number;
     loginEvents: number;
     securityEvents: number;
     authEvents: number;
   };
+  latestCursor: string | null;
+  mode?: 'incremental';
 }
 
 /**
@@ -154,10 +158,12 @@ export interface AuditLogsData {
  */
 export const getAuditLogs = async (params: {
   event?: string;
+  userId?: string;
   search?: string;
   dateFrom?: string;
   dateTo?: string;
-  page?: number;
+  cursor?: string;
+  since?: string;
   limit?: number;
 } = {}): Promise<ApiResponse<AuditLogsData>> => {
   const response = await apiClient.get('/admin/audit-logs', { params });
@@ -165,9 +171,10 @@ export const getAuditLogs = async (params: {
 };
 
 /**
- * GET /api/admin/audit-logs/export - Export audit logs as CSV
+ * GET /api/admin/audit-logs/export - Export audit logs as CSV (direct for small datasets)
  */
 export const exportAuditLogs = async (params: {
+  userId?: string;
   event?: string;
   search?: string;
   dateFrom?: string;
@@ -175,6 +182,45 @@ export const exportAuditLogs = async (params: {
 } = {}): Promise<Blob> => {
   const response = await apiClient.get('/admin/audit-logs/export', {
     params,
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export interface AuditExportJobData {
+  jobId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  rowCount?: number;
+  error?: string | null;
+}
+
+/**
+ * POST /api/admin/audit-logs/export/jobs - Start async audit CSV export job
+ */
+export const createAuditLogsExportJob = async (params: {
+  userId?: string;
+  event?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+} = {}): Promise<ApiResponse<AuditExportJobData>> => {
+  const response = await apiClient.post('/admin/audit-logs/export/jobs', params);
+  return response.data;
+};
+
+/**
+ * GET /api/admin/audit-logs/export/jobs/:jobId - Get async export job status
+ */
+export const getAuditLogsExportJob = async (jobId: string): Promise<ApiResponse<AuditExportJobData>> => {
+  const response = await apiClient.get(`/admin/audit-logs/export/jobs/${jobId}`);
+  return response.data;
+};
+
+/**
+ * GET /api/admin/audit-logs/export/jobs/:jobId/download - Download completed export
+ */
+export const downloadAuditLogsExportJob = async (jobId: string): Promise<Blob> => {
+  const response = await apiClient.get(`/admin/audit-logs/export/jobs/${jobId}/download`, {
     responseType: 'blob',
   });
   return response.data;
@@ -190,4 +236,7 @@ export default {
   getAdminPartners,
   getAuditLogs,
   exportAuditLogs,
+  createAuditLogsExportJob,
+  getAuditLogsExportJob,
+  downloadAuditLogsExportJob,
 };

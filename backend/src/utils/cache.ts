@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Redis-backed caching layer.
  *
  * Provides get / set / invalidate helpers with automatic JSON
@@ -12,7 +12,7 @@ import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 const PREFIX = 'cache:';
 const DEFAULT_TTL_SECONDS = 300; // 5 minutes
 
-// ─── public API ─────────────────────────────────────────────
+// --- public API ---------------------------------------------
 
 /**
  * Retrieve a cached value.  Returns `null` on miss.
@@ -20,7 +20,8 @@ const DEFAULT_TTL_SECONDS = 300; // 5 minutes
 export const cacheGet = async <T = unknown>(key: string): Promise<T | null> => {
   if (!isRedisAvailable()) return null;
   try {
-    const raw = await getRedisClient().get(`${PREFIX}${key}`);
+    const redis = await getRedisClient();
+    const raw = await redis.get(`${PREFIX}${key}`);
     return raw ? (JSON.parse(raw) as T) : null;
   } catch (err) {
     console.error('Cache GET error:', err);
@@ -39,7 +40,8 @@ export const cacheSet = async (
   if (!isRedisAvailable()) return;
   try {
     const serialised = JSON.stringify(value);
-    await getRedisClient().set(`${PREFIX}${key}`, serialised, 'EX', ttlSeconds);
+    const redis = await getRedisClient();
+    await redis.set(`${PREFIX}${key}`, serialised, 'EX', ttlSeconds);
   } catch (err) {
     console.error('Cache SET error:', err);
   }
@@ -51,7 +53,7 @@ export const cacheSet = async (
 export const cacheDelete = async (...keys: string[]): Promise<void> => {
   if (!isRedisAvailable() || keys.length === 0) return;
   try {
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     await redis.del(...keys.map((k) => `${PREFIX}${k}`));
   } catch (err) {
     console.error('Cache DELETE error:', err);
@@ -65,7 +67,7 @@ export const cacheDelete = async (...keys: string[]): Promise<void> => {
 export const cacheInvalidatePattern = async (pattern: string): Promise<void> => {
   if (!isRedisAvailable()) return;
   try {
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     const fullPattern = `${PREFIX}${pattern}`;
     let cursor = '0';
     do {

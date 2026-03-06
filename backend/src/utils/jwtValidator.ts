@@ -42,17 +42,16 @@ export const validateJWTConfig = (): void => {
   const accessExpiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
   const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
   const validExpiryPattern = /^\s*(\d+)\s*(ms|s|m|h|d|w|y)\s*$/;
-  const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (!validExpiryPattern.test(accessExpiresIn)) {
-    if (!isDevelopment) {
+    if (isProduction) {
       throw new Error(`JWT_ACCESS_EXPIRES_IN "${accessExpiresIn}" is not a valid expiry format (expected e.g. 15m, 1h, 7d)`);
     }
     console.warn(`WARNING: JWT_ACCESS_EXPIRES_IN "${accessExpiresIn}" may not be valid`);
   }
 
   if (!validExpiryPattern.test(refreshExpiresIn)) {
-    if (!isDevelopment) {
+    if (isProduction) {
       throw new Error(`JWT_REFRESH_EXPIRES_IN "${refreshExpiresIn}" is not a valid expiry format (expected e.g. 15m, 1h, 7d)`);
     }
     console.warn(`WARNING: JWT_REFRESH_EXPIRES_IN "${refreshExpiresIn}" may not be valid`);

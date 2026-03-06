@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Seed script – populates banks and bank_commission_rates tables.
  * Safe to run multiple times (upsert by bank code).
  *
@@ -45,7 +45,7 @@ interface BankSeed {
 }
 
 const banks: BankSeed[] = [
-  // ── Existing 9 banks ──────────────────────────────────────────────────────
+  // -- Existing 9 banks ------------------------------------------------------
   {
     name: 'HDFC Bank',
     code: 'HDFC',
@@ -228,7 +228,7 @@ const banks: BankSeed[] = [
     avgTat: 3, activeLeads: 12, approvalRate: 65, totalDisbursed: '₹4.2 Cr',
     contactPerson: 'Deepak Rao', contactEmail: 'deepak.rao@kotak.com', contactPhone: '+91 98765 00000',
   },
-  // ── 16 New banks ──────────────────────────────────────────────────────────
+  // -- 16 New banks ----------------------------------------------------------
   {
     name: 'Punjab National Bank',
     code: 'PNB',
@@ -538,7 +538,7 @@ const banks: BankSeed[] = [
   },
 ];
 
-// ── Main seed ─────────────────────────────────────────────────────────────────
+// -- Main seed -----------------------------------------------------------------
 async function seed() {
   let bankCount = 0;
   let commissionCount = 0;

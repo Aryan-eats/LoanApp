@@ -25,7 +25,6 @@ COPY src/middleware ./src/middleware/
 COPY src/routes ./src/routes/
 COPY src/services ./src/services/
 COPY src/utils ./src/utils/
-COPY src/tests ./src/tests/
 COPY src/index.ts ./src/
 RUN npm run build
 

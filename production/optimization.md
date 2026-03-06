@@ -162,7 +162,7 @@ Fix:
 2. Fetch per lender/loan with cache and schema versioning.
 3. Keep frontend fallback as minimal seed subset only.
 
-### 10) Mixed icon stacks increase bundle surface
+<!-- ### 10) Mixed icon stacks increase bundle surface
 Evidence:
 - `@mui/icons-material` still used in key pages (`AddClientPage`, `MyLeadsPage`, `admin/DocumentsPage`) while `lucide-react` is also present.
 
@@ -173,7 +173,7 @@ Fix:
 1. Standardize to one icon library (prefer existing `lucide-react` footprint).
 2. Replace high-traffic page icon imports first.
 
----
+--- -->
 
 ## P3 - Operational hardening
 
@@ -218,7 +218,7 @@ Fix:
 1. Implement cursor-based audit-log API.
 2. Reduce audit dashboard polling payload.
 3. Move heavy docs config from frontend static file to API-first model.
-4. Standardize icons to reduce bundle surface.
+<!-- 4. Standardize icons to reduce bundle surface. -->
 
 ---
 

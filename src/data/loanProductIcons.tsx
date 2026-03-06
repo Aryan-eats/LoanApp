@@ -1,4 +1,4 @@
-// Icon rendering for loan products — imports @mui/icons-material.
+﻿// Icon rendering for loan products - imports @mui/icons-material.
 // Only import this module when you need to render loan icons.
 // For data/labels only, import from './loanProductsData' instead.
 

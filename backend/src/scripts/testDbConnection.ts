@@ -5,6 +5,11 @@ async function testConnection() {
   console.log('🔌 Testing PostgreSQL connection...\n');
   
   const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl?.trim()) {
+    console.error('❌ DATABASE_URL is required to test the PostgreSQL connection');
+    process.exit(1);
+  }
+
   console.log('Connection URL (masked):', dbUrl?.replace(/:([^:@]+)@/, ':****@') || 'NOT SET');
   
   // Test raw pg connection

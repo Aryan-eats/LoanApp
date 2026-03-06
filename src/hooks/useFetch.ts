@@ -45,13 +45,15 @@ export function useFetch<T>(
 
   const isMounted = useRef(true);
   const fetchFnRef = useRef(fetchFn);
-  fetchFnRef.current = fetchFn;
-
-  // Store callbacks in refs to keep execute's identity stable
   const onSuccessRef = useRef(onSuccess);
-  onSuccessRef.current = onSuccess;
   const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
+
+  // Sync refs after render (not during) to satisfy React 19 hook rules
+  useEffect(() => {
+    fetchFnRef.current = fetchFn;
+    onSuccessRef.current = onSuccess;
+    onErrorRef.current = onError;
+  });
 
   const execute = useCallback(async (): Promise<T | null> => {
     setState(prev => ({ ...prev, loading: true, error: null }));

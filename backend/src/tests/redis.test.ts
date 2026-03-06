@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Redis integration tests.
  *
  * These tests exercise the four Redis use-cases against a live Redis
@@ -25,7 +25,7 @@ import {
 } from '../services/otpChallengeService.js';
 import { generateOTP, verifyUserOTP } from '../services/userService.js';
 
-// ─── helpers ───────────────────────────────────────────────
+// --- helpers -----------------------------------------------
 
 let redis: Redis;
 
@@ -51,14 +51,14 @@ const flushTestKeys = async (pattern: string) => {
   } while (cursor !== '0');
 };
 
-// ─── suite setup / teardown ────────────────────────────────
+// --- suite setup / teardown --------------------------------
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!isSafeRedisTarget()) return;
   if (!isRedisAvailable()) {
     throw new Error('REDIS_URL is not configured – cannot run Redis integration tests');
   }
-  redis = getRedisClient();
+  redis = await getRedisClient();
 });
 
 afterAll(async () => {
@@ -70,13 +70,14 @@ afterAll(async () => {
   await flushTestKeys(`otp_vtoken:${NAMESPACE}*`);
   await flushTestKeys(`user_otp:${NAMESPACE}*`);
   await flushTestKeys('rl:test:*');
+  await tokenBlacklist.clear();
 
   await disconnectRedis();
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 1. CACHING
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Caching', () => {
   const key = `${NAMESPACE}cache-test`;
 
@@ -145,11 +146,15 @@ describeRedis('Redis Caching', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 2. TOKEN BLACKLISTING
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Token Blacklisting', () => {
   const testToken = `${NAMESPACE}token-abc123`;
+
+  beforeEach(async () => {
+    await tokenBlacklist.clear();
+  });
 
   it('reports a token as NOT blacklisted before adding', async () => {
     expect(await tokenBlacklist.isBlacklisted(testToken)).toBe(false);
@@ -188,9 +193,9 @@ describeRedis('Redis Token Blacklisting', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 3. RATE LIMITING (smoke test)
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis Rate Limiting', () => {
   it('rate limiter stores are backed by Redis (keys exist after request)', async () => {
     // We can't easily send a real HTTP request here without spinning up
@@ -201,7 +206,11 @@ describeRedis('Redis Rate Limiting', () => {
     // Directly instantiate a store to test that it works with our client
     const store = new RedisStore({
       // @ts-expect-error - ioredis sendCommand is compatible
-      sendCommand: (...args: string[]) => getRedisClient().call(...args),
+      sendCommand: async (...args: string[]) => {
+        const redisClient = await getRedisClient();
+        const call = redisClient.call as (...redisArgs: string[]) => Promise<unknown>;
+        return call(...args);
+      },
       prefix: 'rl:test:',
     });
 
@@ -218,9 +227,9 @@ describeRedis('Redis Rate Limiting', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // 4. OTP STORAGE
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 describeRedis('Redis OTP Storage – Phone Challenge (onboarding)', () => {
   const testPhone = `${NAMESPACE}9999999999`;
 

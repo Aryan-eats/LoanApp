@@ -12,22 +12,46 @@ import {
   Eye,
   Upload,
   Loader2,
+  Shield,
+  AlertCircle,
+  XCircle,
+  FolderOpen,
+  Send,
 } from 'lucide-react';
 import { StatsCard } from '@/components/shared';
 import StatusBadge from '../components/StatusBadge';
 import LeadFunnel from '../components/LeadFunnel';
 import { useLeadsStore } from '../../stores/leadsStore';
+import { useLocalLeadsStore } from '../../stores/localLeadsStore';
+import { usePartnerProfileStore } from '../../stores/partnerProfileStore';
+import { useAuthStore } from '../../stores/authStore';
 import { getLoanTypeLabel } from '@/data/loanProductsData';
 import { formatCurrency } from '@/types/shared';
 import type { LeadFunnel as LeadFunnelType } from '../types/partner-dashboard';
 
 export default function PartnerDashboard() {
   const { leads, stats, isLoading, fetchLeads, fetchStats } = useLeadsStore();
+  const { leads: localLeads, fetchLeads: fetchStoredClients } = useLocalLeadsStore();
+  const { partnerInfo, fetchProfile } = usePartnerProfileStore();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     fetchLeads();
     fetchStats();
-  }, [fetchLeads, fetchStats]);
+    fetchStoredClients();
+  }, [fetchLeads, fetchStats, fetchStoredClients]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfile(user.id, {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      });
+    }
+  }, [user?.id, fetchProfile]);
+
+  const kycStatus = partnerInfo?.kycStatus;
 
   const dashboardStats = useMemo(() => {
     const totalLeads = stats?.total ?? leads.length;
@@ -109,6 +133,75 @@ export default function PartnerDashboard() {
         </Link>
       </div>
 
+      {kycStatus && kycStatus !== 'verified' && (
+        <div
+          className={`rounded-xl p-4 border ${
+            kycStatus === 'rejected'
+              ? 'bg-red-50 border-red-200'
+              : kycStatus === 'submitted'
+              ? 'bg-blue-50 border-blue-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              {kycStatus === 'rejected' ? (
+                <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+              ) : kycStatus === 'submitted' ? (
+                <Clock className="text-blue-600 shrink-0 mt-0.5" size={20} />
+              ) : (
+                <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+              )}
+              <div>
+                <p
+                  className={`font-medium ${
+                    kycStatus === 'rejected'
+                      ? 'text-red-800'
+                      : kycStatus === 'submitted'
+                      ? 'text-blue-800'
+                      : 'text-amber-800'
+                  }`}
+                >
+                  {kycStatus === 'rejected'
+                    ? 'KYC Rejected — Action Required'
+                    : kycStatus === 'submitted'
+                    ? 'KYC Under Review'
+                    : 'Complete Your KYC to Get Started'}
+                </p>
+                <p
+                  className={`text-sm mt-0.5 ${
+                    kycStatus === 'rejected'
+                      ? 'text-red-700'
+                      : kycStatus === 'submitted'
+                      ? 'text-blue-700'
+                      : 'text-amber-700'
+                  }`}
+                >
+                  {kycStatus === 'rejected'
+                    ? 'Your KYC was rejected. Retry verification to submit leads and access all features.'
+                    : kycStatus === 'submitted'
+                    ? 'Your identity is being verified. This usually takes 24–48 hours.'
+                    : 'Submitting leads, viewing bank offers, and earning commissions requires KYC verification.'}
+                </p>
+              </div>
+            </div>
+            {kycStatus !== 'submitted' && (
+              <Link
+                to="/partner/profile"
+                className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  kycStatus === 'rejected'
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                <Shield size={15} />
+                {kycStatus === 'rejected' ? 'Retry KYC' : 'Complete KYC'}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatsCard
           title="Total Leads"
@@ -142,6 +235,39 @@ export default function PartnerDashboard() {
           icon={<Wallet size={22} />}
           variant="success"
         />
+      </div>
+
+      {/* My Pipeline — local vs submitted split */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Link
+          to="/partner/leads"
+          className="flex items-center gap-4 p-5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all"
+        >
+          <div className="w-12 h-12 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center shrink-0">
+            <FolderOpen size={22} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-slate-500">My Clients (Local)</p>
+            <p className="text-2xl font-bold text-slate-800">{localLeads.length}</p>
+            <p className="text-xs text-slate-400 mt-0.5">Stored on your device • You manage status</p>
+          </div>
+          <ArrowRight size={16} className="text-slate-400 shrink-0" />
+        </Link>
+
+        <Link
+          to="/partner/leads"
+          className="flex items-center gap-4 p-5 bg-white rounded-xl border border-blue-100 hover:border-blue-200 hover:shadow-sm transition-all"
+        >
+          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+            <Send size={22} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-slate-500">Submitted to Admin</p>
+            <p className="text-2xl font-bold text-blue-700">{leads.length}</p>
+            <p className="text-xs text-slate-400 mt-0.5">Admin manages processing &amp; status</p>
+          </div>
+          <ArrowRight size={16} className="text-blue-400 shrink-0" />
+        </Link>
       </div>
 
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white">

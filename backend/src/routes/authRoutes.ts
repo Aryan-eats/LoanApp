@@ -1,21 +1,25 @@
 import { Router } from 'express';
-import { 
-  register, 
+import {
+  register,
   registerPartner,
-  login, 
-  getMe, 
+  login,
+  getMe,
   logout,
-  forgotPassword,
-  resetPassword,
+  refreshAccessToken,
+} from '../controllers/authController.js';
+import {
   sendOTP,
   verifyOTP,
-  refreshAccessToken,
   verifyMsg91OTP,
-  // New MSG91 REST API handlers
+  // MSG91 REST API handlers
   msg91SendOTP,
   msg91VerifyOTP,
   msg91ResendOTP,
-} from '../controllers/authController.js';
+} from '../controllers/otpController.js';
+import {
+  forgotPassword,
+  resetPassword,
+} from '../controllers/passwordController.js';
 import { protect } from '../middleware/auth.js';
 import {
   loginLimiter,

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Token Blacklist for logout functionality.
  *
  * Uses the shared Redis client when REDIS_URL is set, otherwise
@@ -11,11 +11,12 @@ interface BlacklistStorage {
   add(token: string, expiresAt: number): Promise<void>;
   isBlacklisted(token: string): Promise<boolean>;
   size(): Promise<number>;
+  clear(): Promise<void>;
 }
 
 const PREFIX = 'token_blacklist:';
 
-// ─── In-memory fallback ────────────────────────────────────
+// --- In-memory fallback ------------------------------------
 
 class InMemoryBlacklist implements BlacklistStorage {
   private blacklist: Map<string, number> = new Map();
@@ -23,6 +24,7 @@ class InMemoryBlacklist implements BlacklistStorage {
 
   constructor() {
     this.cleanupInterval = setInterval(() => this.cleanup(), 15 * 60 * 1000);
+    this.cleanupInterval.unref?.();
     console.log('⚠️  Using in-memory token blacklist (development only)');
   }
 
@@ -44,27 +46,33 @@ class InMemoryBlacklist implements BlacklistStorage {
   async size(): Promise<number> {
     return this.blacklist.size;
   }
+
+  async clear(): Promise<void> {
+    this.blacklist.clear();
+  }
 }
 
-// ─── Redis-backed blacklist ────────────────────────────────
+// --- Redis-backed blacklist --------------------------------
 
 class RedisBlacklist implements BlacklistStorage {
   async add(token: string, expiresAt: number): Promise<void> {
     const ttl = Math.ceil((expiresAt - Date.now()) / 1000);
     if (ttl > 0) {
-      await getRedisClient().set(`${PREFIX}${token}`, '1', 'EX', ttl);
+      const redis = await getRedisClient();
+      await redis.set(`${PREFIX}${token}`, '1', 'EX', ttl);
     }
   }
 
   async isBlacklisted(token: string): Promise<boolean> {
-    const result = await getRedisClient().exists(`${PREFIX}${token}`);
+    const redis = await getRedisClient();
+    const result = await redis.exists(`${PREFIX}${token}`);
     return result === 1;
   }
 
   async size(): Promise<number> {
     let count = 0;
     let cursor = '0';
-    const redis = getRedisClient();
+    const redis = await getRedisClient();
     do {
       const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${PREFIX}*`, 'COUNT', 100);
       cursor = nextCursor;
@@ -72,9 +80,22 @@ class RedisBlacklist implements BlacklistStorage {
     } while (cursor !== '0');
     return count;
   }
+
+  async clear(): Promise<void> {
+    const redis = await getRedisClient();
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${PREFIX}*`, 'COUNT', 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== '0');
+  }
 }
 
-// ─── Factory & singleton ───────────────────────────────────
+// --- Factory & singleton -----------------------------------
 
 const createTokenBlacklist = (): BlacklistStorage => {
   if (isRedisAvailable()) {

@@ -85,17 +85,17 @@ describe('JWT Validator Config', () => {
   });
 
   // --- Expiry format ---
-  it('should throw on invalid access expiry format in non-dev', () => {
+  it('should throw on invalid access expiry format in production', () => {
     process.env.JWT_SECRET = 'x'.repeat(64);
     process.env.JWT_ACCESS_EXPIRES_IN = 'invalid';
-    process.env.NODE_ENV = 'test';
+    process.env.NODE_ENV = 'production';
     expect(() => validateJWTConfig()).toThrow('JWT_ACCESS_EXPIRES_IN');
   });
 
-  it('should throw on invalid refresh expiry format in non-dev', () => {
+  it('should throw on invalid refresh expiry format in production', () => {
     process.env.JWT_SECRET = 'x'.repeat(64);
     process.env.JWT_REFRESH_EXPIRES_IN = 'nope';
-    process.env.NODE_ENV = 'test';
+    process.env.NODE_ENV = 'production';
     expect(() => validateJWTConfig()).toThrow('JWT_REFRESH_EXPIRES_IN');
   });
 
@@ -106,6 +106,15 @@ describe('JWT Validator Config', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     validateJWTConfig();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('JWT_ACCESS_EXPIRES_IN'));
+  });
+
+  it('should warn on invalid expiry format outside production', () => {
+    process.env.JWT_SECRET = 'x'.repeat(64);
+    process.env.JWT_REFRESH_EXPIRES_IN = 'nope';
+    process.env.NODE_ENV = 'test';
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    validateJWTConfig();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('JWT_REFRESH_EXPIRES_IN'));
   });
 
   it('should accept valid expiry formats (s, m, h, d, w, y)', () => {

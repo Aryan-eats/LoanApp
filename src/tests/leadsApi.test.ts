@@ -8,6 +8,7 @@ import {
   getLeadById,
   getLeads,
   getLeadStats,
+  type Lead as LeadData,
   updateLead,
   updateLeadStatus,
   updatePreferredBank,
@@ -101,9 +102,11 @@ describe('leadsApi', () => {
       loanType: 'home_loan',
       loanAmount: 5000000,
     });
-    await updateLead('lead-1', { loanAmount: 6000000 } as never, true);
+    const leadUpdate: Partial<LeadData> = { loanAmount: 6000000 };
+
+    await updateLead('lead-1', leadUpdate, true);
     await updateLeadStatus('lead-1', 'approved', 'verified', true);
-    await assignBank('lead-1', 'HDFC Bank', 'logo.png', 'best fit');
+    await assignBank('lead-1', 'HDFC Bank', 'HDFC', 'logo.png', 'best fit');
     await deleteLead('lead-1');
 
     expect(apiClient.post).toHaveBeenCalledWith('/admin/leads', expect.any(Object));
@@ -114,6 +117,7 @@ describe('leadsApi', () => {
     });
     expect(apiClient.patch).toHaveBeenCalledWith('/admin/leads/lead-1/assign-bank', {
       bankName: 'HDFC Bank',
+      bankCode: 'HDFC',
       bankLogo: 'logo.png',
       note: 'best fit',
     });

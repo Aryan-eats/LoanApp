@@ -7,9 +7,14 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:frontend": "eslint src",
+    "lint:backend": "eslint backend/src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "check:frontend": "tsc -b && npm run lint:frontend && npm run test",
+    "check:backend": "tsc --noEmit --project backend/tsconfig.json && npm run lint:backend && npm test --prefix backend",
+    "check": "npm run check:frontend && npm run check:backend"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

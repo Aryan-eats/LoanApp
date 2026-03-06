@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OTP challenge flow for phone-based verification during onboarding.
  *
  * Uses Redis when available (ephemeral data with TTL), falling back
@@ -18,12 +18,12 @@ const PREFIX_VTOKEN = 'otp_vtoken:';
 const hashOtp = (otp: string): string =>
   crypto.createHash('sha256').update(otp).digest('hex');
 
-// ─── Redis implementation ──────────────────────────────────
+// --- Redis implementation ----------------------------------
 
 const redisCreateOtp = async (phone: string): Promise<string> => {
   const otp = crypto.randomInt(100000, 999999).toString();
   const otpHash = hashOtp(otp);
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
 
   // Store hashed OTP with TTL; also clear any stale verification token
   await redis.set(`${PREFIX_OTP}${phone}`, otpHash, 'EX', OTP_TTL_SECONDS);
@@ -36,13 +36,13 @@ const redisVerifyOtp = async (
   phone: string,
   otp: string
 ): Promise<{ success: boolean; token?: string; reason?: string }> => {
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
   const stored = await redis.get(`${PREFIX_OTP}${phone}`);
 
   if (!stored) return { success: false, reason: 'expired' };
   if (hashOtp(otp) !== stored) return { success: false, reason: 'invalid' };
 
-  // OTP matched – remove it and create a verification token
+  // OTP matched - remove it and create a verification token
   const verificationToken = crypto.randomBytes(32).toString('hex');
   await redis.del(`${PREFIX_OTP}${phone}`);
   await redis.set(
@@ -56,7 +56,7 @@ const redisVerifyOtp = async (
 };
 
 const redisConsumeToken = async (phone: string, token: string): Promise<boolean> => {
-  const redis = getRedisClient();
+  const redis = await getRedisClient();
   const stored = await redis.get(`${PREFIX_VTOKEN}${phone}`);
   if (!stored || stored !== token) return false;
 
@@ -64,7 +64,7 @@ const redisConsumeToken = async (phone: string, token: string): Promise<boolean>
   return true;
 };
 
-// ─── Prisma (DB) implementation ────────────────────────────
+// --- Prisma (DB) implementation ----------------------------
 
 const dbCreateOtp = async (phone: string): Promise<string> => {
   const otp = crypto.randomInt(100000, 999999).toString();
@@ -131,7 +131,7 @@ const dbConsumeToken = async (phone: string, token: string): Promise<boolean> =>
   return true;
 };
 
-// ─── Exported façade (auto-selects backend) ────────────────
+// --- Exported façade (auto-selects backend) ----------------
 
 export const createOtpChallenge = (phone: string) =>
   isRedisAvailable() ? redisCreateOtp(phone) : dbCreateOtp(phone);

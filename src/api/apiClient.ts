@@ -1,4 +1,4 @@
-/**
+﻿/**
  * API Client with automatic token refresh
  *
  * This client handles:
@@ -36,9 +36,9 @@ export const clearTokens = () => {
   stopSilentRefresh();
 };
 
-// ──────────────────────────────────────────────
+// ----------------------------------------------
 // Proactive silent-refresh timer
-// ──────────────────────────────────────────────
+// ----------------------------------------------
 let refreshTimerId: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -68,7 +68,7 @@ export const startSilentRefresh = (expiresInSeconds: number) => {
         }
       }
     } catch {
-      // Silently ignore — the 401 interceptor will handle it on the next API call
+      // Silently ignore - the 401 interceptor will handle it on the next API call
     }
   }, delayMs);
 };

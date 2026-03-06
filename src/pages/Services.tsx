@@ -15,7 +15,7 @@ const Services: React.FC = () => {
             <span className="text-gray-300 font-serif italic font-medium tracking-normal">With Your Ambition</span>
           </h1>
           <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
-            Compare premium loan products from India's top banks and NBFCs. Unbiased guidance, transparent rates, and zero hidden charges.
+            Compare various loan products from India's top banks and NBFCs. Unbiased guidance, transparent rates, and zero hidden charges.
           </p>
         </div>
       </div>

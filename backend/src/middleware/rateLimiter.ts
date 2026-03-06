@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+﻿import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
@@ -13,7 +13,11 @@ const buildStore = (prefix: string) => {
 
   return new RedisStore({
     // @ts-expect-error - ioredis sendCommand is compatible
-    sendCommand: (...args: string[]) => getRedisClient().call(...args),
+    sendCommand: async (...args: string[]) => {
+      const redis = await getRedisClient();
+      const call = redis.call as (...redisArgs: string[]) => Promise<unknown>;
+      return call(...args);
+    },
     prefix: `rl:${prefix}:`,
   });
 };
@@ -71,7 +75,7 @@ export const passwordResetLimiter = rateLimit({
   store: buildStore('pwd_reset'),
 });
 
-// Rate limiter for token refresh (generous – active sessions refresh frequently)
+// Rate limiter for token refresh (generous - active sessions refresh frequently)
 export const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 200 : 30,

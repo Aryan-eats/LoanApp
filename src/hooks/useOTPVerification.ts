@@ -16,8 +16,7 @@ interface UseOTPVerificationReturn {
 }
 
 /**
- * Hook for OTP verification using MSG91 REST API
- * Replaces the widget-based useMsg91 hook
+ * Hook for OTP verification using MSG91 REST API.
  */
 export const useOTPVerification = (
   options: UseOTPVerificationOptions = {}

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import type { LoanType, LeadStatus } from '../../types/admin';
 import { buildLoanTypeLabels } from '../../../data/loanProductsData';
 
@@ -85,7 +85,7 @@ const LeadsFilters: React.FC<LeadsFiltersProps> = ({
           ))}
         </select>
 
-        {/* Date Filter — disabled until wired to state */}
+        {/* Date Filter - disabled until wired to state */}
         <input
           type="date"
           disabled

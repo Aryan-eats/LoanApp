@@ -318,57 +318,76 @@ export default function ProfilePage() {
           <div className="bg-white rounded-xl border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Shield className="text-blue-600" size={20} />
-              <h3 className="font-semibold text-slate-800">KYC Documents</h3>
+              <h3 className="font-semibold text-slate-800">KYC Verification</h3>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-4 border border-slate-200 rounded-lg">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-500">PAN Number</p>
-                      <p className="text-lg font-mono font-semibold text-slate-800 mt-1">
-                        {partnerProfile.panNumber}
-                      </p>
-                    </div>
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                      <CheckCircle size={12} />
-                      Verified
-                    </span>
+              {partnerProfile.kycStatus === 'verified' ? (
+                <div className="flex items-start gap-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center shrink-0">
+                    <CheckCircle size={24} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-green-800">KYC Verified</h4>
+                    <p className="text-sm text-green-700 mt-1">
+                      Your identity has been successfully verified. You have full access to submit leads, view bank offers, and earn commissions.
+                    </p>
                   </div>
                 </div>
-
-                <div className="p-4 border border-slate-200 rounded-lg">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-500">Aadhaar Number</p>
-                      <p className="text-lg font-mono font-semibold text-slate-800 mt-1">
-                        {maskNumber(partnerProfile.aadhaarNumber.replace(/\s/g, ''), 4)}
-                      </p>
-                    </div>
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                      <CheckCircle size={12} />
-                      Verified
-                    </span>
+              ) : partnerProfile.kycStatus === 'submitted' ? (
+                <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                    <Clock size={24} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-blue-800">Verification In Progress</h4>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Your KYC is being reviewed by our team. This typically takes 24–48 hours. We'll notify you once it's done.
+                    </p>
                   </div>
                 </div>
-
-                {partnerProfile.gstNumber && (
-                  <div className="p-4 border border-slate-200 rounded-lg md:col-span-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-500">GST Number</p>
-                        <p className="text-lg font-mono font-semibold text-slate-800 mt-1">
-                          {partnerProfile.gstNumber}
-                        </p>
+              ) : partnerProfile.kycStatus === 'rejected' ? (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 p-4 bg-red-50 rounded-xl border border-red-200">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                      <XCircle size={24} className="text-red-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-red-800">Verification Rejected</h4>
+                      <p className="text-sm text-red-700 mt-1">
+                        Your KYC could not be verified. Please retry with accurate information to regain full portal access.
+                      </p>
+                      <button className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
+                        Retry Verification
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex items-start gap-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
+                      <AlertCircle size={24} className="text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-amber-800">KYC Not Completed</h4>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Complete your KYC to unlock full portal access — submit leads, view bank offers, access loan information, and receive commissions.
+                      </p>
+                      <button className="mt-3 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors">
+                        Start KYC Verification
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 px-1">
+                    {['Submit & track leads', 'Access bank offers', 'View loan documents', 'Receive commissions'].map((feature) => (
+                      <div key={feature} className="flex items-center gap-2 text-sm text-slate-500">
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 shrink-0" />
+                        {feature}
                       </div>
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                        <CheckCircle size={12} />
-                        Verified
-                      </span>
-                    </div>
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 

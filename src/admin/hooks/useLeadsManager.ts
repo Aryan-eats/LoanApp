@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getLeads, updateLeadStatus as apiUpdateLeadStatus, assignBank as apiAssignBank } from '../../api/leadsApi';
 import type { Lead, LeadStatus, LoanType } from '../types/admin';
+import type { ApiLeadResponse, ApiTimelineEvent, ApiLeadDocument } from '../types/apiResponses';
 
 interface UseLeadsManagerResult {
   leads: Lead[];
@@ -17,7 +18,7 @@ interface UseLeadsManagerResult {
   setShowAddModal: (show: boolean) => void;
   handleAddLead: (newLead: Lead) => void;
   handleStatusUpdate: (leadId: string, newStatus: LeadStatus, note?: string) => Promise<void>;
-  handleBankAssignment: (leadId: string, bankName: string) => Promise<void>;
+  handleBankAssignment: (leadId: string, bankName: string, bankCode?: string) => Promise<void>;
   filteredLeads: Lead[];
   refreshLeads: () => Promise<void>;
 }
@@ -40,12 +41,12 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
       setIsLoading(true);
       const response = await getLeads({}, true); // isAdmin = true
       if (response.success && response.data) {
-        const apiLeads = response.data.leads.map((lead: any) => ({
-          id: lead.id || lead._id,
-          customerId: lead.client?.id || lead.customerId,
-          customerName: lead.client?.fullName || lead.customerName,
-          customerPhone: lead.client?.phone || lead.customerPhone,
-          customerEmail: lead.client?.email || lead.customerEmail,
+        const apiLeads = (response.data.leads as unknown as ApiLeadResponse[]).map((lead) => ({
+          id: lead.id,
+          customerId: lead.client?.id || lead.customerId || '',
+          customerName: lead.client?.fullName || lead.customerName || '',
+          customerPhone: lead.client?.phone || lead.customerPhone || '',
+          customerEmail: lead.client?.email || lead.customerEmail || '',
           loanType: lead.loanType,
           loanAmount: lead.loanAmount,
           partnerId: lead.partnerId || 'DIRECT',
@@ -54,10 +55,33 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
           bankAssigned: lead.bankAssigned,
           createdAt: lead.createdAt,
           updatedAt: lead.updatedAt,
-          timeline: lead.timeline || [],
-          documents: lead.documents || [],
-          commission: lead.commission,
-          preferredBank: lead.preferredBank, // Ensure this is mapped
+          timeline: (lead.timeline || []).map((e) => ({
+            id: e.id,
+            status: e.status,
+            timestamp: e.timestamp,
+            note: e.note,
+            updatedBy: e.updatedBy,
+          })),
+          documents: (lead.documents || []).map((d) => ({
+            id: d.id,
+            type: d.type,
+            fileName: d.fileName || '',
+            fileSize: d.fileSize,
+            fileUrl: d.fileUrl,
+            mimeType: d.mimeType,
+            r2ObjectKey: d.r2ObjectKey,
+            uploadedBy: d.uploadedBy || '',
+            uploadedAt: d.uploadedAt || '',
+            status: d.status,
+            url: d.fileUrl,
+          })),
+          commission: lead.commission ? {
+            disbursedAmount: lead.commission.amount ?? 0,
+            commissionRate: lead.commission.rate ?? 0,
+            commissionAmount: lead.commission.amount ?? 0,
+            status: (lead.commission.status ?? 'pending') as import('../types/admin').CommissionStatus,
+          } : undefined,
+          preferredBank: lead.preferredBank,
         }));
         setLeads(apiLeads);
       }
@@ -94,7 +118,7 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
                 ...currentLead,
                 status: updatedLead.status as LeadStatus,
                 updatedAt: updatedLead.updatedAt,
-                timeline: updatedLead.timeline?.map((event: any) => ({
+                timeline: updatedLead.timeline?.map((event: ApiTimelineEvent) => ({
                   id: event.id,
                   status: event.status,
                   timestamp: event.timestamp,
@@ -103,7 +127,7 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
                 })) || currentLead.timeline,
                 // Pick up newly created document slots (e.g. when transitioning to docs_pending)
                 documents: updatedLead.documents?.length
-                  ? updatedLead.documents.map((d: any) => ({
+                  ? updatedLead.documents.map((d: ApiLeadDocument) => ({
                       id: d.id,
                       type: d.type,
                       fileName: d.fileName || '',
@@ -137,9 +161,9 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
     }
   };
 
-  const handleBankAssignment = async (leadId: string, bankName: string) => {
+  const handleBankAssignment = async (leadId: string, bankName: string, bankCode?: string) => {
     try {
-      const response = await apiAssignBank(leadId, bankName, undefined, `Bank assigned: ${bankName}`);
+      const response = await apiAssignBank(leadId, bankName, bankCode, undefined, `Bank assigned: ${bankName}`);
       
       if (response.success && response.data) {
         const updatedLead = response.data.lead;
@@ -147,8 +171,9 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
         const updateLeadInList = (currentLead: Lead) => ({
             ...currentLead,
             bankAssigned: updatedLead.bankAssigned,
+            bankCode: updatedLead.bankCode,
             updatedAt: updatedLead.updatedAt,
-            timeline: updatedLead.timeline?.map((event: any) => ({
+            timeline: updatedLead.timeline?.map((event: ApiTimelineEvent) => ({
               id: event.id,
               status: event.status,
               timestamp: event.timestamp,

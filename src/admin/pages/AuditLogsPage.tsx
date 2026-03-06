@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import { getAuditLogs, exportAuditLogs } from '../../api/adminApi';
+import {
+  getAuditLogs,
+  createAuditLogsExportJob,
+  getAuditLogsExportJob,
+  downloadAuditLogsExportJob,
+} from '../../api/adminApi';
 import type { AuditEventType, AuditLog, AuditLogsPagination } from '../types/admin';
 
 const eventLabels: Record<AuditEventType, string> = {
@@ -111,12 +116,19 @@ const severityColors: Record<string, string> = {
 
 const AuditLogsPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [pagination, setPagination] = useState<AuditLogsPagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [pagination, setPagination] = useState<AuditLogsPagination>({
+    limit: 50,
+    total: 0,
+    hasMore: false,
+    nextCursor: null,
+    currentCursor: null,
+  });
   const [counts, setCounts] = useState({ loginEvents: 0, securityEvents: 0, authEvents: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -125,6 +137,9 @@ const AuditLogsPage: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [hideTokenRefresh, setHideTokenRefresh] = useState(true);
+  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([]);
+  const [currentCursor, setCurrentCursor] = useState<string | null>(null);
+  const [latestCursor, setLatestCursor] = useState<string | null>(null);
   const latestRequestIdRef = useRef(0);
 
   // Debounce search input (300ms)
@@ -133,7 +148,15 @@ const AuditLogsPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchLogs = useCallback(async (page = 1, options?: { silent?: boolean }) => {
+  const applyClientFilters = useCallback((records: AuditLog[]) => {
+    let filtered = records;
+    if (statusFilter === 'success') filtered = filtered.filter((l) => l.success);
+    if (statusFilter === 'failed') filtered = filtered.filter((l) => !l.success);
+    if (hideTokenRefresh) filtered = filtered.filter((l) => l.event !== 'TOKEN_REFRESH');
+    return filtered;
+  }, [hideTokenRefresh, statusFilter]);
+
+  const fetchLogs = useCallback(async (options?: { cursor?: string | null; silent?: boolean }) => {
     const silent = options?.silent ?? false;
     const requestId = ++latestRequestIdRef.current;
 
@@ -144,32 +167,27 @@ const AuditLogsPage: React.FC = () => {
 
     try {
       const params: {
-        page: number;
         limit: number;
         search?: string;
         event?: AuditEventType;
         dateFrom?: string;
         dateTo?: string;
-      } = { page, limit: 50 };
+        cursor?: string;
+      } = { limit: 50 };
       if (debouncedSearch) params.search = debouncedSearch;
       if (eventFilter) params.event = eventFilter;
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
+      if (options?.cursor) params.cursor = options.cursor;
 
       const response = await getAuditLogs(params);
       if (requestId !== latestRequestIdRef.current) return;
 
       if (response.success && response.data) {
-        let filteredLogs = response.data.logs as AuditLog[];
-
-        // Client-side filters
-        if (statusFilter === 'success') filteredLogs = filteredLogs.filter(l => l.success);
-        if (statusFilter === 'failed') filteredLogs = filteredLogs.filter(l => !l.success);
-        if (hideTokenRefresh) filteredLogs = filteredLogs.filter(l => l.event !== 'TOKEN_REFRESH');
-
-        setLogs(filteredLogs);
+        setLogs(applyClientFilters(response.data.logs as AuditLog[]));
         setPagination(response.data.pagination);
         if (response.data.counts) setCounts(response.data.counts);
+        if (response.data.latestCursor) setLatestCursor(response.data.latestCursor);
         setLastUpdatedAt(new Date());
       } else {
         setError(response.message || 'Failed to fetch audit logs');
@@ -184,28 +202,105 @@ const AuditLogsPage: React.FC = () => {
         setIsLoading(false);
       }
     }
-  }, [debouncedSearch, eventFilter, dateFrom, dateTo, statusFilter, hideTokenRefresh]);
+  }, [debouncedSearch, eventFilter, dateFrom, dateTo, applyClientFilters]);
+
+  const pollNewLogs = useCallback(async () => {
+    if (!latestCursor || currentCursor !== null) return;
+    const requestId = ++latestRequestIdRef.current;
+    setError(null);
+
+    try {
+      const params: {
+        limit: number;
+        search?: string;
+        event?: AuditEventType;
+        dateFrom?: string;
+        dateTo?: string;
+        since: string;
+      } = { limit: 200, since: latestCursor };
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (eventFilter) params.event = eventFilter;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+
+      const response = await getAuditLogs(params);
+      if (requestId !== latestRequestIdRef.current) return;
+      if (!response.success || !response.data) return;
+
+      const incremental = response.data.logs as AuditLog[];
+      if (incremental.length > 0) {
+        setLogs((prev) => {
+          const existing = new Set(prev.map((l) => l.id));
+          const additions = incremental.filter((l) => !existing.has(l.id));
+          if (additions.length === 0) return prev;
+          return applyClientFilters([...additions, ...prev]);
+        });
+      }
+      if (response.data.counts) setCounts(response.data.counts);
+      if (response.data.pagination) {
+        const total = response.data.pagination.total;
+        setPagination((prev) => ({ ...prev, total }));
+      }
+      if (response.data.latestCursor) setLatestCursor(response.data.latestCursor);
+      setLastUpdatedAt(new Date());
+    } catch (err) {
+      console.error('Audit logs poll error:', err);
+    }
+  }, [latestCursor, currentCursor, debouncedSearch, eventFilter, dateFrom, dateTo, applyClientFilters]);
 
   useEffect(() => {
-    fetchLogs(1);
+    setCursorHistory([]);
+    setCurrentCursor(null);
+    setLatestCursor(null);
+    fetchLogs({ cursor: null });
   }, [fetchLogs]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      fetchLogs(pagination.page, { silent: true });
+      pollNewLogs();
     }, 15000);
     return () => window.clearInterval(intervalId);
-  }, [fetchLogs, pagination.page]);
+  }, [pollNewLogs]);
 
   const handleExport = async () => {
     setIsExporting(true);
+    setExportStatus('Preparing export...');
     try {
-      const blob = await exportAuditLogs({
+      const start = await createAuditLogsExportJob({
         event: eventFilter || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         search: debouncedSearch || undefined,
       });
+      const jobId = start.data?.jobId;
+      if (!start.success || !jobId) {
+        setError(start.message || 'Failed to start export');
+        return;
+      }
+
+      const startedAt = Date.now();
+      const timeoutMs = 2 * 60 * 1000;
+      let status = start.data?.status;
+      while (status !== 'completed') {
+        if (status === 'failed') {
+          setError('Audit export failed');
+          return;
+        }
+        if (Date.now() - startedAt > timeoutMs) {
+          setError('Export is still processing. Please try again shortly.');
+          return;
+        }
+        setExportStatus('Building CSV file...');
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const next = await getAuditLogsExportJob(jobId);
+        if (!next.success || !next.data) {
+          setError(next.message || 'Failed to check export status');
+          return;
+        }
+        status = next.data.status;
+      }
+
+      const blob = await downloadAuditLogsExportJob(jobId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -219,6 +314,7 @@ const AuditLogsPage: React.FC = () => {
       setError('Failed to export audit logs');
     } finally {
       setIsExporting(false);
+      setExportStatus(null);
     }
   };
 
@@ -238,10 +334,10 @@ const AuditLogsPage: React.FC = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            {isExporting ? 'Exporting...' : 'Export CSV'}
+            {isExporting ? (exportStatus || 'Exporting...') : 'Export CSV'}
           </button>
           <button
-            onClick={() => fetchLogs(pagination.page)}
+            onClick={() => fetchLogs({ cursor: currentCursor })}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 border border-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -424,7 +520,7 @@ const AuditLogsPage: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
             <p className="mt-2 text-sm text-red-600">{error}</p>
-            <button onClick={() => fetchLogs(pagination.page)} className="mt-3 px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
+            <button onClick={() => fetchLogs({ cursor: currentCursor })} className="mt-3 px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
               Retry
             </button>
           </div>
@@ -535,8 +631,8 @@ const AuditLogsPage: React.FC = () => {
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <p className="text-sm text-gray-500">
             Showing <span className="font-medium">{logs.length}</span> of <span className="font-medium">{pagination.total}</span> logs
-            {pagination.totalPages > 1 && (
-              <span> &middot; Page {pagination.page} of {pagination.totalPages}</span>
+            {(cursorHistory.length > 0 || pagination.hasMore) && (
+              <span> &middot; Cursor page {cursorHistory.length + 1}</span>
             )}
             {lastUpdatedAt && (
               <span> &middot; Updated {lastUpdatedAt.toLocaleTimeString()}</span>
@@ -545,15 +641,26 @@ const AuditLogsPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
-              disabled={pagination.page <= 1}
-              onClick={() => fetchLogs(pagination.page - 1)}
+              disabled={cursorHistory.length === 0}
+              onClick={async () => {
+                if (cursorHistory.length === 0) return;
+                const previous = cursorHistory[cursorHistory.length - 1];
+                setCursorHistory((prev) => prev.slice(0, -1));
+                setCurrentCursor(previous ?? null);
+                await fetchLogs({ cursor: previous ?? null });
+              }}
             >
               Previous
             </button>
             <button
               className="px-3 py-1.5 text-sm text-gray-500 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
-              disabled={pagination.page >= pagination.totalPages}
-              onClick={() => fetchLogs(pagination.page + 1)}
+              disabled={!pagination.hasMore || !pagination.nextCursor}
+              onClick={async () => {
+                if (!pagination.nextCursor) return;
+                setCursorHistory((prev) => [...prev, currentCursor]);
+                setCurrentCursor(pagination.nextCursor);
+                await fetchLogs({ cursor: pagination.nextCursor });
+              }}
             >
               Next
             </button>

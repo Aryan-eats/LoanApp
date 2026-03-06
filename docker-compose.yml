@@ -35,12 +35,23 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
+      # Liveness: ping responds
+      # Memory guard: alert (but don't fail) when usage > 80% of maxmemory
+      test: |
+        redis-cli ping | grep -q PONG &&
+        redis-cli INFO memory | awk -F: '
+          /used_memory:/ { used=$$2+0 }
+          /maxmemory:/ { max=$$2+0 }
+          END { if (max>0 && used/max > 0.8) { print "WARN: Redis memory > 80%"; exit 1 } }'
+      interval: 15s
       timeout: 5s
-      retries: 5
-    command: redis-server --appendonly yes
+      retries: 3
+      start_period: 5s
+    command: redis-server /usr/local/etc/redis/redis.conf
 
   # ---------- Backend API (Production) ----------
   backend:
@@ -55,14 +66,17 @@ services:
       PORT: 5000
       DATABASE_URL: postgresql://${POSTGRES_USER:-loanapp}:${POSTGRES_PASSWORD:-loanapp_dev_pass}@db:5432/${POSTGRES_DB:-loanapp}?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-docker-dev-jwt-k3y-REPLACE-IN-PROD-32c}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-docker-dev-refresh-k3y-REPLACE-32c}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost}
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
       SYSTEM_PARTNER_ID: ${SYSTEM_PARTNER_ID:-}
+      # DB connection is over Docker-internal network — no TLS on the pg container.
+      # Set DB_SSL=false here; use DB_SSL=true (the default) for hosted DBs (RDS, Supabase, etc.)
+      DB_SSL: ${DB_SSL:-false}
       MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
       MSG91_TEMPLATE_ID: ${MSG91_TEMPLATE_ID:-}
       MSG91_SENDER_ID: ${MSG91_SENDER_ID:-GPSIND}
@@ -100,8 +114,8 @@ services:
       PORT: 5000
       DATABASE_URL: postgresql://${POSTGRES_USER:-loanapp}:${POSTGRES_PASSWORD:-loanapp_dev_pass}@db:5432/${POSTGRES_DB:-loanapp}?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-docker-dev-jwt-k3y-REPLACE-IN-PROD-32c}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-docker-dev-refresh-k3y-REPLACE-32c}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       FRONTEND_URL: http://localhost:5173
