@@ -22,7 +22,9 @@ const statusConfig: Record<StatusType, StatusBadgeConfig> = {
   submitted: { label: 'Submitted', className: 'bg-gray-100 text-gray-700 border-gray-300' },
   docs_pending: { label: 'Docs Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   docs_uploaded: { label: 'Docs Uploaded', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  docs_collected: { label: 'Docs Collected', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   bank_processing: { label: 'Bank Processing', className: 'bg-purple-50 text-purple-700 border-purple-200' },
+  bank_logged: { label: 'Bank Logged', className: 'bg-violet-50 text-violet-700 border-violet-200' },
   disbursed: { label: 'Disbursed', className: 'bg-green-50 text-green-700 border-green-200' },
 
   

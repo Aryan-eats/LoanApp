@@ -55,7 +55,8 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
     previousFocusRef.current = document.activeElement as HTMLElement;
     document.addEventListener('keydown', handleKeyDown);
     const raf = requestAnimationFrame(() => {
-      closeButtonRef.current?.focus();
+      const focusTarget = closeButtonRef.current ?? modalRef.current;
+      focusTarget?.focus();
     });
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
@@ -73,6 +74,7 @@ const SuccessPopup: React.FC<SuccessPopupProps> = ({ show, onClose }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="success-popup-title"
+        tabIndex={-1}
         className="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full text-center mx-4 transform transition-all scale-100 animate-scale-in relative"
       >
         {onClose ? (

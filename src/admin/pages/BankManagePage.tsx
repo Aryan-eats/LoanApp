@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { getBankById, toggleBankStatus, updateBank } from '../../api/banksApi';
 import type { BankFromApi, BankCommissionRate } from '../../api/banksApi';
 import { buildLoanTypeLabels, loanProducts, categoryLabels, categoryOrder, getProductsByCategory } from '../../data/loanProductsData';
@@ -317,7 +317,7 @@ const BankManagePage: React.FC = () => {
                 ) : (
                   <h1 className="text-2xl font-bold text-gray-900">{bank.name}</h1>
                 )}
-                <StatusBadge status={bank.status} />
+                <StatusBadge status={bank.status} variant="admin" />
               </div>
               <p className="text-sm text-gray-500 mt-0.5">
                 Code: {editing ? (

@@ -83,6 +83,8 @@ const PartnerOnboarding: React.FC = () => {
       if (response.success && response.data) {
         setIsSubmitted(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setSubmitError(response.message || 'Registration failed. Please try again.');
       }
     } catch (error: unknown) {
       console.error('Partner registration error:', error);

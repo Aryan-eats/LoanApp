@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import PrefetchLink from '../../components/PrefetchLink';
+import PrefetchLink from '../../components/shared/PrefetchLink';
 import {
   LayoutDashboard,
   UserPlus,

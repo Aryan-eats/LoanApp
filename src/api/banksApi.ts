@@ -91,9 +91,18 @@ export const updateBank = async (
   return response.data;
 };
 
+/**
+ * GET /api/partner/banks - Get active banks (partner-accessible)
+ */
+export const getPartnerBanks = async (): Promise<ApiResponse<{ banks: BankFromApi[] }>> => {
+  const response = await apiClient.get('/partner/banks');
+  return response.data;
+};
+
 export default {
   getBanks,
   getBankById,
   toggleBankStatus,
   updateBank,
+  getPartnerBanks,
 };

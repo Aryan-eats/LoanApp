@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AxiosError } from 'axios';
+import { isRequestCancellationError, parseApiError } from '../utils/parseApiError';
 
 interface FetchState<T> {
   data: T | null;
@@ -8,8 +8,8 @@ interface FetchState<T> {
 }
 
 interface FetchOptions<T> {
-  immediate?: boolean;        // Fetch on mount (default: true)
-  initialData?: T | null;     // Initial data value
+  immediate?: boolean;
+  initialData?: T | null;
   onSuccess?: (data: T) => void;
   onError?: (error: string) => void;
 }
@@ -20,22 +20,18 @@ interface FetchReturn<T> extends FetchState<T> {
   setData: (data: T | null) => void;
 }
 
+type FetchFn<T> = (signal?: AbortSignal) => Promise<T>;
+
 export function useFetch<T>(
-  fetchFn: () => Promise<T>,
+  fetchFn: FetchFn<T>,
   options: FetchOptions<T> = {}
 ): FetchReturn<T> {
-  const { 
-    immediate = true, 
+  const {
+    immediate = true,
     initialData = null,
     onSuccess,
-    onError 
+    onError,
   } = options;
-
-
-
-
-
-
 
   const [state, setState] = useState<FetchState<T>>({
     data: initialData,
@@ -47,8 +43,8 @@ export function useFetch<T>(
   const fetchFnRef = useRef(fetchFn);
   const onSuccessRef = useRef(onSuccess);
   const onErrorRef = useRef(onError);
+  const abortControllersRef = useRef<Set<AbortController>>(new Set());
 
-  // Sync refs after render (not during) to satisfy React 19 hook rules
   useEffect(() => {
     fetchFnRef.current = fetchFn;
     onSuccessRef.current = onSuccess;
@@ -56,30 +52,38 @@ export function useFetch<T>(
   });
 
   const execute = useCallback(async (): Promise<T | null> => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    const controller = new AbortController();
+    abortControllersRef.current.add(controller);
+
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const result = await fetchFnRef.current();
-      
-      if (isMounted.current) {
+      const result = await fetchFnRef.current(controller.signal);
+
+      if (isMounted.current && !controller.signal.aborted) {
         setState({ data: result, loading: false, error: null });
         onSuccessRef.current?.(result);
       }
-      
+
       return result;
-    } catch (err) {
-      const errorMessage = err instanceof AxiosError 
-        ? err.response?.data?.message || err.message
-        : err instanceof Error 
-          ? err.message 
-          : 'An error occurred';
+    } catch (error) {
+      if (controller.signal.aborted || isRequestCancellationError(error)) {
+        if (isMounted.current) {
+          setState((prev) => ({ ...prev, loading: false }));
+        }
+        return null;
+      }
+
+      const errorMessage = parseApiError(error);
 
       if (isMounted.current) {
-        setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+        setState((prev) => ({ ...prev, loading: false, error: errorMessage }));
         onErrorRef.current?.(errorMessage);
       }
-      
+
       return null;
+    } finally {
+      abortControllersRef.current.delete(controller);
     }
   }, []);
 
@@ -88,20 +92,20 @@ export function useFetch<T>(
   }, [initialData]);
 
   const setData = useCallback((data: T | null) => {
-    setState(prev => ({ ...prev, data }));
+    setState((prev) => ({ ...prev, data }));
   }, []);
 
   useEffect(() => {
     if (immediate) {
-      execute();
+      void execute();
     }
   }, [immediate, execute]);
 
   useEffect(() => {
-    // @Aryan - I noticed we were getting memory leaks when switching tabs fast. 
-    // Added this cleanup because the 'isMounted' ref wasn't enough on its own.
     return () => {
       isMounted.current = false;
+      abortControllersRef.current.forEach((controller) => controller.abort());
+      abortControllersRef.current.clear();
     };
   }, []);
 

@@ -1,4 +1,5 @@
 ﻿import { Request, Response } from 'express';
+import { Decimal } from '@prisma/client/runtime/client';
 import type { User, AuditEventType } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
@@ -90,7 +91,7 @@ export const getPartners = async (req: Request, res: Response): Promise<void> =>
     }
 
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const skip = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
@@ -385,7 +386,7 @@ export const getPartnerLeads = async (req: Request, res: Response): Promise<void
     }
 
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const skip = (page - 1) * limit;
 
     const [leads, total] = await Promise.all([
@@ -477,20 +478,23 @@ export const getPartnerCommissions = async (req: Request, res: Response): Promis
       createdAt: lead.createdAt,
     }));
 
-    const totalCommission = commissions.reduce((sum, c) => sum + c.commissionAmount, 0);
-    const paidCommission = commissions
-      .filter((c) => c.status === 'paid')
-      .reduce((sum, c) => sum + c.commissionAmount, 0);
-    const pendingCommission = totalCommission - paidCommission;
+    const totalCommission = leads.reduce(
+      (sum, lead) => sum.plus(lead.commissionAmount?.toString() ?? '0'),
+      new Decimal(0)
+    );
+    const paidCommission = leads
+      .filter((lead) => lead.commissionStatus === 'paid')
+      .reduce((sum, lead) => sum.plus(lead.commissionAmount?.toString() ?? '0'), new Decimal(0));
+    const pendingCommission = totalCommission.minus(paidCommission);
 
     res.status(200).json({
       success: true,
       data: {
         commissions,
         summary: {
-          total: totalCommission,
-          paid: paidCommission,
-          pending: pendingCommission,
+          total: totalCommission.toNumber(),
+          paid: paidCommission.toNumber(),
+          pending: pendingCommission.toNumber(),
           count: commissions.length,
         },
       },

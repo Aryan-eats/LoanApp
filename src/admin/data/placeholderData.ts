@@ -1,6 +1,5 @@
 // Placeholder data for Admin Dashboard
 
-import { consolidatedBanks } from '../../data/mockBanks';
 import type {
   Partner,
   Lead,
@@ -601,25 +600,7 @@ export const documents: Document[] = [
   { id: 'D006', leadId: 'L004', customerName: 'Kavita Singh', type: 'PAN Card', fileName: 'pan_kavita.jpg', fileType: 'image', fileSize: '1.5 MB', uploadedBy: 'Partner', uploadedAt: '2025-01-06', status: 'verified' },
 ];
 
-export const banks: Bank[] = consolidatedBanks.map(bank => ({
-  id: bank.id,
-  name: bank.name,
-  code: bank.code,
-  logo: bank.logo,
-  supportedLoanTypes: bank.supportedLoanTypes,
-  avgTat: bank.avgTat,
-  activeLeads: bank.activeLeads,
-  approvalRate: bank.approvalRate,
-  totalDisbursed: bank.totalDisbursed,
-  status: bank.status,
-  contactPerson: bank.contactPerson,
-  contactEmail: bank.contactEmail,
-  contactPhone: bank.contactPhone,
-  commissionSlabs: (bank.commissionRates || []).map(r => ({
-    loanType: r.loanType,
-    rate: r.partnerCommission
-  }))
-}));
+export const banks: Bank[] = [];
 
 export const commissions: Commission[] = [
   { id: 'CM001', leadId: 'L001', partnerId: 'P001', partnerName: 'Rajesh Kumar', customerName: 'Suresh Patel', loanType: 'home_loan', bank: 'HDFC Bank', disbursedAmount: 5000000, commissionRate: 0.5, commissionAmount: 25000, status: 'approved', createdAt: '2025-01-06' },

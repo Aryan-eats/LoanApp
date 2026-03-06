@@ -1,6 +1,7 @@
 ﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import { consolidatedBanks } from '../../data/mockBanks';
+import { getBanks } from '../../api/banksApi';
+import type { BankFromApi } from '../../api/banksApi';
 import {
   getDocRequirements,
   createDocRequirement,
@@ -135,7 +136,8 @@ const ReqDocPage: React.FC = () => {
   const [docMap, setDocMap] = useState<BankLoanDocMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedBankCode, setSelectedBankCode] = useState<string>(consolidatedBanks[0]?.code ?? '');
+  const [banksList, setBanksList] = useState<BankFromApi[]>([]);
+  const [selectedBankCode, setSelectedBankCode] = useState<string>('');
   const [expandedLoans, setExpandedLoans] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [showMandatoryOnly, setShowMandatoryOnly] = useState(false);
@@ -143,6 +145,20 @@ const ReqDocPage: React.FC = () => {
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [mutating, setMutating] = useState<Record<string, boolean>>({});
+
+  // -- Load banks from API on mount -------------------------------------------
+  useEffect(() => {
+    getBanks()
+      .then((res) => {
+        if (res.success && res.data?.banks) {
+          setBanksList(res.data.banks);
+          if (res.data.banks.length > 0 && !selectedBankCode) {
+            setSelectedBankCode(res.data.banks[0].code);
+          }
+        }
+      })
+      .catch(() => {/* keep empty */});
+  }, []);
 
   // -- Load all docs from API on mount ----------------------------------------
   useEffect(() => {
@@ -164,8 +180,8 @@ const ReqDocPage: React.FC = () => {
   }, []);
 
   const selectedBank = useMemo(
-    () => consolidatedBanks.find((b) => b.code === selectedBankCode),
-    [selectedBankCode]
+    () => banksList.find((b) => b.code === selectedBankCode),
+    [banksList, selectedBankCode]
   );
 
   const bankLoanDocs = useMemo(
@@ -334,7 +350,7 @@ const ReqDocPage: React.FC = () => {
       {/* Bank / NBFC Tab Strip */}
       <div className="mb-4 overflow-x-auto">
         <div className="flex gap-2 pb-1 min-w-max">
-          {consolidatedBanks.map((bank) => {
+          {banksList.map((bank) => {
             const isActive = bank.code === selectedBankCode;
             const loanCount = Object.keys(docMap[bank.code] ?? {}).length;
             return (

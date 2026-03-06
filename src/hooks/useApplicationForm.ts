@@ -1,42 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLeadsStore } from '../stores/leadsStore';
-import { consolidatedBanks } from '../data/mockBanks';
-import type { LoanType } from '../partner/types/partner-dashboard';
-
-// Mapping from form loan type titles to bank loan type codes
-// TODO: Move this to a shared constant or backend configuration
-const loanTypeMapping: Record<string, LoanType[]> = {
-  "Personal Loans": ["personal_loan"],
-  "Business Loans": ["business_loan", "working_capital_loan", "invoice_financing"],
-  "Home Loans": ["home_loan", "pmay_home_loan"],
-  "Property-Backed Loans": ["lap", "lrd"],
-  "Vehicle Loans": ["car_loan", "used_car_loan", "two_wheeler_loan", "commercial_vehicle_loan", "tractor_loan"],
-  "Gold & Securities Loans": ["gold_loan", "loan_against_fd"],
-  "Education Loans": ["education_loan"],
-  "Corporate / Large Loans": ["business_loan", "working_capital_loan"],
-  "Government Scheme Loans": ["mudra_shishu", "mudra_kishor", "mudra_tarun", "pmay_home_loan", "kcc"],
-  "Agriculture Loans": ["kcc", "tractor_loan"],
-  "Consumer & Retail Loans": ["consumer_durable_loan", "emi_card_loan"],
-  "Salary & Short-Term Loans": ["personal_loan"],
-  "Real Estate & Builder Loans": ["home_loan", "lap"],
-  "Specialized Loans": ["ev_loan", "solar_panel_loan"],
-  "General": ["personal_loan"] // Fallback
-};
-
-// Helper to check if matching bank offers exist
-const hasMatchingOffers = (loanType: string, loanAmount: number): boolean => {
-  const mappedTypes = loanTypeMapping[loanType] || [];
-  if (mappedTypes.length === 0) return false;
-  
-  return consolidatedBanks.some(bank => {
-    if (bank.status !== 'active') return false;
-    const supportsLoanType = bank.supportedLoanTypes.some(t => mappedTypes.includes(t));
-    if (!supportsLoanType) return false;
-    if (loanAmount < bank.minAmount || loanAmount > bank.maxAmount) return false;
-    return true;
-  });
-};
+import { matchOffers } from '../api/leadsApi';
 
 export interface ApplicationFormData {
   name: string;
@@ -137,7 +102,8 @@ export const useApplicationForm = () => {
         const submittedLoanType = formData.loanType;
         const submittedLoanSubType = formData.loanSubType;
         const submittedLoanAmount = Number(formData.loanAmount);
-        const leadId = result.id;
+        const leadId = result.lead.id;
+        const leadToken = result.leadToken || '';
         
         // Clear form fields
         setFormData({
@@ -150,12 +116,13 @@ export const useApplicationForm = () => {
           salaryType: '',
         });
 
-        // Only redirect if there are matching bank offers
-        // Note: Logic here uses Category (submittedLoanType) for matching if subType is missing
-        // This assumes hasMatchingOffers logic can handle Categories. 
-        // Based on existing code, loanTypeMapping keys ARE categories. 
-        // So passing submittedLoanType (the Category) covers it.
-        if (hasMatchingOffers(submittedLoanType, submittedLoanAmount)) {
+        const offersResponse = await matchOffers({
+          loanType: submittedLoanType,
+          loanSubType: submittedLoanSubType || undefined,
+          loanAmount: submittedLoanAmount,
+        });
+
+        if (offersResponse.success && offersResponse.data && offersResponse.data.offers.length > 0) {
           timeoutRef.current = setTimeout(() => {
             timeoutRef.current = null;
             navigate('/best-offers', {
@@ -164,6 +131,8 @@ export const useApplicationForm = () => {
                 loanSubType: submittedLoanSubType,
                 loanAmount: submittedLoanAmount,
                 leadId: leadId,
+                leadToken: leadToken,
+                matchedOffers: offersResponse.data?.offers,
               }
             });
           }, 1500);

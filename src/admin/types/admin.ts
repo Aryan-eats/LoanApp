@@ -22,7 +22,7 @@ import type {
 } from '../../types/shared';
 
 // Admin-specific lead status (matching backend Lead model)
-export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'bank_processing' | 'approved' | 'disbursed' | 'rejected';
+export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'docs_collected' | 'bank_processing' | 'bank_logged' | 'approved' | 'disbursed' | 'rejected';
 
 // Partner type (admin has more detailed categorization)
 export type PartnerType = 'freelancer' | 'used_car_dealer' | 'property_dealer' | 'builder' | 'sub_dsa';

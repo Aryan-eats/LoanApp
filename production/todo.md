@@ -78,9 +78,9 @@
 - [ ] `backend/print-users.ts` — mask email/phone, gate behind `NODE_ENV=development`, await `$disconnect()`, exit(1) on error
 
 ### File & Document Security
-- [ ] **IDOR on document upload token** — partners can only call `generateUploadToken` for their own leads; admin can access any (`documentController.ts`)
-- [ ] **Upload token replay** — mark `usedAt` after first successful upload; reject reuse (`documentController.ts → validateUploadToken / uploadViaToken`)
-- [ ] **File upload MIME spoofing** — validate magic bytes (file signature), not just `Content-Type` header (`middleware/upload.ts`)
+- [x] **IDOR on document upload token** — partners can only call `generateUploadToken` for their own leads; admin can access any (`documentController.ts`)
+- [x] **Upload token replay** — mark `usedAt` after first successful upload; reject reuse (`documentController.ts → validateUploadToken / uploadViaToken`)
+- [x] **File upload MIME spoofing** — validate magic bytes (file signature), not just `Content-Type` header (`middleware/upload.ts`)
 
 ### Crypto
 - [ ] **Deterministic IV in AES-GCM** — replace `deriveIv(plaintext)` with `crypto.randomBytes(12)` per encryption; prefix random IV to ciphertext for decryption (`fieldEncryption.ts ~L23`)
@@ -106,7 +106,7 @@
 - [ ] UUID format middleware for all routes with `:id` params — prevents Prisma 500s on malformed IDs
 - [ ] Cap `limit` to 100 with `Math.min(limit, 100)` in `leadController.ts` and `partnerController.ts`
 - [ ] Loan amount min/max (`10k–10Cr`) validation in `leadController.ts`; message: "Contact office for high-value loans" above 10Cr
-- [ ] Public lead payload — `express-validator` format checks for phone (10 digits), email (format), loanAmount (numeric, positive)
+- [ ] Public lead payload — `express-validator` format checks for phone (10 digits), email (format), loanAmount (numeric, positive, proper commas (eg, 5,00,000)
 - [ ] `smsService.ts` — `formatIndianNumber` must validate strictly (10-digit or `91`+10-digit); return null/throw on invalid; callers surface clear error
 - [ ] `smsService.ts` — add `AbortController` timeout to `fetch`; check `response.ok` before parsing JSON
 
@@ -149,7 +149,7 @@
 - [ ] `useMsg91.ts` — `sendOTP` catch must return `false` (not `true`) on exception
 
 ---
-
+  
 ## Phase 5 — Frontend Architecture & Correctness
 > **Goal:** Fix correctness bugs and architectural issues. Independent from auth — safe to do in parallel with Phase 3 if needed.
 

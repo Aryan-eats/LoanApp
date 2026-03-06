@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
+import SessionExpiryWarningModal from './components/SessionExpiryWarningModal';
 import PageTransition from './components/shared/PageTransition';
 import { PageSkeleton } from './components/shared/SkeletonLoader';
 import {
@@ -138,6 +139,7 @@ function App() {
             <AnimatedRoutes />
           </Suspense>
         </AppLayout>
+        <SessionExpiryWarningModal />
       </Router>
     </ErrorBoundary>
   );

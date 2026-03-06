@@ -1,27 +1,7 @@
-
 import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 import BankCard from "../components/BankCard";
-import { consolidatedBanks } from "../data/mockBanks";
-import { updatePreferredBank } from "../api/leadsApi";
-import type { LoanType } from "../partner/types/partner-dashboard";
-
-// Mapping from form loan type titles to bank loan type codes
-const loanTypeMapping: Record<string, LoanType[]> = {
-  "Personal Loans": ["personal_loan"],
-  "Business Loans": ["business_loan", "working_capital_loan", "invoice_financing"],
-  "Home Loans": ["home_loan", "pmay_home_loan"],
-  "Property-Backed Loans": ["lap", "lrd"],
-  "Vehicle Loans": ["car_loan", "used_car_loan", "two_wheeler_loan", "commercial_vehicle_loan", "tractor_loan"],
-  "Gold & Securities Loans": ["gold_loan", "loan_against_fd"],
-  "Education Loans": ["education_loan"],
-  "Corporate / Large Loans": ["business_loan", "working_capital_loan"],
-  "Government Scheme Loans": ["mudra_shishu", "mudra_kishor", "mudra_tarun", "pmay_home_loan", "kcc"],
-  "Agriculture Loans": ["kcc", "tractor_loan"],
-  "Consumer & Retail Loans": ["consumer_durable_loan", "emi_card_loan"],
-  "Salary & Short-Term Loans": ["personal_loan"],
-  "Real Estate & Builder Loans": ["home_loan", "lap"],
-  "Specialized Loans": ["ev_loan", "solar_panel_loan"],
-};
+import { matchOffers, updatePreferredBank, type MatchedOffer } from "../api/leadsApi";
 
 // Helper to format currency
 const formatCurrency = (amount: number): string => {
@@ -32,20 +12,13 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-// Helper to calculate EMI
-const calculateEMI = (principal: number, annualRate: number, tenureMonths: number): string => {
-  if (!tenureMonths || tenureMonths <= 0) return '₹0';
-  const r = annualRate / 12 / 100;
-  if (r === 0) return formatCurrency(Math.round(principal / tenureMonths));
-  const emi = (principal * r * Math.pow(1 + r, tenureMonths)) / (Math.pow(1 + r, tenureMonths) - 1);
-  return formatCurrency(Math.round(emi));
-};
-
 interface LocationState {
   loanType?: string;
   loanSubType?: string;
   loanAmount?: number;
   leadId?: string;
+  leadToken?: string;
+  matchedOffers?: MatchedOffer[];
 }
 
 const BestOffers = () => {
@@ -53,40 +26,79 @@ const BestOffers = () => {
   const state = location.state as LocationState | null;
   
   const userLoanType = state?.loanType || "";
+  const userLoanSubType = state?.loanSubType || "";
   const userLoanAmount = state?.loanAmount || 0;
   const leadId = state?.leadId || "";
-  
-  // Get the mapped loan type codes for the selected loan category
-  const mappedLoanTypes = userLoanType ? loanTypeMapping[userLoanType] || [] : [];
-  
-  // Filter active banks that support the user's loan type
-  const filteredBanks = consolidatedBanks.filter(bank => {
-    // Must be active
-    if (bank.status !== 'active') return false;
-    
-    // If user selected a loan type, filter by it
-    if (mappedLoanTypes.length > 0) {
-      const bankSupportsLoanType = bank.supportedLoanTypes.some(
-        bankLoanType => mappedLoanTypes.includes(bankLoanType)
-      );
-      if (!bankSupportsLoanType) return false;
-      
-      // Also check if user's loan amount is within bank's range
-      if (userLoanAmount > 0) {
-        if (userLoanAmount < bank.minAmount || userLoanAmount > bank.maxAmount) {
-          return false;
+  const leadToken = state?.leadToken || "";
+  const [offers, setOffers] = useState<MatchedOffer[]>(state?.matchedOffers ?? []);
+  const [isLoading, setIsLoading] = useState(!state?.matchedOffers);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state?.matchedOffers) {
+      setOffers(state.matchedOffers);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (!userLoanType && !userLoanSubType) {
+      setOffers([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadOffers = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await matchOffers({
+          loanType: userLoanType || undefined,
+          loanSubType: userLoanSubType || undefined,
+          loanAmount: userLoanAmount > 0 ? userLoanAmount : undefined,
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        if (response.success && response.data) {
+          setOffers(response.data.offers);
+          return;
+        }
+
+        setOffers([]);
+        setError(response.message ?? 'Unable to load offers right now.');
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setOffers([]);
+        setError('Unable to load offers right now.');
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
         }
       }
-    }
-    
-    return true;
-  });
+    };
+
+    void loadOffers();
+
+    return () => {
+      isActive = false;
+    };
+  }, [state?.matchedOffers, userLoanAmount, userLoanSubType, userLoanType]);
 
   const handleApply = async (bankName: string) => {
     // If we have a lead ID, update the preferred bank
-    if (leadId) {
+    if (leadId && leadToken) {
       try {
-        await updatePreferredBank(leadId, bankName);
+        await updatePreferredBank(leadId, bankName, leadToken);
         alert(`Your preference for ${bankName} has been recorded. Our team will contact you soon!`);
       } catch (error) {
         console.error('Failed to update preferred bank:', error);
@@ -96,11 +108,6 @@ const BestOffers = () => {
     } else {
       alert(`Application started for ${bankName}. Our team will contact you soon!`);
     }
-  };
-
-  // Display amount: use user's requested amount if available, otherwise bank's max
-  const getDisplayAmount = (bankMaxAmount: number) => {
-    return userLoanAmount > 0 ? userLoanAmount : bankMaxAmount;
   };
 
   return (
@@ -117,26 +124,33 @@ const BestOffers = () => {
           </p>
         </div>
 
-        {filteredBanks.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <p className="text-lg text-gray-600">Loading matched offers...</p>
+          </div>
+        ) : offers.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-lg text-gray-600">
-              No offers available for your selected loan type and amount. Please try a different combination.
+              {error ?? 'No offers available for your selected loan type and amount. Please try a different combination.'}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-8 justify-items-center">
-            {filteredBanks.map((bank) => {
-              const displayAmount = getDisplayAmount(bank.maxAmount);
+            {offers.map((bank) => {
+              const tenureText = bank.maxTenure >= 12
+                ? `${Math.round(bank.maxTenure / 12)} years`
+                : `${bank.maxTenure} months`;
+
               return (
                 <BankCard
                   key={bank.id}
                   id={bank.id}
                   bankName={bank.name}
                   bankLogo={bank.logo || "https://via.placeholder.com/100?text=Bank"}
-                  loanAmount={formatCurrency(displayAmount)}
+                  loanAmount={formatCurrency(bank.displayAmount)}
                   roi={`${bank.interestRateMin}%`}
-                  emi={calculateEMI(displayAmount, bank.interestRateMin, bank.maxTenure)}
-                  tenure={`${Math.round(bank.maxTenure / 12)} years`}
+                  emi={formatCurrency(bank.estimatedEmi ?? 0)}
+                  tenure={tenureText}
                   processingFeeText={bank.processingFee}
                   onApply={() => handleApply(bank.name)}
                 />

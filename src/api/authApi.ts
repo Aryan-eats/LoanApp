@@ -6,7 +6,7 @@
  * Access tokens are kept in memory via apiClient's setAccessToken.
  */
 
-import apiClient, { setAccessToken, getAccessToken } from './apiClient';
+import apiClient, { setAccessToken, getAccessToken, startSilentRefresh } from './apiClient';
 
 export interface PartnerRegistrationData {
   // Step 1: Basic Identity
@@ -107,6 +107,9 @@ export const login = async (
     const data = response.data.data as AuthResponse;
     if (data.accessToken) {
       setAccessToken(data.accessToken);
+      if (typeof data.expiresIn === 'number' && data.expiresIn > 0) {
+        startSilentRefresh(data.expiresIn);
+      }
     }
   }
 
@@ -145,6 +148,12 @@ export const refreshToken = async (): Promise<ApiResponse<{
   
   if (response.data.data?.accessToken) {
     setAccessToken(response.data.data.accessToken);
+    if (
+      typeof response.data.data.expiresIn === 'number'
+      && response.data.data.expiresIn > 0
+    ) {
+      startSilentRefresh(response.data.data.expiresIn);
+    }
   }
 
   return response.data;

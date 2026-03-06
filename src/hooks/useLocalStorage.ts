@@ -33,8 +33,9 @@ export function useLocalStorage<T>(
       const valueToStore = value instanceof Function ? value(prev) : value;
       try {
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(key, JSON.stringify(valueToStore));
-          window.dispatchEvent(new StorageEvent('storage', { key }));
+          const serialised = JSON.stringify(valueToStore);
+          window.localStorage.setItem(key, serialised);
+          window.dispatchEvent(new StorageEvent('storage', { key, newValue: serialised }));
         }
       } catch (error) {
         console.warn(`Error setting localStorage key "${key}":`, error);
@@ -79,16 +80,12 @@ export function useLocalStorage<T>(
         return;
       }
 
-      // Safely parse the new value
-      if (typeof initialValueRef.current === 'string') {
-        setStoredValue(event.newValue as unknown as T);
-      } else {
-        try {
-          setStoredValue(JSON.parse(event.newValue) as T);
-        } catch {
-          console.warn(`Failed to parse storage event value for key "${key}", falling back to initialValue`);
-          setStoredValue(initialValueRef.current);
-        }
+      // Always parse – values are stored via JSON.stringify
+      try {
+        setStoredValue(JSON.parse(event.newValue) as T);
+      } catch {
+        console.warn(`Failed to parse storage event value for key "${key}", falling back to initialValue`);
+        setStoredValue(initialValueRef.current);
       }
     };
 

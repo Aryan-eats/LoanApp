@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/client';
 import type { LeadStatus } from '@prisma/client';
 import prisma, { basePrisma } from '../config/prisma.js';
 import { cacheWrap, cacheDelete } from '../utils/cache.js';
@@ -34,6 +35,29 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       res.status(400).json({
         success: false,
         message: 'Please provide fullName, phone, email, loanType, and loanAmount',
+      });
+      return;
+    }
+
+    const parsedLoanAmount = Number(loanAmount);
+    if (!Number.isFinite(parsedLoanAmount) || parsedLoanAmount <= 0) {
+      res.status(400).json({
+        success: false,
+        message: 'loanAmount must be a valid positive number',
+      });
+      return;
+    }
+    if (parsedLoanAmount < 10_000) {
+      res.status(400).json({
+        success: false,
+        message: 'Loan amount must be at least ₹10,000',
+      });
+      return;
+    }
+    if (parsedLoanAmount > 10_00_00_000) {
+      res.status(400).json({
+        success: false,
+        message: 'Contact office for high-value loans above ₹10 Cr',
       });
       return;
     }
@@ -117,7 +141,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     }
 
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
     const skip = (page - 1) * limit;
 
     const allowedSortFields = new Set(['createdAt', 'updatedAt', 'loanAmount', 'status', 'loanType']);
@@ -373,15 +397,16 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
 
         const stats: Record<string, number> = {};
         let totalLeads = 0;
-        let totalAmount = 0;
+        let totalAmount = new Decimal(0);
         statusCounts.forEach((item) => {
           stats[item.status] = item._count._all;
           totalLeads += item._count._all;
-          totalAmount += Number(item._sum.loanAmount || 0);
+          totalAmount = totalAmount.plus(item._sum.loanAmount?.toString() ?? '0');
         });
 
         return {
-          total: totalLeads, totalAmount,
+          total: totalLeads,
+          totalAmount: totalAmount.toNumber(),
           byStatus: stats,
           byLoanType: loanTypeCounts.map((item) => ({
             type: item.loanType, count: item._count._all,
@@ -419,8 +444,8 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
     }
 
     const validStatuses: LeadStatus[] = [
-      'draft', 'submitted', 'docs_pending', 'docs_uploaded',
-      'bank_processing', 'approved', 'disbursed', 'rejected',
+      'draft', 'submitted', 'docs_pending', 'docs_uploaded', 'docs_collected',
+      'bank_processing', 'bank_logged', 'approved', 'disbursed', 'rejected',
     ];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ success: false, message: 'Invalid status' });
@@ -440,7 +465,8 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
         res.status(403).json({ success: false, message: 'Not authorized to update this lead' });
         return;
       }
-      if (status !== 'docs_uploaded' && status !== 'submitted' && status !== 'docs_pending') {
+      const partnerAllowed: LeadStatus[] = ['submitted', 'docs_pending', 'docs_uploaded'];
+      if (!partnerAllowed.includes(status)) {
         res.status(403).json({
           success: false,
           message: 'Partners can only update status to docs_pending, submitted, or docs_uploaded',

@@ -5,9 +5,10 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { validateUUID } from '../middleware/validateUUID.js';
 import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl, deleteLeadDoc, updateLeadDocStatus, bulkUpdateLeadDocStatus, generateUploadToken, uploadViaToken, validateUploadToken } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
-import { uploadSingle, MAX_FILE_SIZE } from '../middleware/upload.js';
+import { uploadSingle, MAX_FILE_SIZE, validateMagicBytes } from '../middleware/upload.js';
 import { basePrisma } from '../config/prisma.js';
 import { cacheWrap } from '../utils/cache.js';
 
@@ -45,10 +46,11 @@ const handleMulterErrors = (req: Request, res: Response, next: NextFunction) => 
 // -- Public route (no auth required) ------------------------------------------
 // Customer validates a token (GET) or uploads a file via a magic token link (POST)
 router.get('/upload-via-token/:token', validateUploadToken);
-router.post('/upload-via-token/:token', handleMulterErrors, uploadViaToken);
+router.post('/upload-via-token/:token', handleMulterErrors, validateMagicBytes, uploadViaToken);
 
 // All remaining document routes require authentication
 router.use(protect);
+router.use(validateUUID);
 
 /**
  * GET /api/documents/req-docs
@@ -151,10 +153,10 @@ router.get('/req-docs/flat', async (req: Request, res: Response): Promise<void> 
 });
 
 // POST   /api/documents/upload   - upload a document (user-scoped)
-router.post('/upload', handleMulterErrors, upload);
+router.post('/upload', handleMulterErrors, validateMagicBytes, upload);
 
 // POST   /api/documents/lead/:leadId/doc/:documentId/upload - upload a lead document
-router.post('/lead/:leadId/doc/:documentId/upload', handleMulterErrors, uploadLeadDoc);
+router.post('/lead/:leadId/doc/:documentId/upload', handleMulterErrors, validateMagicBytes, uploadLeadDoc);
 
 // GET    /api/documents/lead/:documentId/download - get download URL for a lead document
 router.get('/lead/:documentId/download', getLeadDocUrl);

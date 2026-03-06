@@ -28,7 +28,7 @@ import type {
 export type LoanType = LoanProductCode;
 
 // Partner-specific lead status (includes draft state)
-export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'bank_processing' | 'approved' | 'disbursed' | 'rejected';
+export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'docs_collected' | 'bank_processing' | 'bank_logged' | 'approved' | 'disbursed' | 'rejected';
 
 // Status for leads managed locally by the partner (not yet submitted to admin)
 export type LocalLeadStatus = 'new' | 'contacted' | 'docs_pending' | 'docs_collected' | 'processing' | 'approved' | 'rejected' | 'closed';

@@ -1,5 +1,6 @@
 ﻿import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
+import { validateUUID } from '../middleware/validateUUID.js';
 import {
   listUsers,
   listPartners,
@@ -37,6 +38,7 @@ const router = Router();
 
 router.use(protect);
 router.use(authorize('admin'));
+router.use(validateUUID);
 
 // -- Users -------------------------------------------------------------------
 router.get('/users', listUsers);

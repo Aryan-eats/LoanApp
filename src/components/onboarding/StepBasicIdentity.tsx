@@ -30,9 +30,8 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // MSG91 REST API integration (replaces widget)
-  const { sendOTP, verifyOTP, resendOTP, loading: _otpLoading, error: otpError } = useOTPVerification({
+  const { sendOTP, verifyOTP, resendOTP } = useOTPVerification({
     onSuccess: (data: { verificationToken?: string }) => {
-      console.log('OTP verification successful:', data);
       updateFormData({
         otpVerified: true,
         phoneVerificationToken: data.verificationToken || 'verified',
@@ -41,7 +40,6 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
       setErrors((prev) => ({ ...prev, mobileNumber: '' }));
     },
     onError: (error: string) => {
-      console.error('OTP verification failed:', error);
       setIsVerifying(false);
       setErrors((prev) => ({
         ...prev,
@@ -113,16 +111,20 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
     setIsVerifying(true);
     setErrors((prev) => ({ ...prev, mobileNumber: '' }));
 
-    const sent = await sendOTP(formData.mobileNumber);
-    setIsVerifying(false);
-
-    if (sent) {
-      setOtpSent(true);
-      setResendTimer(30);
-      // Auto-focus first OTP input
-      setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
-    } else {
+    try {
+      const sent = await sendOTP(formData.mobileNumber);
+      if (sent) {
+        setOtpSent(true);
+        setResendTimer(30);
+        // Auto-focus first OTP input
+        setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
+      } else {
+        setErrors((prev) => ({ ...prev, mobileNumber: prev.mobileNumber || 'Failed to send OTP. Please try again.' }));
+      }
+    } catch {
       setErrors((prev) => ({ ...prev, mobileNumber: 'Failed to send OTP. Please try again.' }));
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -161,28 +163,39 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
 
     setIsVerifying(true);
     setErrors((prev) => ({ ...prev, mobileNumber: '' }));
-    const verified = await verifyOTP(formData.mobileNumber, otpString);
-    if (!verified) {
-      setIsVerifying(false);
-      // Error is already set by the hook's onError callback
-      if (!otpError) {
-        setErrors((prev) => ({ ...prev, mobileNumber: 'Invalid OTP. Please try again.' }));
+    try {
+      const verified = await verifyOTP(formData.mobileNumber, otpString);
+      if (!verified) {
+        // onError callback may have already set the real error message
+        setErrors((prev) => ({
+          ...prev,
+          mobileNumber: prev.mobileNumber || 'Invalid OTP. Please try again.',
+        }));
       }
+    } catch {
+      setErrors((prev) => ({ ...prev, mobileNumber: 'Verification failed. Please try again.' }));
+    } finally {
+      setIsVerifying(false);
     }
   };
 
   const handleResendOTP = async () => {
     if (resendTimer > 0) return;
-    const sent = await resendOTP(formData.mobileNumber);
-    if (sent) {
-      setResendTimer(30);
-      setOtp(['', '', '', '', '', '']);
-      setErrors((prev) => ({ ...prev, mobileNumber: '' }));
-    } else {
-      // Error is already set by the hook
-      if (!otpError) {
-        setErrors((prev) => ({ ...prev, mobileNumber: 'Failed to resend OTP. Please try again.' }));
+    try {
+      const sent = await resendOTP(formData.mobileNumber);
+      if (sent) {
+        setResendTimer(30);
+        setOtp(['', '', '', '', '', '']);
+        setErrors((prev) => ({ ...prev, mobileNumber: '' }));
+      } else {
+        // onError callback may have already set the real error message
+        setErrors((prev) => ({
+          ...prev,
+          mobileNumber: prev.mobileNumber || 'Failed to resend OTP. Please try again.',
+        }));
       }
+    } catch {
+      setErrors((prev) => ({ ...prev, mobileNumber: 'Failed to resend OTP. Please try again.' }));
     }
   };
 
@@ -299,6 +312,7 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
                   onPaste={index === 0 ? handleOtpPaste : undefined}
+                  aria-label={`OTP digit ${index + 1} of 6`}
                   className="w-10 h-10 text-center border border-gray-300 rounded-lg text-gray-900 text-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
                 />
               ))}

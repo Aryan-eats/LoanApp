@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import ConfirmModal from '../components/ConfirmModal';
 import { getPartners, updatePartnerStatus } from '../../api/partnersApi';
 import type { Partner, ApplicationStatus, PartnerType } from '../types/admin';
@@ -176,7 +176,7 @@ const PartnersPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{partner.city}</td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={partner.status} size="sm" />
+                    <StatusBadge status={partner.status} size="sm" variant="admin" />
                   </td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{partner.leadsSubmitted}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{partner.joinedDate}</td>
@@ -312,7 +312,7 @@ const PartnersPage: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Status</span>
-                    <StatusBadge status={selectedPartner.status} size="sm" />
+                    <StatusBadge status={selectedPartner.status} size="sm" variant="admin" />
                   </div>
                 </div>
               </div>

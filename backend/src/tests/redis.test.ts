@@ -93,7 +93,16 @@ describeRedis('Redis Caching', () => {
   it('stores and retrieves a value', async () => {
     await cacheSet(key, { hello: 'world' }, 60);
     const result = await cacheGet<{ hello: string }>(key);
-    expect(result).toEqual({ hello: 'world' });
+    expect(result).toEqual({ cached: true, value: { hello: 'world' } });
+  });
+
+  it('preserves cached null values distinctly from a miss', async () => {
+    const nullKey = `${NAMESPACE}null`;
+    await cacheSet(nullKey, null, 60);
+
+    const result = await cacheGet<null>(nullKey);
+
+    expect(result).toEqual({ cached: true, value: null });
   });
 
   it('deletes a cached key', async () => {
@@ -137,7 +146,7 @@ describeRedis('Redis Caching', () => {
     const ttlKey = `${NAMESPACE}ttl`;
     await cacheSet(ttlKey, 'short-lived', 1); // 1 second TTL
 
-    expect(await cacheGet(ttlKey)).toBe('short-lived');
+    expect(await cacheGet(ttlKey)).toEqual({ cached: true, value: 'short-lived' });
 
     // Wait for TTL to pass
     await new Promise((r) => setTimeout(r, 1500));
@@ -317,7 +326,7 @@ describeRedis('Redis OTP Storage – User OTP (registered users)', () => {
   it('verifies the correct user OTP', async () => {
     const otp = await generateOTP(fakeUserId);
     const result = await verifyUserOTP(fakeUserId, otp);
-    expect(result).toBe(true);
+    expect(result).toEqual({ status: 'verified' });
 
     // OTP should be consumed
     const stored = await redis.get(`user_otp:${fakeUserId}`);
@@ -327,14 +336,14 @@ describeRedis('Redis OTP Storage – User OTP (registered users)', () => {
   it('rejects an incorrect user OTP', async () => {
     await generateOTP(fakeUserId);
     const result = await verifyUserOTP(fakeUserId, '000000');
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: 'invalid' });
   });
 
   it('rejects after OTP is already consumed', async () => {
     const otp = await generateOTP(fakeUserId);
     await verifyUserOTP(fakeUserId, otp); // consume
     const result = await verifyUserOTP(fakeUserId, otp); // re-try
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: 'invalid' });
   });
 
   it('user OTP expires after TTL', async () => {
@@ -346,6 +355,6 @@ describeRedis('Redis OTP Storage – User OTP (registered users)', () => {
     await new Promise((r) => setTimeout(r, 1500));
 
     const result = await verifyUserOTP(fakeUserId, '654321');
-    expect(result).toBe(false);
+    expect(result).toEqual({ status: 'invalid' });
   });
 });

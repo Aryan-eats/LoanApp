@@ -41,8 +41,10 @@ const getNextStatuses = (currentStatus: LeadStatus, lead?: { bankAssigned?: stri
     draft: ['submitted', 'rejected'],
     submitted: ['docs_pending', 'rejected'],
     docs_pending: ['docs_uploaded', 'rejected'],
-    docs_uploaded: ['bank_processing', 'rejected'],
-    bank_processing: ['approved', 'rejected'],
+    docs_uploaded: ['docs_collected', 'rejected'],
+    docs_collected: ['bank_processing', 'rejected'],
+    bank_processing: ['bank_logged', 'rejected'],
+    bank_logged: ['approved', 'rejected'],
     approved: ['disbursed', 'rejected'],
     disbursed: [],
     rejected: ['submitted'], // Allow reactivation

@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import prisma from '../config/prisma.js';
 import { basePrisma } from '../config/prisma.js';
 import { hashPassword } from '../services/userService.js';
+import { sanitizeAdminUserResponse } from '../services/authService.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
 import { cacheWrap, cacheDelete, cacheInvalidatePattern } from '../utils/cache.js';
 import { getPartners } from './partnerController.js';
@@ -111,7 +112,11 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    res.status(201).json({ success: true, message: 'User created successfully', data: { user } });
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: { user: sanitizeAdminUserResponse(user) },
+    });
 
     await logAuditEvent('ADMIN_USER_CREATED', req, {
       userId: req.user?.id,
@@ -135,7 +140,7 @@ export const getUser = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.status(200).json({ success: true, data: { user } });
+    res.status(200).json({ success: true, data: { user: sanitizeAdminUserResponse(user) } });
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -167,7 +172,11 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       throw err;
     }
 
-    res.status(200).json({ success: true, message: 'User updated successfully', data: { user } });
+    res.status(200).json({
+      success: true,
+      message: 'User updated successfully',
+      data: { user: sanitizeAdminUserResponse(user) },
+    });
 
     // Detect role changes for ADMIN_ROLE_CHANGED
     if (role !== undefined) {

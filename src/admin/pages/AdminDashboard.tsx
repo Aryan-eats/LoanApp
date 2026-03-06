@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
-import StatsCard from '../components/StatsCard';
-import StatusBadge from '../components/StatusBadge';
+import StatsCard from '../../components/shared/StatsCard';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { getAdminStats } from '../../api/adminApi';
 import { getLeads } from '../../api/leadsApi';
 import type { LeadStatus } from '../types/admin';
@@ -160,7 +160,7 @@ const AdminDashboard: React.FC = () => {
           title="Active Partners"
           value={stats.activePartners}
           trend={{ value: 8, isPositive: true }}
-          color="green"
+          variant="green"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -171,7 +171,7 @@ const AdminDashboard: React.FC = () => {
           title="Total Users"
           value={stats.totalUsers}
           trend={{ value: 5, isPositive: true }}
-          color="blue"
+          variant="blue"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -182,7 +182,7 @@ const AdminDashboard: React.FC = () => {
           title="Active Users"
           value={stats.activeUsers}
           trend={{ value: 15, isPositive: true }}
-          color="green"
+          variant="green"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -193,7 +193,7 @@ const AdminDashboard: React.FC = () => {
           title="Verified Users"
           value={stats.verifiedUsers}
           trend={{ value: 5, isPositive: true }}
-          color="amber"
+          variant="amber"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -205,7 +205,7 @@ const AdminDashboard: React.FC = () => {
           value={stats.newUsersThisWeek}
           subtitle="Users"
           trend={{ value: 12, isPositive: true }}
-          color="default"
+          variant="default"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -216,7 +216,7 @@ const AdminDashboard: React.FC = () => {
           title="Recent Leads"
           value={recentLeads.length}
           subtitle="Loaded"
-          color="red"
+          variant="red"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -310,10 +310,10 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 capitalize">{lead.loanType.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lead.loanAmount)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lead.loanAmount ?? 0)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{lead.partnerName}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={lead.status} size="sm" />
+                      <StatusBadge status={lead.status} size="sm" variant="admin" />
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{lead.createdAt}</td>
                   </tr>

@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { getBanks, toggleBankStatus } from '../../api/banksApi';
 import type { BankFromApi } from '../../api/banksApi';
-import { banks as placeholderBanks } from '../data/placeholderData';
-import type { Bank } from '../types/admin';
 import { buildLoanTypeLabels } from '../../data/loanProductsData';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
@@ -48,24 +46,6 @@ function normalizeApiBank(b: BankFromApi): NormalizedBank {
   };
 }
 
-function normalizePlaceholder(b: Bank): NormalizedBank {
-  return {
-    id: b.id,
-    name: b.name,
-    code: b.code,
-    status: b.status,
-    supportedLoanTypes: b.supportedLoanTypes,
-    avgTat: b.avgTat,
-    activeLeads: b.activeLeads,
-    approvalRate: b.approvalRate,
-    totalDisbursed: b.totalDisbursed,
-    contactPerson: b.contactPerson,
-    contactEmail: b.contactEmail,
-    contactPhone: b.contactPhone,
-    commissionSlabs: b.commissionSlabs.map(s => ({ loanType: s.loanType, rate: s.rate })),
-  };
-}
-
 const BanksPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,13 +66,9 @@ const BanksPage: React.FC = () => {
       const response = await getBanks();
       if (response.success && response.data?.banks) {
         setAllBanks(response.data.banks.map(normalizeApiBank));
-      } else {
-        // Fallback to placeholder data
-        setAllBanks(placeholderBanks.map(normalizePlaceholder));
       }
     } catch {
-      // Fallback to placeholder data on API error
-      setAllBanks(placeholderBanks.map(normalizePlaceholder));
+      // API failed, keep empty list
     } finally {
       setLoading(false);
     }
@@ -287,7 +263,7 @@ const BanksPage: React.FC = () => {
                     <p className="text-xs text-gray-500">{bank.code}</p>
                   </div>
                 </div>
-                <StatusBadge status={bank.status} size="sm" />
+                <StatusBadge status={bank.status} size="sm" variant="admin" />
               </div>
 
               <div className="mb-4">
@@ -364,7 +340,7 @@ const BanksPage: React.FC = () => {
 
             <div className="p-6 space-y-6">
               <div className="flex items-center justify-between">
-                <StatusBadge status={selectedBank.status} />
+                <StatusBadge status={selectedBank.status} variant="admin" />
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {

@@ -13,7 +13,9 @@ const statusConfig: Record<string, StatusBadgeConfig> = {
   submitted: { label: 'Submitted', className: 'bg-blue-100 text-blue-700' },
   docs_pending: { label: 'Docs Pending', className: 'bg-amber-100 text-amber-700' },
   docs_uploaded: { label: 'Docs Uploaded', className: 'bg-cyan-100 text-cyan-700' },
+  docs_collected: { label: 'Docs Collected', className: 'bg-indigo-100 text-indigo-700' },
   bank_processing: { label: 'Bank Processing', className: 'bg-purple-100 text-purple-700' },
+  bank_logged: { label: 'Bank Logged', className: 'bg-violet-100 text-violet-700' },
   approved: { label: 'Approved', className: 'bg-green-100 text-green-700' },
   disbursed: { label: 'Disbursed', className: 'bg-emerald-100 text-emerald-700' },
   rejected: { label: 'Rejected', className: 'bg-red-100 text-red-700' },
@@ -21,7 +23,6 @@ const statusConfig: Record<string, StatusBadgeConfig> = {
   // Local Lead Status (partner-managed)
   new: { label: 'New', className: 'bg-slate-100 text-slate-700' },
   contacted: { label: 'Contacted', className: 'bg-blue-100 text-blue-700' },
-  docs_collected: { label: 'Docs Collected', className: 'bg-purple-100 text-purple-700' },
   processing: { label: 'Processing', className: 'bg-amber-100 text-amber-700' },
   closed: { label: 'Closed', className: 'bg-slate-100 text-slate-500' },
 

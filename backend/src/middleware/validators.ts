@@ -51,7 +51,7 @@ export const validateRegister = [
     .withMessage('Password is required')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
   body('firstName')
     .trim()
@@ -97,7 +97,7 @@ export const validateResetPassword = [
     .withMessage('Password is required')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
   handleValidationErrors,
 ];
@@ -128,6 +128,67 @@ export const validateVerifyOTP = [
     .withMessage('OTP must be 6 digits')
     .isNumeric()
     .withMessage('OTP must contain only numbers'),
+  handleValidationErrors,
+];
+
+// MSG91 token verification validation
+export const validateVerifyMsg91OTP = [
+  body('token')
+    .trim()
+    .notEmpty()
+    .withMessage('Verification token is required')
+    .isLength({ min: 16 })
+    .withMessage('Invalid verification token'),
+  body('type')
+    .trim()
+    .notEmpty()
+    .withMessage('Verification type is required')
+    .isIn(['phone', 'email'])
+    .withMessage('Verification type must be "phone" or "email"'),
+  handleValidationErrors,
+];
+
+// MSG91 REST API OTP validators
+export const validateMsg91SendOTP = [
+  body('mobile')
+    .trim()
+    .notEmpty()
+    .withMessage('Mobile number is required')
+    .matches(/^[0-9]{10,15}$/)
+    .withMessage('Please provide a valid mobile number'),
+  handleValidationErrors,
+];
+
+export const validateMsg91VerifyOTP = [
+  body('mobile')
+    .trim()
+    .notEmpty()
+    .withMessage('Mobile number is required')
+    .matches(/^[0-9]{10,15}$/)
+    .withMessage('Please provide a valid mobile number'),
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 4, max: 6 })
+    .withMessage('OTP must be 4-6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers'),
+  handleValidationErrors,
+];
+
+export const validateMsg91ResendOTP = [
+  body('mobile')
+    .trim()
+    .notEmpty()
+    .withMessage('Mobile number is required')
+    .matches(/^[0-9]{10,15}$/)
+    .withMessage('Please provide a valid mobile number'),
+  body('retryType')
+    .optional()
+    .trim()
+    .isIn(['text', 'voice'])
+    .withMessage('Retry type must be "text" or "voice"'),
   handleValidationErrors,
 ];
 
@@ -163,7 +224,7 @@ export const validatePasswordUpdate = [
     .withMessage('New password is required')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
   handleValidationErrors,
 ];
@@ -196,7 +257,7 @@ export const validatePartnerRegister = [
     .withMessage('Password is required')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
   body('partnerType')
     .trim()
@@ -284,22 +345,22 @@ export const validatePartnerRegister = [
   body('consentDataShare')
     .isBoolean()
     .withMessage('Data sharing consent must be a boolean')
-    .equals('true')
+    .custom((v) => v === true || v === 'true')
     .withMessage('You must agree to data sharing'),
   body('consentCommission')
     .isBoolean()
     .withMessage('Commission consent must be a boolean')
-    .equals('true')
+    .custom((v) => v === true || v === 'true')
     .withMessage('You must agree to commission terms'),
   body('declarationNotEmployed')
     .isBoolean()
     .withMessage('Employment declaration must be a boolean')
-    .equals('true')
+    .custom((v) => v === true || v === 'true')
     .withMessage('You must confirm you are not employed by our company'),
   body('consentPrivacyPolicy')
     .isBoolean()
     .withMessage('Privacy policy consent must be a boolean')
-    .equals('true')
+    .custom((v) => v === true || v === 'true')
     .withMessage('You must agree to the privacy policy'),
   body('phoneVerificationToken')
     .optional()

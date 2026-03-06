@@ -25,7 +25,8 @@ import {
   addSession,
   removeSession,
 } from '../services/userService.js';
-import { formatUserResponse, hashToken } from '../services/authService.js';
+import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from '../services/authService.js';
+import { consumeVerificationToken } from '../services/otpChallengeService.js';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -156,9 +157,31 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
 
     const hashedPassword = await hashPassword(password);
 
-    // Phone verification is handled by MSG91 REST API during onboarding
-    // The 'phoneVerificationToken' indicates the phone was verified via OTP
-    const isPhoneVerified = !!phoneVerificationToken;
+    // Validate phone verification token server-side
+    let isPhoneVerified = false;
+    if (phoneVerificationToken && mobileNumber) {
+      // Try signed JWT (MSG91 path) first — no side effects
+      try {
+        const payload = verifyMsg91VerificationToken(phoneVerificationToken);
+        if (payload.phone === normalizePhone(mobileNumber)) {
+          isPhoneVerified = true;
+        }
+      } catch {
+        // Not a valid JWT; try as OTP challenge token (Redis/DB path)
+        const consumed = await consumeVerificationToken(mobileNumber, phoneVerificationToken);
+        if (consumed) {
+          isPhoneVerified = true;
+        }
+      }
+    }
+
+    if (!isPhoneVerified) {
+      res.status(400).json({
+        success: false,
+        message: 'Phone verification is required. Please verify your phone number first.',
+      });
+      return;
+    }
 
     const user = await prisma.user.create({
       data: {
@@ -530,12 +553,39 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    if (req.user) {
+    let logoutUser = req.user;
+
+    if (!logoutUser) {
+      const refreshToken = req.cookies?.[REFRESH_COOKIE];
+
+      if (typeof refreshToken === 'string' && refreshToken.trim() !== '') {
+        try {
+          const refreshPayload = verifyRefreshToken(refreshToken);
+          const hashedRefreshToken = hashToken(refreshToken);
+          const user = await prisma.user.findUnique({
+            where: { id: refreshPayload.sub },
+          });
+
+          if (
+            user
+            && user.refreshToken === hashedRefreshToken
+            && user.refreshTokenExpires
+            && user.refreshTokenExpires > new Date()
+          ) {
+            logoutUser = user;
+          }
+        } catch {
+          // Best-effort logout: still clear the cookie below.
+        }
+      }
+    }
+
+    if (logoutUser) {
       const fingerprint = generateDeviceFingerprint(req);
-      await removeSession(req.user.id, fingerprint);
+      await removeSession(logoutUser.id, fingerprint);
 
       await prisma.user.update({
-        where: { id: req.user.id },
+        where: { id: logoutUser.id },
         data: {
           refreshToken: null,
           refreshTokenExpires: null,
@@ -543,8 +593,8 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
       });
 
       await logAuditEvent('LOGOUT', req, {
-        userId: req.user.id,
-        email: req.user.email,
+        userId: logoutUser.id,
+        email: logoutUser.email,
       });
     }
 

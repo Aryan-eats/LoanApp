@@ -530,14 +530,20 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
 
     const documentId = String(req.params.documentId);
 
-    // Look up the document and its parent lead
+    // Look up the document and its parent lead (include partnerId for IDOR check)
     const docRecord = await prisma.leadDocument.findUnique({
       where: { id: documentId },
-      include: { lead: { select: { id: true, clientFullName: true, clientEmail: true } } },
+      include: { lead: { select: { id: true, partnerId: true, clientFullName: true, clientEmail: true } } },
     });
 
     if (!docRecord) {
       res.status(404).json({ success: false, message: 'Document not found' });
+      return;
+    }
+
+    // IDOR guard: partners can only generate tokens for their own leads
+    if (currentUser.role === 'partner' && docRecord.lead.partnerId !== currentUser.id) {
+      res.status(403).json({ success: false, message: 'Access denied – lead does not belong to you' });
       return;
     }
 
@@ -594,6 +600,12 @@ export const validateUploadToken = async (req: Request, res: Response): Promise<
 
     if (!tokenRecord) {
       res.status(404).json({ success: false, message: 'Invalid upload link' });
+      return;
+    }
+
+    // Reject already-used tokens (replay protection)
+    if (tokenRecord.usedAt) {
+      res.status(410).json({ success: false, message: 'This upload link has already been used', code: 'USED' });
       return;
     }
 
@@ -670,18 +682,29 @@ export const uploadViaToken = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Reject already-used tokens (replay protection)
+    if (tokenRecord.usedAt) {
+      res.status(410).json({ success: false, message: 'This upload link has already been used' });
+      return;
+    }
+
     if (new Date() > tokenRecord.expiresAt) {
       res.status(410).json({ success: false, message: 'This upload link has expired' });
       return;
     }
 
-    // Verify the document belongs to the same lead as the token
+    if (documentId !== tokenRecord.documentId) {
+      res.status(403).json({ success: false, message: 'Document does not match this upload link' });
+      return;
+    }
+
+    // Verify the token is only used for the document it was created for.
     const docRecord = await prisma.leadDocument.findFirst({
-      where: { id: documentId, leadId: tokenRecord.leadId },
+      where: { id: tokenRecord.documentId, leadId: tokenRecord.leadId },
     });
 
     if (!docRecord) {
-      res.status(403).json({ success: false, message: 'Document does not belong to this upload link' });
+      res.status(403).json({ success: false, message: 'Document does not match this upload link' });
       return;
     }
 
@@ -691,15 +714,47 @@ export const uploadViaToken = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Upload the file
-    const updatedDoc = await uploadLeadDocument(
-      tokenRecord.leadId,
-      documentId,
-      file.originalname,
-      file.buffer,
-      file.mimetype,
-      'Customer (via link)',
-    );
+    const consumedAt = new Date();
+    const consumeResult = await prisma.documentUploadToken.updateMany({
+      where: {
+        id: tokenRecord.id,
+        usedAt: null,
+        expiresAt: { gt: consumedAt },
+      },
+      data: { usedAt: consumedAt },
+    });
+
+    if (consumeResult.count === 0) {
+      const latestTokenRecord = await prisma.documentUploadToken.findUnique({
+        where: { id: tokenRecord.id },
+      });
+
+      if (!latestTokenRecord || latestTokenRecord.usedAt) {
+        res.status(410).json({ success: false, message: 'This upload link has already been used' });
+        return;
+      }
+
+      res.status(410).json({ success: false, message: 'This upload link has expired' });
+      return;
+    }
+
+    let updatedDoc;
+    try {
+      updatedDoc = await uploadLeadDocument(
+        tokenRecord.leadId,
+        documentId,
+        file.originalname,
+        file.buffer,
+        file.mimetype,
+        'Customer (via link)',
+      );
+    } catch (uploadError) {
+      await prisma.documentUploadToken.updateMany({
+        where: { id: tokenRecord.id, usedAt: consumedAt },
+        data: { usedAt: null },
+      });
+      throw uploadError;
+    }
 
     res.status(200).json({
       success: true,

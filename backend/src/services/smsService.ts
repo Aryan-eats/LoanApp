@@ -26,6 +26,13 @@ interface Msg91Response {
 }
 
 // --------------------------------
+// Constants
+// --------------------------------
+
+/** Timeout for MSG91 API calls in milliseconds. */
+const API_TIMEOUT_MS = 10_000;
+
+// --------------------------------
 // Helpers
 // --------------------------------
 
@@ -33,18 +40,55 @@ const getAuthKey = (): string => process.env.MSG91_AUTH_KEY || '';
 const getTemplateId = (): string => process.env.MSG91_TEMPLATE_ID || '';
 
 /**
- * Format phone number to 91XXXXXXXXXX format
+ * Format phone number to 91XXXXXXXXXX format.
+ * Returns `null` if the input is not a valid 10-digit or 91+10-digit number.
  */
-const formatIndianNumber = (phone: string): string => {
+export const formatIndianNumber = (phone: string): string | null => {
   const trimmed = phone.replace(/\s+/g, '').replace(/^\+/, '');
-  if (trimmed.startsWith('91') && trimmed.length === 12) {
+  // Already in 91XXXXXXXXXX format
+  if (/^91\d{10}$/.test(trimmed)) {
     return trimmed;
   }
-  if (trimmed.length === 10) {
+  // Plain 10-digit number
+  if (/^\d{10}$/.test(trimmed)) {
     return `91${trimmed}`;
   }
-  return trimmed;
+  // Anything else is invalid
+  return null;
 };
+
+/**
+ * Helper: execute a fetch with AbortController timeout and response.ok check.
+ * Returns the parsed JSON on success, or an error result on failure.
+ */
+async function safeFetch(
+  url: string | URL,
+  init: RequestInit,
+): Promise<{ ok: true; data: Msg91Response } | { ok: false; message: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url instanceof URL ? url.toString() : url, {
+      ...init,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return { ok: false, message: `MSG91 API error (HTTP ${response.status})` };
+    }
+
+    const data = (await response.json()) as Msg91Response;
+    return { ok: true, data };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { ok: false, message: 'MSG91 API request timed out' };
+    }
+    throw error; // re-throw unexpected errors to be caught by the caller
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // --------------------------------
 // MSG91 REST API Functions
@@ -65,11 +109,18 @@ export const sendOTP = async (mobile: string): Promise<OTPResult> => {
     };
   }
 
+  const formattedMobile = formatIndianNumber(mobile);
+  if (!formattedMobile) {
+    return {
+      success: false,
+      message: 'Invalid phone number. Provide a 10-digit Indian mobile number.',
+    };
+  }
+
   try {
-    const formattedMobile = formatIndianNumber(mobile);
     const url = 'https://control.msg91.com/api/v5/otp';
 
-    const response = await fetch(url, {
+    const result = await safeFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -82,19 +133,21 @@ export const sendOTP = async (mobile: string): Promise<OTPResult> => {
       }),
     });
 
-    const data = (await response.json()) as Msg91Response;
+    if (!result.ok) {
+      return { success: false, message: result.message };
+    }
 
-    if (data.type === 'success') {
+    if (result.data.type === 'success') {
       return {
         success: true,
-        message: data.message || 'OTP sent successfully',
-        requestId: data.request_id,
+        message: result.data.message || 'OTP sent successfully',
+        requestId: result.data.request_id,
       };
     }
 
     return {
       success: false,
-      message: data.message || 'Failed to send OTP',
+      message: result.data.message || 'Failed to send OTP',
     };
   } catch (error) {
     console.error('MSG91 sendOTP error:', error);
@@ -119,33 +172,42 @@ export const verifyOTP = async (mobile: string, otp: string): Promise<VerifyResu
     };
   }
 
+  const formattedMobile = formatIndianNumber(mobile);
+  if (!formattedMobile) {
+    return {
+      success: false,
+      message: 'Invalid phone number. Provide a 10-digit Indian mobile number.',
+    };
+  }
+
   try {
-    const formattedMobile = formatIndianNumber(mobile);
     const url = new URL('https://control.msg91.com/api/v5/otp/verify');
     url.searchParams.append('mobile', formattedMobile);
     url.searchParams.append('otp', otp);
 
-    const response = await fetch(url.toString(), {
+    const result = await safeFetch(url, {
       method: 'GET',
       headers: {
         authkey: authKey,
       },
     });
 
-    const data = (await response.json()) as Msg91Response;
+    if (!result.ok) {
+      return { success: false, message: result.message };
+    }
 
-    if (data.type === 'success') {
+    if (result.data.type === 'success') {
       return {
         success: true,
-        message: data.message || 'OTP verified successfully',
+        message: result.data.message || 'OTP verified successfully',
         type: 'success',
       };
     }
 
     return {
       success: false,
-      message: data.message || 'Invalid OTP',
-      type: data.type,
+      message: result.data.message || 'Invalid OTP',
+      type: result.data.type,
     };
   } catch (error) {
     console.error('MSG91 verifyOTP error:', error);
@@ -174,32 +236,41 @@ export const resendOTP = async (
     };
   }
 
+  const formattedMobile = formatIndianNumber(mobile);
+  if (!formattedMobile) {
+    return {
+      success: false,
+      message: 'Invalid phone number. Provide a 10-digit Indian mobile number.',
+    };
+  }
+
   try {
-    const formattedMobile = formatIndianNumber(mobile);
     const url = new URL('https://control.msg91.com/api/v5/otp/retry');
     url.searchParams.append('mobile', formattedMobile);
     url.searchParams.append('retrytype', retryType);
 
-    const response = await fetch(url.toString(), {
+    const result = await safeFetch(url, {
       method: 'GET',
       headers: {
         authkey: authKey,
       },
     });
 
-    const data = (await response.json()) as Msg91Response;
+    if (!result.ok) {
+      return { success: false, message: result.message };
+    }
 
-    if (data.type === 'success') {
+    if (result.data.type === 'success') {
       return {
         success: true,
-        message: data.message || 'OTP resent successfully',
-        requestId: data.request_id,
+        message: result.data.message || 'OTP resent successfully',
+        requestId: result.data.request_id,
       };
     }
 
     return {
       success: false,
-      message: data.message || 'Failed to resend OTP',
+      message: result.data.message || 'Failed to resend OTP',
     };
   } catch (error) {
     console.error('MSG91 resendOTP error:', error);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { encryptString, decryptString } from '../utils/fieldEncryption.js';
+import { encryptWhere, encryptString, decryptString } from '../utils/fieldEncryption.js';
 
 beforeAll(() => {
   if (!process.env.FIELD_ENCRYPTION_KEY) {
@@ -64,13 +64,13 @@ describe('field encryption', () => {
     expect(decryptString(encrypted)).toBe(plaintext);
   });
 
-  it('throws on tampered ciphertext', () => {
+  it('returns null on tampered ciphertext', () => {
     const encrypted = encryptString('tamperTest')!;
     const parts = encrypted.split(':');
-    // Corrupt the ciphertext portion
-    parts[3] = Buffer.from('corrupted').toString('base64');
+    // Corrupt the auth tag while keeping its decoded length at 16 bytes.
+    parts[3] = Buffer.alloc(16, 1).toString('base64');
     const tampered = parts.join(':');
-    expect(() => decryptString(tampered)).toThrow();
+    expect(decryptString(tampered)).toBeNull();
   });
 
   it('decryptString returns un-prefixed strings as-is', () => {
@@ -80,5 +80,13 @@ describe('field encryption', () => {
 
   it('throws on truncated encrypted payload', () => {
     expect(() => decryptString('enc:v1:truncated')).toThrow('Invalid encrypted payload format');
+  });
+
+  it('throws a clear error for unsupported substring filters on encrypted fields', () => {
+    expect(() =>
+      encryptWhere('User', {
+        panNumber: { contains: 'ABCDE1234F' },
+      })
+    ).toThrow('Unsupported contains filter on encrypted field "User.panNumber" (filter).');
   });
 });

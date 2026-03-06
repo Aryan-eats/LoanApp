@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import PrefetchLink from '../../components/PrefetchLink';
+import PrefetchLink from '../../components/shared/PrefetchLink';
 
 interface MenuItem {
   path: string;

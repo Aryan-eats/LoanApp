@@ -2,6 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { calculateEmi } from '../api/emiApi';
 import { IndianRupee, Percent, CalendarClock, ArrowRight } from 'lucide-react';
 
+const toFiniteNumber = (value: unknown): number => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const buildSafeEmiResult = (principal: number, annualRate: number, tenureYears: number) => {
+  const tenureMonths = Math.round(tenureYears * 12);
+
+  if (!Number.isFinite(principal) || principal <= 0 || !Number.isFinite(tenureMonths) || tenureMonths <= 0) {
+    return {
+      emi: 0,
+      total_interest: 0,
+      total_payment: 0,
+    };
+  }
+
+  if (!Number.isFinite(annualRate) || annualRate <= 0) {
+    return {
+      emi: principal / tenureMonths,
+      total_interest: 0,
+      total_payment: principal,
+    };
+  }
+
+  return null;
+};
+
 const EmiCalculator: React.FC = () => {
   const [loanAmount, setLoanAmount] = useState<number>(500000);
   const [interestRate, setInterestRate] = useState<number>(10.5);
@@ -17,7 +44,11 @@ const EmiCalculator: React.FC = () => {
       setError(null);
       try {
         const data = await calculateEmi(loanAmount, interestRate, years, undefined);
-        setResult(data);
+        setResult({
+          emi: toFiniteNumber(data?.emi ?? data?.EMI),
+          total_interest: toFiniteNumber(data?.total_interest ?? data?.TotalInterest),
+          total_payment: toFiniteNumber(data?.total_payment ?? data?.TotalPayment),
+        });
       } catch (err) {
         setError('Unable to calculate EMI at this moment.');
         console.error(err);
@@ -26,13 +57,23 @@ const EmiCalculator: React.FC = () => {
       }
     };
     
-    // Only calculate if all values are valid and > 0
+    const safeResult = buildSafeEmiResult(loanAmount, interestRate, years);
+    if (safeResult) {
+      setResult(safeResult);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     if (loanAmount > 0 && interestRate > 0 && years > 0) {
       const timer = setTimeout(() => {
         fetchCalculate();
       }, 300); // 300ms debounce
       return () => clearTimeout(timer);
     }
+
+    setResult({ emi: 0, total_interest: 0, total_payment: 0 });
+    setLoading(false);
   }, [loanAmount, interestRate, years]);
 
   const formatCurrency = (val: number | string) => {

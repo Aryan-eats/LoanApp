@@ -13,7 +13,9 @@ export type LeadStatus =
   | 'submitted' 
   | 'docs_pending'
   | 'docs_uploaded'
-  | 'bank_processing' 
+  | 'docs_collected'
+  | 'bank_processing'
+  | 'bank_logged'
   | 'approved' 
   | 'disbursed' 
   | 'rejected';

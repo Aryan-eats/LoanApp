@@ -4,6 +4,40 @@ import type { User } from '@prisma/client';
 
 // -- Response formatting -----------------------------------------------------
 
+type SensitiveUserFields =
+  | 'password'
+  | 'otpHash'
+  | 'otpExpires'
+  | 'resetPasswordToken'
+  | 'resetPasswordExpires'
+  | 'refreshToken'
+  | 'refreshTokenExpires';
+
+export const sanitizeAdminUserResponse = <T extends Record<string, unknown>>(
+  user: T
+): Omit<T, SensitiveUserFields> => {
+  const {
+    password,
+    otpHash,
+    otpExpires,
+    resetPasswordToken,
+    resetPasswordExpires,
+    refreshToken,
+    refreshTokenExpires,
+    ...safeUser
+  } = user as T & Record<SensitiveUserFields, unknown>;
+
+  void password;
+  void otpHash;
+  void otpExpires;
+  void resetPasswordToken;
+  void resetPasswordExpires;
+  void refreshToken;
+  void refreshTokenExpires;
+
+  return safeUser;
+};
+
 export const formatUserResponse = (user: User) => ({
   id: user.id,
   email: user.email,

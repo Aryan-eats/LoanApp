@@ -13,6 +13,13 @@ const OTP_SECONDS = 5 * 60;
 
 const USER_OTP_PREFIX = 'user_otp:';
 
+export type VerifyUserOtpResult =
+  | { status: 'verified' }
+  | { status: 'invalid' }
+  | { status: 'use_db' };
+
+const hashOtp = (otp: string): string => crypto.createHash('sha256').update(otp).digest('hex');
+
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = await bcrypt.genSalt(12);
   return bcrypt.hash(password, salt);
@@ -88,27 +95,30 @@ export const generatePasswordResetToken = async (userId: string): Promise<string
 };
 
 export const generateOTP = async (userId: string): Promise<string> => {
-  const otp = crypto.randomInt(100000, 999999).toString();
-  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  const hashedOtp = hashOtp(otp);
+  const otpExpires = new Date(Date.now() + OTP_SECONDS * 1000);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      otpHash: hashedOtp,
+      otpExpires,
+    },
+  });
 
   if (isRedisAvailable()) {
-    // Store in Redis with automatic TTL - no DB write needed
-    const redis = await getRedisClient();
-    await redis.set(
-      `${USER_OTP_PREFIX}${userId}`,
-      hashedOtp,
-      'EX',
-      OTP_SECONDS
-    );
-  } else {
-    // Fallback: store on the User record in PostgreSQL
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        otpHash: hashedOtp,
-        otpExpires: new Date(Date.now() + OTP_SECONDS * 1000),
-      },
-    });
+    try {
+      const redis = await getRedisClient();
+      await redis.set(
+        `${USER_OTP_PREFIX}${userId}`,
+        hashedOtp,
+        'EX',
+        OTP_SECONDS
+      );
+    } catch (error) {
+      console.error('User OTP Redis SET error:', error);
+    }
   }
 
   return otp;
@@ -121,20 +131,24 @@ export const generateOTP = async (userId: string): Promise<string> => {
 export const verifyUserOTP = async (
   userId: string,
   otp: string
-): Promise<boolean> => {
-  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+): Promise<VerifyUserOtpResult> => {
+  const hashedOtp = hashOtp(otp);
 
   if (isRedisAvailable()) {
-    const redis = await getRedisClient();
-    const stored = await redis.get(`${USER_OTP_PREFIX}${userId}`);
-    if (!stored) return false;
-    if (stored !== hashedOtp) return false;
-    await redis.del(`${USER_OTP_PREFIX}${userId}`);
-    return true;
+    try {
+      const redis = await getRedisClient();
+      const stored = await redis.get(`${USER_OTP_PREFIX}${userId}`);
+      if (!stored) return { status: 'invalid' };
+      if (stored !== hashedOtp) return { status: 'invalid' };
+      await redis.del(`${USER_OTP_PREFIX}${userId}`);
+      return { status: 'verified' };
+    } catch (error) {
+      console.error('User OTP Redis GET error:', error);
+      return { status: 'use_db' };
+    }
   }
 
-  // Fallback - check DB columns (handled by caller via user.otpHash / user.otpExpires)
-  return false; // signal caller to use legacy DB path
+  return { status: 'use_db' };
 };
 
 export const isPasswordReused = async (

@@ -53,6 +53,13 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
     if (phone) {
       const smsResult = await sendMsg91OTP(phone);
       if (!smsResult.success) {
+        await logAuditEvent('OTP_SEND_FAILED', req, {
+          userId: user?.id,
+          email: user?.email,
+          success: false,
+          failureReason: smsResult.message || 'SMS delivery failed',
+          metadata: { method: 'phone', onboarding: !user },
+        });
         res.status(500).json({
           success: false,
           message: smsResult.message || 'Failed to send OTP',
@@ -99,15 +106,16 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
 
     // -- Registered-user OTP verification -------------------
     if (user) {
-      // Try Redis-based verification first
-      const redisVerified = await verifyUserOTP(user.id, otp);
+      const otpVerification = await verifyUserOTP(user.id, otp);
 
-      if (redisVerified) {
+      if (otpVerification.status === 'verified') {
         const updatedUser = await prisma.user.update({
           where: { id: user.id },
           data: {
             isEmailVerified: email ? true : user.isEmailVerified,
             isPhoneVerified: phone ? true : user.isPhoneVerified,
+            otpHash: null,
+            otpExpires: null,
           },
         });
 
@@ -125,8 +133,7 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      // Fallback: legacy DB-column OTP check
-      if (user.otpHash && user.otpExpires) {
+      if (otpVerification.status === 'use_db' && user.otpHash && user.otpExpires) {
         if (user.otpExpires < new Date()) {
           res.status(400).json({
             success: false,
@@ -167,6 +174,12 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
         });
         return;
       }
+
+      res.status(400).json({
+        success: false,
+        message: 'Invalid verification code',
+      });
+      return;
     }
 
     if (phone) {
@@ -331,6 +344,12 @@ export const msg91SendOTP = async (req: Request, res: Response): Promise<void> =
         data: { requestId: result.requestId },
       });
     } else {
+      await logAuditEvent('OTP_SEND_FAILED', req, {
+        success: false,
+        failureReason: result.message,
+        metadata: { method: 'msg91_rest_api', mobile: redactPhone(mobile) },
+      });
+
       res.status(400).json({
         success: false,
         message: result.message,
@@ -362,8 +381,8 @@ export const msg91VerifyOTP = async (req: Request, res: Response): Promise<void>
     }
 
     const bypassVerification =
-      process.env.MSG91_BYPASS_VERIFY === 'true' ||
-      process.env.NODE_ENV !== 'production';
+      process.env.MSG91_BYPASS_VERIFY === 'true' &&
+      process.env.NODE_ENV === 'test';
 
     const result = bypassVerification
       ? { success: true, message: 'OTP verification bypassed temporarily' }
@@ -428,6 +447,12 @@ export const msg91ResendOTP = async (req: Request, res: Response): Promise<void>
         data: { requestId: result.requestId },
       });
     } else {
+      await logAuditEvent('OTP_SEND_FAILED', req, {
+        success: false,
+        failureReason: result.message,
+        metadata: { method: 'msg91_rest_api_resend', mobile: redactPhone(mobile), retryType },
+      });
+
       res.status(400).json({
         success: false,
         message: result.message,

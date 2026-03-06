@@ -10,6 +10,7 @@ import {
   hashToken,
   normalizePhone,
   formatUserResponse,
+  sanitizeAdminUserResponse,
   signMsg91VerificationToken,
   verifyMsg91VerificationToken,
   getMsg91VerificationSecret,
@@ -143,6 +144,40 @@ describe('formatUserResponse – sensitive field exclusion', () => {
     const response = formatUserResponse(mockUser);
     expect(response).not.toHaveProperty('aadhaarNumber');
     expect(response).not.toHaveProperty('panNumber');
+  });
+});
+
+describe('sanitizeAdminUserResponse – credential and token stripping', () => {
+  it('removes password, OTP, reset-token, and refresh-token fields', () => {
+    const response = sanitizeAdminUserResponse({
+      id: 'usr-2',
+      email: 'admin@example.com',
+      firstName: 'Admin',
+      lastName: 'User',
+      password: '$2a$12$hashedpassword',
+      otpHash: 'hashed-otp',
+      otpExpires: new Date('2025-01-01'),
+      resetPasswordToken: 'reset-token',
+      resetPasswordExpires: new Date('2025-01-02'),
+      refreshToken: 'refresh-token',
+      refreshTokenExpires: new Date('2025-01-03'),
+      role: 'admin',
+    });
+
+    expect(response).toMatchObject({
+      id: 'usr-2',
+      email: 'admin@example.com',
+      firstName: 'Admin',
+      lastName: 'User',
+      role: 'admin',
+    });
+    expect(response).not.toHaveProperty('password');
+    expect(response).not.toHaveProperty('otpHash');
+    expect(response).not.toHaveProperty('otpExpires');
+    expect(response).not.toHaveProperty('resetPasswordToken');
+    expect(response).not.toHaveProperty('resetPasswordExpires');
+    expect(response).not.toHaveProperty('refreshToken');
+    expect(response).not.toHaveProperty('refreshTokenExpires');
   });
 });
 

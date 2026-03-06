@@ -15,8 +15,10 @@ const buildStore = (prefix: string) => {
     // @ts-expect-error - ioredis sendCommand is compatible
     sendCommand: async (...args: string[]) => {
       const redis = await getRedisClient();
-      const call = redis.call as (...redisArgs: string[]) => Promise<unknown>;
-      return call(...args);
+      // Must call on the instance directly to preserve `this` context;
+      // extracting redis.call into a variable loses the binding and causes
+      // "Cannot read properties of undefined (reading 'options')" in ioredis.
+      return redis.call(...(args as [string, ...string[]]));
     },
     prefix: `rl:${prefix}:`,
   });

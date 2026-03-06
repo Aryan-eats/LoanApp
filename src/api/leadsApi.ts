@@ -31,6 +31,31 @@ export interface CreateLeadData {
   preferredBank?: string;
 }
 
+export interface MatchedOffer {
+  id: string;
+  name: string;
+  code: string;
+  logo: string | null;
+  supportedLoanTypes: string[];
+  matchedLoanTypes: string[];
+  interestRateMin: number;
+  interestRateMax: number;
+  processingFee: string;
+  maxTenure: number;
+  minAmount: number;
+  maxAmount: number;
+  processingTime: string;
+  isPopular: boolean;
+  displayAmount: number;
+  estimatedEmi: number | null;
+}
+
+export interface MatchOffersRequest {
+  loanType?: string;
+  loanSubType?: string;
+  loanAmount?: number;
+}
+
 export interface LeadsResponse {
   leads: Lead[];
   pagination: {
@@ -96,7 +121,10 @@ export const getLeadById = async (
  * Create a new lead (public endpoint for website, or partner endpoint)
  * Website forms use /api/leads (public), partners use /api/partner/leads (auth required)
  */
-export const createLead = async (data: CreateLeadData, isPartner = true): Promise<ApiResponse<{ lead: Lead }>> => {
+export const createLead = async (
+  data: CreateLeadData,
+  isPartner = true
+): Promise<ApiResponse<{ lead: Lead; leadToken?: string }>> => {
   const endpoint = isPartner ? '/partner/leads' : '/leads';
   const response = await apiClient.post(endpoint, data);
   return response.data;
@@ -168,14 +196,27 @@ export const getLeadStats = async (isAdmin = false): Promise<ApiResponse<LeadSta
   return response.data;
 };
 
+export const matchOffers = async (
+  data: MatchOffersRequest
+): Promise<ApiResponse<{ offers: MatchedOffer[]; resolvedLoanTypes: string[] }>> => {
+  const response = await apiClient.post('/leads/match-offers', data);
+  return response.data;
+};
+
 /**
  * Update preferred bank for a lead (public endpoint for website users)
+ * Requires the leadToken returned during lead creation.
  */
 export const updatePreferredBank = async (
   id: string,
-  preferredBank: string
+  preferredBank: string,
+  leadToken: string
 ): Promise<ApiResponse<{ lead: Lead }>> => {
-  const response = await apiClient.patch(`/leads/${id}/preferred-bank`, { preferredBank });
+  const response = await apiClient.patch(
+    `/leads/${id}/preferred-bank`,
+    { preferredBank },
+    { headers: { 'x-lead-token': leadToken } }
+  );
   return response.data;
 };
 
@@ -189,5 +230,6 @@ export default {
   assignBank,
   deleteLead,
   getLeadStats,
+  matchOffers,
   updatePreferredBank,
 };

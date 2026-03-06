@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
+import { validateUUID } from '../middleware/validateUUID.js';
 import {
   createLead,
   getLeads,
@@ -23,6 +24,7 @@ const router = Router();
 // All partner routes require authentication and partner role
 router.use(protect);
 router.use(authorize('partner'));
+router.use(validateUUID);
 
 /**
  * Lead Management Routes
@@ -68,6 +70,31 @@ router.get('/dashboard', async (req, res) => {
   // This will be expanded with more dashboard data
   // For now, redirect to stats
   res.redirect('/api/partner/leads/stats');
+});
+
+/**
+ * Bank listing for partners (active banks only)
+ * Reuses the admin listBanks controller which returns cached bank data.
+ */
+router.get('/banks', async (_req, res) => {
+  // Inline handler rather than importing the full admin controller
+  const { cacheWrap } = await import('../utils/cache.js');
+  const { basePrisma } = await import('../config/prisma.js');
+  try {
+    const banks = await cacheWrap(
+      'banks:all',
+      () => basePrisma.bank.findMany({
+        where: { status: 'active' },
+        include: { commissionRates: true },
+        orderBy: { name: 'asc' },
+      }),
+      300
+    );
+    res.status(200).json({ success: true, count: banks.length, data: { banks } });
+  } catch (error) {
+    console.error('Partner banks list error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 export default router;

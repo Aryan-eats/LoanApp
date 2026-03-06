@@ -85,7 +85,13 @@ export const decryptString = (value: string | null | undefined): string | null |
 
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+
+  let plaintext: Buffer;
+  try {
+    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
+    return null;
+  }
 
   return plaintext.toString('utf8');
 };
@@ -137,7 +143,7 @@ const encryptFields = (model: string, data: Record<string, unknown> | undefined 
   });
 };
 
-const encryptWhere = (model: string, where: Record<string, unknown> | undefined | null) => {
+export const encryptWhere = (model: string, where: Record<string, unknown> | undefined | null) => {
   if (!where) return;
   const fields = ENCRYPTED_FIELDS[model];
   if (!fields) return;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { getUsers, createUser } from '../../api/adminApi';
 import type { AdminRole } from '../types/admin';
 import { useDebounce } from '../../hooks';
@@ -352,7 +352,7 @@ const UsersPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={user.isActive ? 'active' : 'inactive'} size="sm" />
+                        <StatusBadge status={user.isActive ? 'active' : 'inactive'} size="sm" variant="admin" />
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">{user.lastLogin || 'Never'}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">{user.createdAt}</td>

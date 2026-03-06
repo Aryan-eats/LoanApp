@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
+import { validateUUID } from '../middleware/validateUUID.js';
 import {
   getPartners,
   getPartnerById,
@@ -30,6 +31,7 @@ router.use(protect);
 
 // Admin-only routes
 router.use(authorize('admin'));
+router.use(validateUUID);
 
 // GET /api/partners/stats - Get partner statistics (must be before /:id)
 router.get('/stats', getPartnerStats);

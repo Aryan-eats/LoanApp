@@ -13,7 +13,8 @@
  * OTP verification is now handled via direct REST API calls in smsService.ts
  */
 export const verifyMsg91Token = async (_accessToken: string): Promise<boolean> => {
-  console.warn('verifyMsg91Token is deprecated. Use verifyOTP from smsService.ts instead.');
-  // Always return false since widget flow is deprecated
-  return false;
+  throw new Error(
+    'verifyMsg91Token is deprecated and must not be called. ' +
+    'Use verifyOTP from smsService.ts instead.'
+  );
 };

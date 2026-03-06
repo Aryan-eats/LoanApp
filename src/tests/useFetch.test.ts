@@ -92,4 +92,23 @@ describe('useFetch hook', () => {
       expect(result.current.error).toBeNull();
     });
   });
+
+  it('aborts in-flight requests on unmount', () => {
+    let requestSignal: AbortSignal | undefined;
+    const onError = vi.fn();
+    const fetchFn = vi.fn((signal?: AbortSignal) => {
+      requestSignal = signal;
+      return new Promise<never>(() => {});
+    });
+
+    const { unmount } = renderHook(() => useFetch(fetchFn, { onError }));
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(false);
+
+    unmount();
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
+  });
 });

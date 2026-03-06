@@ -1,25 +1,122 @@
-# Database Layer Review — Loan App Backend
+# Database Layer Review and MVP Coverage — Loan App Backend
 
 
-> **Date:** 2026-03-03  
+> **Date:** 2026-03-06  
 > **Stack:** PostgreSQL · Prisma ORM (with `@prisma/adapter-pg`) · Redis (ioredis) · Node.js  
-> **Files analysed:** `prisma/schema.prisma`, `src/config/prisma.ts`, `src/config/redis.ts`, `src/utils/cache.ts`, `src/utils/auditLogger.ts`, `src/services/userService.ts`, `src/services/authService.ts`, `src/services/documentService.ts`, `src/controllers/adminController.ts`, `src/controllers/authController.ts`, `src/controllers/leadController.ts`, `src/controllers/partnerController.ts`, `src/controllers/documentController.ts`
+> **Files analysed:** `production/task.md`, `prisma/schema.prisma`, `src/config/prisma.ts`, `src/config/redis.ts`, `src/utils/cache.ts`, `src/utils/auditLogger.ts`, `src/utils/leadHelpers.ts`, `src/services/userService.ts`, `src/services/authService.ts`, `src/services/documentService.ts`, `src/controllers/adminController.ts`, `src/controllers/authController.ts`, `src/controllers/leadController.ts`, `src/controllers/partnerController.ts`, `src/controllers/documentController.ts`, `src/scripts/seedDocRequirements.ts`
 
 ---
 
 ## Table of Contents
 
-1. [Configuration](#1-configuration)
-2. [Query Correctness](#2-query-correctness)
-3. [Performance](#3-performance)
-4. [Async Opportunities](#4-async-opportunities)
-5. [Caching](#5-caching)
-6. [Indexing](#6-indexing)
-7. [Prioritised Action List](#7-prioritised-action-list)
+1. [Executive Summary](#1-executive-summary)
+2. [MVP Requirement Coverage](#2-mvp-requirement-coverage)
+3. [Required Database Changes for MVP](#3-required-database-changes-for-mvp)
+4. [Configuration](#4-configuration)
+5. [Query Correctness](#5-query-correctness)
+6. [Performance](#6-performance)
+7. [Async Opportunities](#7-async-opportunities)
+8. [Caching](#8-caching)
+9. [Indexing](#9-indexing)
+10. [Prioritised Action List](#10-prioritised-action-list)
 
 ---
 
-## 1. Configuration
+## 1. Executive Summary
+
+The current database implementation already covers a meaningful part of the MVP:
+
+- `User`, `ActiveSession`, `PasswordHistory`, `OtpChallenge`, and `AuditLog` provide a solid auth and admin foundation.
+- `PartnerData` already behaves like a lightweight partner-side CRM for local client capture.
+- `Lead`, `LeadTimeline`, and `LeadDocument` already support submitted loan cases, pipeline state, document handling, and auditability.
+- `Bank`, `BankCommissionRate`, and `LenderDocRequirement` already provide a lender catalog plus document requirements.
+- `DocumentUploadToken` already enables tokenized customer document upload links.
+
+The main MVP gaps are structural rather than foundational:
+
+- client data is split across `PartnerData` and `Lead`, with no canonical link between the two;
+- lender eligibility is only partially modeled;
+- follow-up reminders are not modeled at all;
+- customer tracking links and customer-visible case updates are not modeled;
+- document storage is lead-centric, not full client-vault centric for pre-submission files.
+
+---
+
+## 2. MVP Requirement Coverage
+
+Status legend used below: `Implemented`, `Partial`, `Missing`.
+
+| MVP requirement | Current database support | Status | What is already implemented | What still needs to change |
+|----------------|--------------------------|--------|-----------------------------|----------------------------|
+| Partner Dashboard | `PartnerData`, `Lead`, `LeadDocument`, `LeadTimeline`, `AuditLog`, commission fields on `Lead` | Partial | Core counts are derivable: total clients, active cases, docs pending, submitted/approved/disbursed cases, recent activity, approval/disbursal metrics. | Add follow-up/reminder entities. Consider pre-aggregated dashboard summaries later for 10k partners. |
+| Client Management System | `PartnerData` for partner-side records, `Lead` for submitted cases | Partial | Personal, contact, income, city, loan amount, tenure, purpose, notes, and local workflow state already exist. | Add missing financial fields such as `existingEmis` and `cibilScore`. Normalize the split between `PartnerData` and `Lead` by linking them directly or introducing a canonical `Client`/`LoanCase` model. |
+| Client pipeline stages | `LocalLeadStatus`, `LeadStatus`, `LeadTimeline` | Partial | There is already a pipeline and timeline mechanism. | Required stages do not align cleanly with the PRD. Add or remap stages for `lead_received`, `file_preparation`, and `bank_selection` so reporting is consistent. |
+| Document Vault | `LeadDocument`, `DocumentUploadToken`, `r2ObjectKey`, `fileUrl`, `DocumentStatus` | Partial | Documents are typed, status-tracked, linked to a case, and can be uploaded by tokenized customer link. | Support document storage before submission as part of the partner's client vault, not only after a `Lead` exists. Add optional versioning, expiry, checklist completion, and verification metadata if the vault will be operationally central. |
+| Lender Criteria Library | `Bank`, `BankCommissionRate`, `LenderDocRequirement`, seeded doc requirements | Partial | Bank profile, supported loan types, rate range, fee, tenure, amount range, TAT, and required documents are already modeled. | Add explicit eligibility criteria: minimum income, minimum CIBIL, FOIR, eligible employment categories, and product-level rules. Right now doc requirements exist, but approval criteria do not. |
+| Loan Calculators | EMI-related fields on `Lead` (`interestRate`, `emi`, `estimatedEMI`) | Partial | The database can store EMI results once a case exists. | For the MVP, calculators can stay stateless and need no dedicated tables. Add `CalculationHistory` only if saved comparisons or partner advisory history becomes a product requirement. |
+| Case submission to GPS India | `Lead`, `LeadTimeline`, `partnerId`, `preferredBank`, `bankAssigned`, commission fields | Partial | Submitted cases are clearly represented and can move through bank processing, approval, and disbursal. | Add explicit submission metadata such as `sourcePartnerDataId`, `submittedToGpsAt`, `submittedBy`, and `manualLenderName` for lenders that are not in the catalog. |
+| Admin Dashboard | `User`, `Lead`, `LeadDocument`, `Bank`, `AuditLog`, onboarding and KYC fields | Partial | Basic partner management, case management, lender management, and document monitoring are supported by existing tables. | If admin workload grows, add explicit assignment and queue tables. For MVP this is optional, but helpful for internal GPS processing ownership. |
+| Authentication system | `User`, `ActiveSession`, `PasswordHistory`, `OtpChallenge`, `AuditLog` | Partial | Admin and partner authentication are well covered, including sessions, OTP, audit logs, KYC, and onboarding state. | The PRD calls for `Admin`, `Partner`, and `Customer`. There is no `customer` role or dedicated customer-access model yet. |
+| Customer tracking link | `DocumentUploadToken` only | Partial | Customer document upload links already exist and expose pending documents for a lead. | Add a dedicated tracking-link model plus customer-visible status updates, timeline events, and question/query capture. The current token model is upload-focused, not case-tracking focused. |
+| 10k partner architecture readiness | Existing indexes on `Lead`, `User`, `AuditLog`, `ActiveSession` | Partial | Core relational design is viable and several useful indexes already exist. | Implement the scaling changes already identified in this document: better pooling, async audit logging, search indexes, pagination, and a cleaner analytics/query strategy. |
+
+### Implemented Today
+
+- Partner onboarding, KYC, banking details, and consent capture already exist on `User`.
+- Partner-side local client capture already exists in `PartnerData`.
+- Submitted case workflow already exists in `Lead` plus `LeadTimeline`.
+- Document metadata and secure upload-link support already exist in `LeadDocument` and `DocumentUploadToken`.
+- Lender document requirements are already persisted and seedable through `LenderDocRequirement`.
+
+---
+
+## 3. Required Database Changes for MVP
+
+These are the product-driven schema changes still needed, separate from the performance and query fixes documented later.
+
+### P0 - Must add before the MVP data model is considered complete
+
+1. Unify partner-local clients and submitted cases.
+  Short-term: add `sourcePartnerDataId` on `Lead` and make the relationship explicit.
+  Long-term: consider replacing the split with a canonical `Client` plus `LoanCase` model.
+
+2. Add missing client financial fields required by the PRD.
+  Add fields such as `existingEmis`, `cibilScore`, `loanPurpose` on the canonical case record, and optionally `monthlyObligations` or `foirSnapshot` if eligibility logic will be saved.
+
+3. Add lender eligibility rules, not just document requirements.
+  Recommended new model: `LenderEligibilityRule` keyed by lender and loan type with fields like `minIncome`, `minCibilScore`, `maxFoir`, `employmentTypes`, `minAge`, `maxAge`, `maxLoanAmount`, `cityScope`, and `notes`.
+
+4. Add follow-up and reminder support.
+  Recommended new model: `FollowUpReminder` with `partnerId`, `partnerDataId` or `leadId`, `title`, `note`, `dueAt`, `priority`, `status`, `completedAt`, and `createdBy`.
+
+5. Add customer tracking access and customer-facing timeline records.
+  Recommended models: `LeadTrackingLink` for secure access, `LeadTrackingEvent` for visible milestone updates, and `LeadCustomerQuery` if customers should ask/respond to document or processing questions.
+
+### P1 - Strongly recommended to match the workflow described in the PRD
+
+1. Expand stage enums to map cleanly to the business pipeline.
+  Today the statuses are close, but not exact. Add or standardize stages for `lead_received`, `file_preparation`, `bank_selection`, `submitted`, `approved`, and `disbursed` across both partner-local and GPS-submitted flows.
+
+2. Make the document vault client-centric, not only lead-centric.
+  Either add nullable `partnerDataId` support to `LeadDocument` or introduce a separate `PartnerClientDocument` model so partners can organize files before submission to GPS.
+
+3. Capture submission metadata for cases sent to GPS India.
+  Add `submittedToGpsAt`, `submittedByUserId`, `gpsSubmissionStatus`, `manualLenderName`, and optionally `gpsCaseReference`.
+
+4. Add lender comparison detail if the platform will show partner-side comparisons.
+  This can be modeled either through richer `Bank` product tables or a normalized `LenderProduct` model instead of storing most criteria directly on `Bank`.
+
+### P2 - Optional now, useful once usage grows
+
+1. Add `CalculationHistory` if partners need saved EMI and balance-transfer scenarios.
+
+2. Add dashboard summary tables or materialized views if live aggregation over `Lead`, `PartnerData`, and `LeadDocument` becomes slow at scale.
+
+3. Add admin work-queue or assignment tables if GPS internal ops need ownership tracking per submitted case.
+
+---
+
+## 4. Configuration
 
 ---
 
@@ -148,7 +245,7 @@ const pool = new Pool({
 
 --- -->
 
-## 2. Query Correctness
+## 5. Query Correctness
 
 ---
 
@@ -519,7 +616,7 @@ const getJob = async (id: string): Promise<AuditExportJob | null> => {
 
 ---
 
-## 3. Performance
+## 6. Performance
 
 ---
 
@@ -640,7 +737,7 @@ await new Promise((resolve, reject) => stream.end(resolve));
 
 ---
 
-## 4. Async Opportunities
+## 7. Async Opportunities
 
 ---
 
@@ -738,7 +835,7 @@ This is correctly placed after the response. But like AO-03, the `await` after `
 
 ---
 
-## 5. Caching
+## 8. Caching
 
 ---
 
@@ -803,7 +900,7 @@ This is correctly placed after the response. But like AO-03, the `await` after `
 
 ---
 
-## 6. Indexing
+## 9. Indexing
 
 ---
 
@@ -937,7 +1034,7 @@ CREATE INDEX audit_logs_ip_created_at ON audit_logs (ip, created_at DESC)
 
 ---
 
-## 7. Prioritised Action List
+## 10. Prioritised Action List
 
 Order by impact-per-effort. Fix these in sequence:
 
@@ -973,7 +1070,8 @@ Order by impact-per-effort. Fix these in sequence:
 
 | Category | Grade | Key Issues |
 |----------|-------|-----------|
-| Schema Design | B+ | Solid — good use of cascade rules, enums, and field types. Minor: `datasource` missing explicit URL. |
+| MVP Coverage | C+ | Strong foundation, but still missing follow-up reminders, canonical client/case linkage, lender eligibility rules, and customer tracking models. |
+| Schema Design | B | Solid base models and relations, but `PartnerData` and `Lead` overlap and the schema does not yet model the full PRD workflow cleanly. |
 | Connection Config | D | Critical: no pool size, no timeouts, no SSL enforcement. Fragile under load. |
 | Redis Config | C | No command timeout, no eviction policy documented, potential security risk. |
 | Query Correctness | C+ | `listUsers` unbounded + leaking secrets. Audit integrity race condition. Login non-transactional. |

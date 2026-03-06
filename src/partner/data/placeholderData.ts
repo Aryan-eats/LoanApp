@@ -1,6 +1,5 @@
 // Placeholder data for Partner Dashboard
 
-import { consolidatedBanks } from '../../data/mockBanks';
 import type {
   PartnerProfile,
   Lead,
@@ -568,22 +567,7 @@ export const commissions: Commission[] = [
   },
 ];
 
-export const bankOffers: BankOffer[] = consolidatedBanks.map(bank => ({
-  id: bank.id,
-  bankName: bank.name,
-  bankLogo: bank.logo,
-  loanTypes: bank.supportedLoanTypes,
-  interestRateMin: bank.interestRateMin,
-  interestRateMax: bank.interestRateMax,
-  processingFee: bank.processingFee,
-  maxTenure: bank.maxTenure,
-  minAmount: bank.minAmount,
-  maxAmount: bank.maxAmount,
-  processingTime: bank.processingTime,
-  features: bank.features,
-  isPopular: bank.isPopular,
-  commissionRates: bank.commissionRates,
-}));
+export const bankOffers: BankOffer[] = [];
 
 export const supportTickets: SupportTicket[] = [
   {

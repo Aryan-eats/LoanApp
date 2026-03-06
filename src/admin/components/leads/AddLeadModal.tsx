@@ -73,9 +73,13 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ isOpen, onClose, onCreated 
 
     if (!formData.loanType) nextErrors.loanType = 'Loan type is required';
 
+    const loanAmount = Number(formData.loanAmount);
+
     if (!formData.loanAmount.trim()) {
       nextErrors.loanAmount = 'Loan amount is required';
-    } else if (Number(formData.loanAmount) <= 0) {
+    } else if (Number.isNaN(loanAmount)) {
+      nextErrors.loanAmount = 'Enter a valid loan amount';
+    } else if (loanAmount <= 0) {
       nextErrors.loanAmount = 'Loan amount must be greater than 0';
     }
 

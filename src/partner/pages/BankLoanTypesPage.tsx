@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Building2,
@@ -13,10 +13,12 @@ import {
   Coins,
   Gift,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
-import { bankOffers } from '../data/placeholderData';
+import { getPartnerBanks } from '../../api/banksApi';
+import type { BankFromApi } from '../../api/banksApi';
 import { getLoanLabel, getLoanIcon, getLoanProduct, categoryLabels } from '../../data/loanProducts';
-import type { LoanType, LoanTypeCommission } from '../types/partner-dashboard';
+import type { LoanType } from '../types/partner-dashboard';
 
 const formatCurrency = (amount: number): string => {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)} Cr`;
@@ -27,8 +29,30 @@ const formatCurrency = (amount: number): string => {
 export default function BankLoanTypesPage() {
   const { bankId } = useParams<{ bankId: string }>();
   const navigate = useNavigate();
+  const [bank, setBank] = useState<BankFromApi | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const bank = bankOffers.find((b) => b.id === bankId);
+  useEffect(() => {
+    let active = true;
+    getPartnerBanks()
+      .then((res) => {
+        if (active && res.success && res.data?.banks) {
+          const found = res.data.banks.find((b) => b.id === bankId) ?? null;
+          setBank(found);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [bankId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   if (!bank) {
     return (
@@ -49,25 +73,25 @@ export default function BankLoanTypesPage() {
   }
 
   // Create a map of loan type to commission info for quick lookup
-  const commissionMap = new Map<string, LoanTypeCommission>();
+  const commissionMap = new Map<string, BankFromApi['commissionRates'][number]>();
   bank.commissionRates?.forEach((rate) => {
     commissionMap.set(rate.loanType, rate);
   });
 
   // Group loan types by category
   const loanTypesByCategory: Record<string, LoanType[]> = {};
-  bank.loanTypes.forEach((loanType) => {
+  bank.supportedLoanTypes.forEach((loanType) => {
     const product = getLoanProduct(loanType);
     const category = product?.category || 'other';
     if (!loanTypesByCategory[category]) {
       loanTypesByCategory[category] = [];
     }
-    loanTypesByCategory[category].push(loanType);
+    loanTypesByCategory[category].push(loanType as LoanType);
   });
 
   // Calculate average partner commission
   const avgCommission = bank.commissionRates && bank.commissionRates.length > 0
-    ? (bank.commissionRates.reduce((sum, r) => sum + r.partnerCommission, 0) / bank.commissionRates.length).toFixed(2)
+    ? (bank.commissionRates.reduce((sum, r) => sum + Number(r.partnerCommission), 0) / bank.commissionRates.length).toFixed(2)
     : 'N/A';
 
   return (
@@ -82,7 +106,7 @@ export default function BankLoanTypesPage() {
           <ChevronLeft size={24} className="text-slate-600" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">{bank.bankName}</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{bank.name}</h1>
           <p className="text-slate-500 mt-1">Loan types, interest rates & partner commissions</p>
         </div>
       </div>
@@ -96,7 +120,7 @@ export default function BankLoanTypesPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold text-slate-800">{bank.bankName}</h2>
+                <h2 className="text-xl font-semibold text-slate-800">{bank.name}</h2>
                 {bank.isPopular && (
                   <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full inline-flex items-center gap-1">
                     <Star size={10} fill="currentColor" />
@@ -105,7 +129,7 @@ export default function BankLoanTypesPage() {
                 )}
               </div>
               <p className="text-slate-500 mt-1">
-                {bank.loanTypes.length} loan types available
+                {bank.supportedLoanTypes.length} loan types available
               </p>
             </div>
           </div>
@@ -125,7 +149,7 @@ export default function BankLoanTypesPage() {
                 <IndianRupee size={14} />
               </div>
               <p className="text-sm font-semibold text-slate-800">
-                {formatCurrency(bank.maxAmount)}
+                {formatCurrency(Number(bank.maxAmount))}
               </p>
               <p className="text-xs text-slate-500">Max Amount</p>
             </div>
@@ -177,7 +201,7 @@ export default function BankLoanTypesPage() {
           <h3 className="text-lg font-semibold">Partner Commission Rates</h3>
         </div>
         <p className="text-green-100 mb-4">
-          Earn commissions on every successful loan disbursement through {bank.bankName}. 
+          Earn commissions on every successful loan disbursement through {bank.name}. 
           Commission is calculated on the disbursed loan amount.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -268,7 +292,7 @@ export default function BankLoanTypesPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-200">
           <h3 className="text-lg font-semibold text-slate-800">
-            Loan Types & Commission Details ({bank.loanTypes.length})
+            Loan Types & Commission Details ({bank.supportedLoanTypes.length})
           </h3>
           <p className="text-sm text-slate-500 mt-1">
             Complete breakdown of loan types, interest rates, loan limits, and partner commissions
@@ -320,12 +344,12 @@ export default function BankLoanTypesPage() {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className="text-sm text-slate-600">
-                            {commission?.minAmount ? formatCurrency(commission.minAmount) : formatCurrency(bank.minAmount)}
+                            {commission?.minAmount ? formatCurrency(Number(commission.minAmount)) : formatCurrency(Number(bank.minAmount))}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className="text-sm text-slate-600">
-                            {commission?.maxAmount ? formatCurrency(commission.maxAmount) : formatCurrency(bank.maxAmount)}
+                            {commission?.maxAmount ? formatCurrency(Number(commission.maxAmount)) : formatCurrency(Number(bank.maxAmount))}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -361,8 +385,10 @@ export default function BankLoanTypesPage() {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {bank.commissionRates?.slice(0, 3).map((rate) => {
-            const exampleAmount = rate.maxAmount ? Math.min(rate.maxAmount / 2, 5000000) : 1000000;
-            const earning = (exampleAmount * rate.partnerCommission) / 100;
+            const maxAmt = rate.maxAmount ? Number(rate.maxAmount) : 0;
+            const commPct = Number(rate.partnerCommission);
+            const exampleAmount = maxAmt > 0 ? Math.min(maxAmt / 2, 5000000) : 1000000;
+            const earning = (exampleAmount * commPct) / 100;
             return (
               <div key={rate.loanType} className="bg-slate-50 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -409,7 +435,7 @@ export default function BankLoanTypesPage() {
           <div>
             <h3 className="text-lg font-semibold">Ready to submit a lead?</h3>
             <p className="text-blue-100 mt-1">
-              Add a client and choose {bank.bankName} as your preferred bank
+              Add a client and choose {bank.name} as your preferred bank
             </p>
           </div>
           <Link

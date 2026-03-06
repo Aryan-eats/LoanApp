@@ -12,17 +12,43 @@ import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 const PREFIX = 'cache:';
 const DEFAULT_TTL_SECONDS = 300; // 5 minutes
 
+export interface CachedValue<T> {
+  cached: true;
+  value: T;
+}
+
+const wrapCachedValue = <T>(value: T): CachedValue<T> => ({
+  cached: true,
+  value,
+});
+
+const parseCachedValue = <T>(raw: string): CachedValue<T> => {
+  const parsed = JSON.parse(raw) as unknown;
+
+  if (
+    parsed !== null
+    && typeof parsed === 'object'
+    && 'cached' in parsed
+    && 'value' in parsed
+    && (parsed as { cached?: unknown }).cached === true
+  ) {
+    return parsed as CachedValue<T>;
+  }
+
+  return wrapCachedValue(parsed as T);
+};
+
 // --- public API ---------------------------------------------
 
 /**
- * Retrieve a cached value.  Returns `null` on miss.
+ * Retrieve a cached value envelope. Returns `null` on miss.
  */
-export const cacheGet = async <T = unknown>(key: string): Promise<T | null> => {
+export const cacheGet = async <T = unknown>(key: string): Promise<CachedValue<T> | null> => {
   if (!isRedisAvailable()) return null;
   try {
     const redis = await getRedisClient();
     const raw = await redis.get(`${PREFIX}${key}`);
-    return raw ? (JSON.parse(raw) as T) : null;
+    return raw ? parseCachedValue<T>(raw) : null;
   } catch (err) {
     console.error('Cache GET error:', err);
     return null;
@@ -39,7 +65,7 @@ export const cacheSet = async (
 ): Promise<void> => {
   if (!isRedisAvailable()) return;
   try {
-    const serialised = JSON.stringify(value);
+    const serialised = JSON.stringify(wrapCachedValue(value));
     const redis = await getRedisClient();
     await redis.set(`${PREFIX}${key}`, serialised, 'EX', ttlSeconds);
   } catch (err) {
@@ -92,7 +118,7 @@ export const cacheWrap = async <T>(
   ttlSeconds: number = DEFAULT_TTL_SECONDS
 ): Promise<T> => {
   const cached = await cacheGet<T>(key);
-  if (cached !== null) return cached;
+  if (cached?.cached) return cached.value;
 
   const fresh = await fetcher();
   await cacheSet(key, fresh, ttlSeconds);

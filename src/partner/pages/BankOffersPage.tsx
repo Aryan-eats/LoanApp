@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2,
@@ -11,9 +11,11 @@ import {
   ArrowRight,
   Info,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
-import { consolidatedBanks } from '../../data/mockBanks'; // Updated import
-import type { LoanType } from '../../partner/types/partner-dashboard'; // Correct path
+import { getPartnerBanks } from '../../api/banksApi';
+import type { BankFromApi } from '../../api/banksApi';
+import type { LoanType } from '../../partner/types/partner-dashboard';
 import { buildLoanTypeLabels, getLoanIcon, legacyLoanTypes } from '../../data/loanProducts';
 
 const loanTypeLabelsMap = buildLoanTypeLabels(true);
@@ -31,29 +33,45 @@ export default function BankOffersPage() {
   const [selectedLoanType, setSelectedLoanType] = useState<LoanType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'interest' | 'amount' | 'time'>('interest');
+  const [banks, setBanks] = useState<BankFromApi[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const filteredOffers = consolidatedBanks
-    .filter((bank) => bank.status === 'active') // Filter only active
-    .filter((offer) => {
-      const matchesLoanType =
-        selectedLoanType === 'all' || offer.supportedLoanTypes.includes(selectedLoanType as LoanType);
-      const matchesSearch = offer.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesLoanType && matchesSearch;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'interest':
-          return a.interestRateMin - b.interestRateMin;
-        case 'amount':
-          return b.maxAmount - a.maxAmount;
-        case 'time':
-          // Simply parsing processingTime roughly for sorting
-          return parseInt(a.processingTime) - parseInt(b.processingTime);
-        default:
-          return 0;
-      }
-    });
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getPartnerBanks()
+      .then((res) => {
+        if (active && res.success && res.data?.banks) {
+          setBanks(res.data.banks);
+        }
+      })
+      .catch(() => {/* keep empty list */})
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const filteredOffers = useMemo(() => {
+    return banks
+      .filter((offer) => {
+        const matchesLoanType =
+          selectedLoanType === 'all' || offer.supportedLoanTypes.includes(selectedLoanType as string);
+        const matchesSearch = offer.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesLoanType && matchesSearch;
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'interest':
+            return Number(a.interestRateMin) - Number(b.interestRateMin);
+          case 'amount':
+            return Number(b.maxAmount) - Number(a.maxAmount);
+          case 'time':
+            return parseInt(a.processingTime) - parseInt(b.processingTime);
+          default:
+            return 0;
+        }
+      });
+  }, [banks, selectedLoanType, searchQuery, sortBy]);
 
   const loanTypeOptions: (LoanType | 'all')[] = ['all', ...legacyLoanTypes] as (LoanType | 'all')[];
 
@@ -120,6 +138,13 @@ export default function BankOffersPage() {
         </div>
       </div>
 
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <span className="ml-2 text-slate-500">Loading bank offers…</span>
+        </div>
+      )}
+
       <div className="text-sm text-slate-500">
         Showing <span className="font-medium text-slate-700">{filteredOffers.length}</span> bank offers
       </div>
@@ -183,7 +208,7 @@ export default function BankOffersPage() {
                     <Percent size={14} />
                   </div>
                   <p className="text-sm font-semibold text-slate-800">
-                    {offer.interestRateMin}% - {offer.interestRateMax}%
+                    {Number(offer.interestRateMin)}% - {Number(offer.interestRateMax)}%
                   </p>
                   <p className="text-xs text-slate-500">Interest Rate</p>
                 </div>
@@ -192,7 +217,7 @@ export default function BankOffersPage() {
                     <IndianRupee size={14} />
                   </div>
                   <p className="text-sm font-semibold text-slate-800">
-                    {formatCurrency(offer.maxAmount)}
+                    {formatCurrency(Number(offer.maxAmount))}
                   </p>
                   <p className="text-xs text-slate-500">Max Amount</p>
                 </div>
@@ -216,7 +241,7 @@ export default function BankOffersPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500">Min Amount</span>
-                  <span className="font-medium text-slate-700">{formatCurrency(offer.minAmount)}</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(Number(offer.minAmount))}</span>
                 </div>
               </div>
 
@@ -294,22 +319,22 @@ export default function BankOffersPage() {
                   <td className="py-3 font-medium text-slate-800">{offer.name}</td>
                   <td className="py-3 text-center text-sm text-slate-600">
                     {offer.supportedLoanTypes.includes('personal_loan')
-                      ? `${offer.interestRateMin}%`
+                      ? `${Number(offer.interestRateMin)}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
                     {offer.supportedLoanTypes.includes('home_loan')
-                      ? `${Math.max(offer.interestRateMin - 2, 8)}%`
+                      ? `${Math.max(Number(offer.interestRateMin) - 2, 8)}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
                     {offer.supportedLoanTypes.includes('business_loan')
-                      ? `${offer.interestRateMin + 1}%`
+                      ? `${Number(offer.interestRateMin) + 1}%`
                       : '—'}
                   </td>
                   <td className="py-3 text-center text-sm text-slate-600">
                     {offer.supportedLoanTypes.includes('car_loan')
-                      ? `${offer.interestRateMin - 1}%`
+                      ? `${Number(offer.interestRateMin) - 1}%`
                       : '—'}
                   </td>
                 </tr>

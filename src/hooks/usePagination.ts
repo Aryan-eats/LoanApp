@@ -20,7 +20,7 @@ interface PaginationState {
 interface PaginationActions {
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
-  setTotalItems: (total: number) => void;
+  setTotalItems: (total: number, newPageSize?: number) => void;
   nextPage: () => void;
   prevPage: () => void;
   firstPage: () => void;
@@ -30,6 +30,17 @@ interface PaginationActions {
 
 export type UsePaginationReturn = PaginationState & PaginationActions;
 
+const sanitizePageSize = (size: number): number => {
+  if (!Number.isFinite(size) || size < 1) {
+    return 1;
+  }
+
+  return Math.floor(size);
+};
+
+const getTotalPages = (total: number, pageSize: number): number =>
+  Math.max(1, Math.ceil(total / pageSize));
+
 export function usePagination(options: PaginationOptions = {}): UsePaginationReturn {
   const { 
     initialPage = 1, 
@@ -37,19 +48,13 @@ export function usePagination(options: PaginationOptions = {}): UsePaginationRet
     totalItems: initialTotal = 0 
   } = options;
 
-  // Validate initialPageSize to prevent division by zero
-  const validatedInitialPageSize = (!Number.isFinite(rawInitialPageSize) || rawInitialPageSize < 1)
-    ? 1
-    : Math.floor(rawInitialPageSize);
+  const validatedInitialPageSize = sanitizePageSize(rawInitialPageSize);
 
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [pageSize, setPageSizeState] = useState(validatedInitialPageSize);
   const [totalItems, setTotalItemsState] = useState(initialTotal);
 
-  const totalPages = useMemo(() => 
-    Math.max(1, Math.ceil(totalItems / pageSize)), 
-    [totalItems, pageSize]
-  );
+  const totalPages = useMemo(() => getTotalPages(totalItems, pageSize), [totalItems, pageSize]);
 
   const startIndex = useMemo(() => 
     (currentPage - 1) * pageSize, 
@@ -76,16 +81,24 @@ export function usePagination(options: PaginationOptions = {}): UsePaginationRet
   }, []);
 
   const setPageSize = useCallback((size: number) => {
-    const coerced = Math.max(1, Math.floor(size));
-    setPageSizeState(coerced);
+    const nextPageSize = sanitizePageSize(size);
+    setPageSizeState(nextPageSize);
     setCurrentPage(1); // Reset to first page when changing page size
   }, []);
 
-  const setTotalItems = useCallback((total: number) => {
+  const setTotalItems = useCallback((total: number, newPageSize?: number) => {
+    const nextPageSize =
+      newPageSize === undefined ? pageSize : sanitizePageSize(newPageSize);
+
     setTotalItemsState(total);
+
+    if (newPageSize !== undefined) {
+      setPageSizeState(nextPageSize);
+    }
+
     // Clamp currentPage if it's now out of range
     setCurrentPage(prev => {
-      const newTotalPages = Math.max(1, Math.ceil(total / pageSize));
+      const newTotalPages = getTotalPages(total, nextPageSize);
       return prev > newTotalPages ? newTotalPages : prev;
     });
   }, [pageSize]);

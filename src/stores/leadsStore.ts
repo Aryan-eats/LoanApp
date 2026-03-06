@@ -39,7 +39,7 @@ interface LeadsActions {
   fetchStats: (isAdmin?: boolean) => Promise<void>;
   
   // CRUD actions
-  createLead: (data: CreateLeadData, isPartner?: boolean) => Promise<Lead | null>;
+  createLead: (data: CreateLeadData, isPartner?: boolean) => Promise<{ lead: Lead; leadToken?: string } | null>;
   updateLead: (id: string, data: Partial<Lead>, isAdmin?: boolean) => Promise<Lead | null>;
   deleteLead: (id: string) => Promise<boolean>;
   
@@ -171,7 +171,10 @@ export const useLeadsStore = create<LeadsStore>()((set, get) => ({
           },
           isLoading: false,
         }));
-        return response.data.lead;
+        return {
+          lead: response.data.lead,
+          leadToken: (response.data as Record<string, unknown>).leadToken as string | undefined,
+        };
       }
       set({ error: response.message || 'Failed to create lead', isLoading: false });
       return null;

@@ -171,7 +171,7 @@ describe('Encryption – auth tag manipulation', () => {
       // Attempt to use ct2's last segment with ct1's IV
       parts1[parts1.length - 1] = parts2[parts2.length - 1];
       const frankenCipher = parts1.join(':');
-      expect(() => decryptString(frankenCipher)).toThrow();
+      expect(decryptString(frankenCipher)).toBeNull();
     }
   });
 

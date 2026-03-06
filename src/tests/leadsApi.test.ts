@@ -130,13 +130,15 @@ describe('leadsApi', () => {
 
     await getLeadStats();
     await getLeadStats(true);
-    await updatePreferredBank('lead-7', 'ICICI Bank');
+    await updatePreferredBank('lead-7', 'ICICI Bank', 'test-hmac-token');
 
     expect(apiClient.get).toHaveBeenCalledTimes(2);
     expect(apiClient.get).toHaveBeenCalledWith('/partner/leads/stats');
     expect(apiClient.get).toHaveBeenCalledWith('/admin/leads/stats');
     expect(apiClient.patch).toHaveBeenCalledWith('/leads/lead-7/preferred-bank', {
       preferredBank: 'ICICI Bank',
+    }, {
+      headers: { 'x-lead-token': 'test-hmac-token' },
     });
   });
 });

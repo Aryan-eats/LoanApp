@@ -64,6 +64,31 @@ describe('Auth Store', () => {
     expect(setAccessToken).toHaveBeenCalledWith('access-token');
   });
 
+  it('persists only id and role for authenticated sessions', async () => {
+    (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        data: {
+          user: baseUser,
+          accessToken: 'access-token',
+          expiresIn: 900,
+        },
+      },
+    });
+
+    await useAuthStore.getState().login('test@example.com', 'password123');
+
+    const persisted = JSON.parse(localStorage.getItem('auth-storage') ?? '{}');
+    expect(persisted.state).toEqual({
+      user: {
+        id: baseUser.id,
+        role: baseUser.role,
+      },
+      isAuthenticated: true,
+    });
+    expect(JSON.stringify(persisted.state)).not.toContain(baseUser.email);
+    expect(JSON.stringify(persisted.state)).not.toContain(baseUser.firstName);
+  });
+
   it('resets auth state when login fails', async () => {
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Invalid credentials'));
 
@@ -77,7 +102,6 @@ describe('Auth Store', () => {
 
   it('logs out and clears token state even when API call fails', async () => {
     useAuthStore.setState({ user: baseUser, isAuthenticated: true });
-    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue('existing-token');
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
 
     await useAuthStore.getState().logout();
@@ -85,6 +109,19 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
+    expect(clearTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls the server logout endpoint even without an in-memory access token', async () => {
+    useAuthStore.setState({ user: baseUser, isAuthenticated: true });
+    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { success: true },
+    });
+
+    await useAuthStore.getState().logout();
+
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/logout');
     expect(clearTokens).toHaveBeenCalledTimes(1);
   });
 
@@ -116,10 +153,51 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
   });
 
+  it('rehydrates authenticated sessions by fetching the full profile', async () => {
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: {
+          user: { id: baseUser.id, role: baseUser.role },
+          isAuthenticated: true,
+        },
+        version: 1,
+      }),
+    );
+    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue('valid-token');
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { user: baseUser } },
+    });
+
+    await useAuthStore.persist.rehydrate();
+    await vi.waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledWith('/auth/me');
+    });
+
+    const state = useAuthStore.getState();
+    expect(state.user).toEqual(baseUser);
+    expect(state.isAuthenticated).toBe(true);
+  });
+
   it('checkAuth logs out immediately when refresh fails', async () => {
     useAuthStore.setState({ isAuthenticated: true, user: baseUser });
     (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('expired'));
+
+    await useAuthStore.getState().checkAuth();
+
+    const state = useAuthStore.getState();
+    expect(state.user).toBeNull();
+    expect(state.isAuthenticated).toBe(false);
+    expect(clearTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkAuth clears stale authenticated state when /auth/me returns no user', async () => {
+    useAuthStore.setState({ isAuthenticated: true, user: baseUser });
+    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue('valid-token');
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: {} },
+    });
 
     await useAuthStore.getState().checkAuth();
 
@@ -135,4 +213,3 @@ describe('Auth Store', () => {
     expect(useAuthStore.getState().error).toBeNull();
   });
 });
-

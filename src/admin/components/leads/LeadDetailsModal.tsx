@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Lead, LeadStatus } from '../../types/admin';
 import StatusBadge from '../StatusBadge';
 import { banks } from '../../data/placeholderData';
-import { consolidatedBanks } from '../../../data/mockBanks';
+import { getBanks } from '../../../api/banksApi';
+import type { BankFromApi } from '../../../api/banksApi';
 import { buildLoanTypeLabels } from '../../../data/loanProductsData';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
@@ -38,8 +39,10 @@ const getNextStatuses = (currentStatus: LeadStatus, lead?: { bankAssigned?: stri
     draft: ['submitted', 'rejected'],
     submitted: ['docs_pending', 'rejected'],
     docs_pending: ['docs_uploaded', 'rejected'],
-    docs_uploaded: ['bank_processing', 'rejected'],
-    bank_processing: ['approved', 'rejected'],
+    docs_uploaded: ['docs_collected', 'rejected'],
+    docs_collected: ['bank_processing', 'rejected'],
+    bank_processing: ['bank_logged', 'rejected'],
+    bank_logged: ['approved', 'rejected'],
     approved: ['disbursed', 'rejected'],
     disbursed: [],
     rejected: ['submitted'],
@@ -62,9 +65,16 @@ interface LeadDetailsModalProps {
 const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onStatusUpdate, onBankAssign }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'bank' | 'timeline'>('overview');
   const [statusNote, setStatusNote] = useState('');
+  const [apiBanks, setApiBanks] = useState<BankFromApi[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const titleId = `lead-modal-title-${lead.id}`;
+
+  useEffect(() => {
+    getBanks()
+      .then((res) => { if (res.success && res.data?.banks) setApiBanks(res.data.banks); })
+      .catch(() => {/* keep empty */});
+  }, []);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -313,9 +323,8 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                             </div>
                             {/* Bank details: interest rate, principal, offers */}
                             {(() => {
-                              const fullBank = consolidatedBanks.find(b => b.name === bank.name);
+                              const fullBank = apiBanks.find(b => b.name === bank.name);
                               if (!fullBank) return null;
-                              // Try to find loan-type-specific rate
                               const loanRate = fullBank.commissionRates?.find(r => r.loanType === lead.loanType);
                               return (
                                 <div className="mt-2 space-y-2">
@@ -336,7 +345,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                                   {loanRate?.maxAmount && (
                                     <div className="flex justify-between text-sm">
                                       <span className="text-gray-500">Max Eligible</span>
-                                      <span className="font-medium text-gray-800">{formatCurrency(loanRate.maxAmount)}</span>
+                                      <span className="font-medium text-gray-800">{formatCurrency(Number(loanRate.maxAmount))}</span>
                                     </div>
                                   )}
                                   {fullBank.features && fullBank.features.length > 0 && (
