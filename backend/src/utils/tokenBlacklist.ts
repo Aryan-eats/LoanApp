@@ -1,11 +1,10 @@
 ﻿/**
  * Token Blacklist for logout functionality.
  *
- * Uses the shared Redis client when REDIS_URL is set, otherwise
- * falls back to an in-memory store (development only).
+ * Uses the shared Redis client for all environments.
  */
 
-import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import { getRedisClient } from '../config/redis.js';
 
 interface BlacklistStorage {
   add(token: string, expiresAt: number): Promise<void>;
@@ -15,42 +14,6 @@ interface BlacklistStorage {
 }
 
 const PREFIX = 'token_blacklist:';
-
-// --- In-memory fallback ------------------------------------
-
-class InMemoryBlacklist implements BlacklistStorage {
-  private blacklist: Map<string, number> = new Map();
-  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
-
-  constructor() {
-    this.cleanupInterval = setInterval(() => this.cleanup(), 15 * 60 * 1000);
-    this.cleanupInterval.unref?.();
-    console.log('⚠️  Using in-memory token blacklist (development only)');
-  }
-
-  async add(token: string, expiresAt: number): Promise<void> {
-    this.blacklist.set(token, expiresAt);
-  }
-
-  async isBlacklisted(token: string): Promise<boolean> {
-    return this.blacklist.has(token);
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [token, expiresAt] of this.blacklist.entries()) {
-      if (expiresAt < now) this.blacklist.delete(token);
-    }
-  }
-
-  async size(): Promise<number> {
-    return this.blacklist.size;
-  }
-
-  async clear(): Promise<void> {
-    this.blacklist.clear();
-  }
-}
 
 // --- Redis-backed blacklist --------------------------------
 
@@ -95,19 +58,4 @@ class RedisBlacklist implements BlacklistStorage {
   }
 }
 
-// --- Factory & singleton -----------------------------------
-
-const createTokenBlacklist = (): BlacklistStorage => {
-  if (isRedisAvailable()) {
-    return new RedisBlacklist();
-  }
-
-  if (process.env.NODE_ENV === 'production') {
-    console.warn('⚠️  SECURITY WARNING: No REDIS_URL configured in production!');
-    console.warn('⚠️  Token blacklist will not persist across server restarts.');
-  }
-
-  return new InMemoryBlacklist();
-};
-
-export const tokenBlacklist = createTokenBlacklist();
+export const tokenBlacklist: BlacklistStorage = new RedisBlacklist();

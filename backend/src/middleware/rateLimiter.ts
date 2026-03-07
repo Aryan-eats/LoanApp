@@ -14,6 +14,7 @@ const buildStore = (prefix: string) => {
   return new RedisStore({
     // @ts-expect-error - ioredis sendCommand is compatible
     sendCommand: async (...args: string[]) => {
+      if (!isRedisAvailable()) throw new Error('Redis unavailable');
       const redis = await getRedisClient();
       // Must call on the instance directly to preserve `this` context;
       // extracting redis.call into a variable loses the binding and causes
@@ -28,6 +29,7 @@ const buildStore = (prefix: string) => {
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 500 : 100,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many requests, please try again later',
@@ -41,6 +43,7 @@ export const apiLimiter = rateLimit({
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 50 : 10,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many login attempts, please try again after 15 minutes',
@@ -55,6 +58,7 @@ export const loginLimiter = rateLimit({
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 50 : 5,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many accounts created from this IP, please try again later',
@@ -68,6 +72,7 @@ export const registerLimiter = rateLimit({
 export const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 3,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many password reset requests, please try again later',
@@ -81,6 +86,7 @@ export const passwordResetLimiter = rateLimit({
 export const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 200 : 30,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many refresh requests, please try again later',
@@ -95,6 +101,7 @@ export const refreshLimiter = rateLimit({
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 3,
+  passOnStoreError: true,
   message: {
     success: false,
     message: 'Too many OTP requests, please try again later',

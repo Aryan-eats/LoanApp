@@ -1,6 +1,7 @@
 ﻿import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
 import { validateUUID } from '../middleware/validateUUID.js';
+import { cacheControl } from '../middleware/cacheControl.js';
 import {
   listUsers,
   listPartners,
@@ -68,13 +69,13 @@ router.patch('/leads/:id/status', updateLeadStatus);
 router.patch('/leads/:id/assign-bank', assignBank);
 
 // -- Lender Document Requirements --------------------------------------------
-router.get('/docs/reqdoc', listDocRequirements);
+router.get('/docs/reqdoc', cacheControl(30), listDocRequirements);
 router.post('/docs/reqdoc', createDocRequirement);
 router.patch('/docs/reqdoc/:id', updateDocRequirement);
 router.delete('/docs/reqdoc/:id', deleteDocRequirement);
 
 // -- Banks -------------------------------------------------------------------
-router.get('/banks', listBanks);
+router.get('/banks', cacheControl(15), listBanks);
 router.get('/banks/:id', getBank);
 router.patch('/banks/:id/status', toggleBankStatus);
 router.put('/banks/:id', updateBank);

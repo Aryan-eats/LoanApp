@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -83,6 +84,11 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Remove X-Powered-By header
 app.disable('x-powered-by');
+
+// Enable gzip/brotli compression in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(compression());
+}
 
 // Apply general rate limiting to all API routes
 app.use('/api', apiLimiter);

@@ -9,6 +9,31 @@ import { Redis } from 'ioredis';
 
 let client: Redis | null = null;
 let connectPromise: Promise<Redis> | null = null;
+let redisRetryAfter = 0;
+let availabilityWarningLogged = false;
+
+const REDIS_RETRY_COOLDOWN_MS = 30_000;
+
+const isRetryCooldownActive = (): boolean => Date.now() < redisRetryAfter;
+
+const clearClientReference = (instance: Redis): void => {
+  if (client === instance) {
+    client = null;
+  }
+};
+
+const markRedisUnavailable = (reason: string, err?: Error): void => {
+  redisRetryAfter = Date.now() + REDIS_RETRY_COOLDOWN_MS;
+
+  if (!availabilityWarningLogged) {
+    const details = err?.message ? ` (${err.message})` : '';
+    console.warn(
+      `Redis unavailable for ${REDIS_RETRY_COOLDOWN_MS / 1000}s after ${reason}${details}. ` +
+        'Falling back where supported.'
+    );
+    availabilityWarningLogged = true;
+  }
+};
 
 /**
  * Returns the shared Redis instance.
@@ -17,6 +42,9 @@ let connectPromise: Promise<Redis> | null = null;
 export const getRedisClient = async (): Promise<Redis> => {
   if (client?.status === 'ready') return client;
   if (connectPromise) return connectPromise;
+  if (isRetryCooldownActive()) {
+    throw new Error('Redis is temporarily unavailable.');
+  }
 
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
@@ -26,13 +54,13 @@ export const getRedisClient = async (): Promise<Redis> => {
     );
   }
 
-  client = new Redis(redisUrl, {
+  const redis = new Redis(redisUrl, {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
-    connectTimeout: 5_000,         // fail fast if Redis is unreachable
+    connectTimeout: 5_000, // fail fast if Redis is unreachable
     // commandTimeout is intentionally omitted: setting it causes queued commands
     // that are waiting for the connection to be established (offline queue) to be
-    // rejected with "Command timed out" before the connection completes.  The
+    // rejected with "Command timed out" before the connection completes. The
     // connectTimeout above already handles the case where Redis is never reachable.
     retryStrategy(times) {
       if (times > 10) return null; // stop retrying after 10 attempts
@@ -44,30 +72,40 @@ export const getRedisClient = async (): Promise<Redis> => {
     },
   });
 
-  client.on('connect', () => {
-    console.log('✅ Redis connected');
+  client = redis;
+
+  redis.on('ready', () => {
+    redisRetryAfter = 0;
+    availabilityWarningLogged = false;
+    console.log('Redis connected');
     // Run the memory check only after the connection is confirmed ready so the
-    // INFO command is never queued into the offline buffer (which would cause
-    // a "Command timed out" rejection if connection takes > commandTimeout ms).
+    // INFO command is never queued into the offline buffer.
     checkRedisMemory().catch((err) =>
       console.error('Redis memory check failed at startup:', err)
     );
   });
 
-  client.on('error', (err: Error) => {
-    console.error('❌ Redis error:', err.message);
+  redis.on('error', (err: Error) => {
+    console.error('Redis error:', err.message || err);
   });
 
-  client.on('close', () => {
-    console.log('⚠️  Redis connection closed');
+  redis.on('close', () => {
+    clearClientReference(redis);
+    markRedisUnavailable('connection close');
+    console.warn('Redis connection closed');
   });
 
-  connectPromise = client
+  redis.on('end', () => {
+    clearClientReference(redis);
+  });
+
+  connectPromise = redis
     .connect()
-    .then(() => client as Redis)
+    .then(() => redis)
     .catch((err: Error) => {
-      client?.disconnect();
-      client = null;
+      clearClientReference(redis);
+      markRedisUnavailable('connection failure', err);
+      redis.disconnect();
       throw err;
     })
     .finally(() => {
@@ -78,10 +116,11 @@ export const getRedisClient = async (): Promise<Redis> => {
 };
 
 /**
- * Returns true when a Redis URL is configured and therefore Redis features
- * should be used instead of in-memory fallbacks.
+ * Returns true when a Redis URL is configured and the client is not in a
+ * temporary cooldown after a connection failure.
  */
-export const isRedisAvailable = (): boolean => !!process.env.REDIS_URL;
+export const isRedisAvailable = (): boolean =>
+  !!process.env.REDIS_URL && !isRetryCooldownActive();
 
 /**
  * Checks Redis memory usage and logs a warning when used memory exceeds 80%
@@ -93,25 +132,27 @@ export const isRedisAvailable = (): boolean => !!process.env.REDIS_URL;
  * eviction pressure reaches security-critical keys (token blacklist).
  */
 export const checkRedisMemory = async (): Promise<void> => {
+  if (!isRedisAvailable()) return;
+
   try {
     const redis = await getRedisClient();
     const info = await redis.info('memory');
     const usedMatch = info.match(/used_memory:(\d+)/);
-    const maxMatch  = info.match(/maxmemory:(\d+)/);
+    const maxMatch = info.match(/maxmemory:(\d+)/);
     if (!usedMatch || !maxMatch) return;
 
     const used = parseInt(usedMatch[1], 10);
-    const max  = parseInt(maxMatch[1], 10);
+    const max = parseInt(maxMatch[1], 10);
     if (max > 0 && used / max > 0.8) {
       const pct = ((used / max) * 100).toFixed(1);
       console.warn(
-        `⚠️  Redis memory usage at ${pct}% (${used} / ${max} bytes). ` +
-        'Eviction of volatile keys (including token blacklist) may begin soon. ' +
-        'Consider increasing REDIS_MAXMEMORY or pruning cache keys.'
+        `Redis memory usage at ${pct}% (${used} / ${max} bytes). ` +
+          'Eviction of volatile keys (including token blacklist) may begin soon. ' +
+          'Consider increasing REDIS_MAXMEMORY or pruning cache keys.'
       );
     }
   } catch (err) {
-    // Non-fatal — memory check failure should not affect request handling
+    // Non-fatal: memory check failure should not affect request handling.
     console.error('Redis memory check failed:', err);
   }
 };
@@ -128,10 +169,16 @@ export const disconnectRedis = async (): Promise<void> => {
       // Ignore startup failures during teardown.
     }
   }
+
   if (client) {
-    await client.quit();
+    if (client.status === 'ready') {
+      await client.quit();
+    } else {
+      client.disconnect();
+    }
+
     client = null;
     connectPromise = null;
-    console.log('✅ Redis disconnected');
+    console.log('Redis disconnected');
   }
 };

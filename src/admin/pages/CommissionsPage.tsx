@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import AdminLayout from '../components/AdminLayout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { commissions, commissionSlabs } from '../data/placeholderData';
 import type { Commission, CommissionStatus, LoanType } from '../types/admin';
 
@@ -210,7 +210,7 @@ const CommissionsPage: React.FC = () => {
                       <td className="px-4 py-3 text-sm text-gray-600">{comm.commissionRate}%</td>
                       <td className="px-4 py-3 text-sm font-semibold text-green-600">{formatCurrency(comm.commissionAmount)}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={comm.status} size="sm" />
+                        <StatusBadge status={comm.status} size="sm" variant="admin" />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -297,7 +297,7 @@ const CommissionsPage: React.FC = () => {
                       <td className="px-4 py-3 text-sm text-gray-600">{slab.maxAmount ? formatCurrency(slab.maxAmount) : 'No Limit'}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-green-600">{slab.rate}%</td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={slab.isActive ? 'active' : 'inactive'} size="sm" />
+                        <StatusBadge status={slab.isActive ? 'active' : 'inactive'} size="sm" variant="admin" />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -351,7 +351,7 @@ const CommissionsPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Status</p>
-                  <StatusBadge status={selectedCommission.status} size="sm" />
+                  <StatusBadge status={selectedCommission.status} size="sm" variant="admin" />
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Partner</p>

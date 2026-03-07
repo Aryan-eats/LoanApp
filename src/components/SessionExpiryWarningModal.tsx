@@ -83,11 +83,12 @@ const SessionExpiryWarningModal: React.FC = () => {
       return;
     }
 
+    const expiresAt = warningState.expiresAt;
     const intervalId = window.setInterval(() => {
       const nextTime = Date.now();
       setCurrentTime(nextTime);
 
-      if (nextTime >= warningState.expiresAt) {
+      if (nextTime >= expiresAt) {
         void logout();
       }
     }, 1000);

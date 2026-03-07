@@ -7,6 +7,7 @@ import {
   isPasswordReused,
   addToPasswordHistory,
 } from '../services/userService.js';
+import { logAuditEvent } from '../utils/auditLogger.js';
 
 // Format user response (exclude sensitive data)
 const formatUserResponse = (user: User) => ({
@@ -207,6 +208,12 @@ export const updatePassword = async (req: Request, res: Response): Promise<void>
       where: { id: user.id },
       data: { password: newHashed },
     });
+    await logAuditEvent('PASSWORD_CHANGE', req, {
+      userId: user.id,
+      entityId: user.id,
+      entityType: 'USER',
+      metadata: { action: 'password_update' },
+    });
 
     res.status(200).json({
       success: true,
@@ -271,6 +278,12 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
     await prisma.user.update({
       where: { id: req.user.id },
       data: { isActive: false },
+    });
+    await logAuditEvent('DATA_DELETION_REQUEST', req, {
+      userId: user.id,
+      entityId: user.id,
+      entityType: 'USER',
+      metadata: { action: 'account_deactivation' },
     });
 
     res.status(200).json({

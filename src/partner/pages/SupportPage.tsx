@@ -12,7 +12,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { supportTickets } from '../data/placeholderData';
 
 type TicketPriorityValue = 'low' | 'medium' | 'high';
@@ -195,7 +195,7 @@ export default function SupportPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusBadge status={ticket.status} size="sm" />
+                      <StatusBadge status={ticket.status} size="sm" variant="partner" />
                       <ChevronRight size={16} className="text-slate-400" />
                     </div>
                   </div>
@@ -215,7 +215,7 @@ export default function SupportPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-slate-500">{selectedTicket.id}</span>
-                  <StatusBadge status={selectedTicket.status} size="sm" />
+                  <StatusBadge status={selectedTicket.status} size="sm" variant="partner" />
                 </div>
                 <h3 className="font-semibold text-slate-800 mt-1">{selectedTicket.subject}</h3>
               </div>

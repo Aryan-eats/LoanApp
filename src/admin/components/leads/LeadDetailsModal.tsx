@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Lead, LeadStatus } from '../../types/admin';
-import StatusBadge from '../StatusBadge';
-import { banks } from '../../data/placeholderData';
+import StatusBadge from '../../../components/shared/StatusBadge';
 import { getBanks } from '../../../api/banksApi';
 import type { BankFromApi } from '../../../api/banksApi';
 import { buildLoanTypeLabels } from '../../../data/loanProductsData';
@@ -214,7 +213,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Current Status</h3>
                 <div className="flex items-center gap-3 mb-4">
-                  <StatusBadge status={lead.status} />
+                  <StatusBadge status={lead.status} variant="admin" />
                 </div>
 
                 {getNextStatuses(lead.status, lead).length > 0 && (
@@ -290,7 +289,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                    {lead.bankAssigned ? 'Change Bank' : 'Select a Bank to Assign'}
                  </h4>
                  <div className="grid gap-3">
-                   {banks
+                   {apiBanks
                      .filter((bank) => bank.status === 'active')
                      .map((bank) => {
                        const isCurrentBank = lead.bankAssigned === bank.name;
@@ -323,15 +322,13 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                             </div>
                             {/* Bank details: interest rate, principal, offers */}
                             {(() => {
-                              const fullBank = apiBanks.find(b => b.name === bank.name);
-                              if (!fullBank) return null;
-                              const loanRate = fullBank.commissionRates?.find(r => r.loanType === lead.loanType);
+                              const loanRate = bank.commissionRates?.find(r => r.loanType === lead.loanType);
                               return (
                                 <div className="mt-2 space-y-2">
                                   <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">Interest Rate</span>
                                     <span className="font-medium text-gray-800">
-                                      {loanRate?.interestRate || `${fullBank.interestRateMin}% – ${fullBank.interestRateMax}%`}
+                                      {loanRate?.interestRate || `${bank.interestRateMin}% – ${bank.interestRateMax}%`}
                                     </span>
                                   </div>
                                   <div className="flex justify-between text-sm">
@@ -340,7 +337,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                                   </div>
                                   <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">Processing Fee</span>
-                                    <span className="font-medium text-gray-800">{fullBank.processingFee}</span>
+                                    <span className="font-medium text-gray-800">{bank.processingFee}</span>
                                   </div>
                                   {loanRate?.maxAmount && (
                                     <div className="flex justify-between text-sm">
@@ -348,11 +345,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({ lead, onClose, onSt
                                       <span className="font-medium text-gray-800">{formatCurrency(Number(loanRate.maxAmount))}</span>
                                     </div>
                                   )}
-                                  {fullBank.features && fullBank.features.length > 0 && (
+                                  {bank.features && bank.features.length > 0 && (
                                     <div className="pt-2 border-t border-gray-100">
                                       <p className="text-xs font-medium text-gray-500 mb-1">Offers & Features</p>
                                       <div className="flex flex-wrap gap-1">
-                                        {fullBank.features.map((feat, idx) => (
+                                        {bank.features.map((feat, idx) => (
                                           <span key={idx} className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-full">
                                             {feat}
                                           </span>

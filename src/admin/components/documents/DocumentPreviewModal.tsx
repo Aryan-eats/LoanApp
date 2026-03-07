@@ -1,4 +1,4 @@
-import StatusBadge from '../StatusBadge';
+import StatusBadge from '../../../components/shared/StatusBadge';
 import type { Lead, LeadDocument } from '../../types/admin';
 import { X, Download, Printer, Bell, Share2, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 
@@ -55,7 +55,7 @@ export default function DocumentPreviewModal({
             <p className="text-sm text-gray-500">{doc.fileName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status={doc.status} />
+            <StatusBadge status={doc.status} variant="admin" />
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

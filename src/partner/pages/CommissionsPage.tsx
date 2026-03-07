@@ -9,8 +9,8 @@ import {
   Info,
   Building2,
 } from 'lucide-react';
-import StatsCard from '../components/StatsCard';
-import StatusBadge from '../components/StatusBadge';
+import StatsCard from '../../components/shared/StatsCard';
+import StatusBadge from '../../components/shared/StatusBadge';
 import { commissions } from '../data/placeholderData';
 import type { CommissionStatus, LoanType } from '../types/partner-dashboard';
 
@@ -260,7 +260,7 @@ export default function CommissionsPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <StatusBadge status={commission.status} />
+                    <StatusBadge status={commission.status} variant="partner" />
                   </td>
                   <td className="px-5 py-4">
                     {commission.paidAt ? (

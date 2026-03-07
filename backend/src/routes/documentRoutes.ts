@@ -8,6 +8,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { validateUUID } from '../middleware/validateUUID.js';
 import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl, deleteLeadDoc, updateLeadDocStatus, bulkUpdateLeadDocStatus, generateUploadToken, uploadViaToken, validateUploadToken } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
+import { cacheControl } from '../middleware/cacheControl.js';
 import { uploadSingle, MAX_FILE_SIZE, validateMagicBytes } from '../middleware/upload.js';
 import { basePrisma } from '../config/prisma.js';
 import { cacheWrap } from '../utils/cache.js';
@@ -57,7 +58,7 @@ router.use(validateUUID);
  * Returns lender doc requirements, optionally filtered by loanCode.
  * Accessible to all authenticated roles (partner, admin, etc).
  */
-router.get('/req-docs', async (req: Request, res: Response): Promise<void> => {
+router.get('/req-docs', cacheControl(30), async (req: Request, res: Response): Promise<void> => {
   try {
     const { loanCode } = req.query;
     const lco = typeof loanCode === 'string' ? loanCode : '';

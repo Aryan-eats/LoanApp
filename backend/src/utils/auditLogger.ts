@@ -1,5 +1,7 @@
 ﻿import { Request } from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { Prisma } from '@prisma/client';
 import type { AuditEventType } from '@prisma/client';
 import prisma from '../config/prisma.js';
@@ -45,15 +47,30 @@ export const generateDeviceFingerprint = (req: Request): string => {
   return crypto.createHash('sha256').update(components).digest('hex').substring(0, 16);
 };
 
+// -- IP Validation -------------------------------------------------------------
+
+const IP_V4_RE =
+  /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+const IP_V6_RE = /^[\da-fA-F:]{2,45}$/;
+
+const isValidIP = (ip: string): boolean =>
+  IP_V4_RE.test(ip) || (ip.includes(':') && IP_V6_RE.test(ip));
+
 /**
- * Get client IP address from request
+ * Get client IP address from request.
+ *
+ * Relies on Express `trust proxy` being configured (set in index.ts) so that
+ * `req.ip` already reflects the left-most trusted hop from X-Forwarded-For.
+ * We validate the format to reject obviously spoofed values.
  */
 export const getClientIP = (req: Request): string => {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  const raw = req.ip || req.socket.remoteAddress || 'unknown';
+  if (raw === 'unknown') return raw;
+
+  // Strip IPv6-mapped IPv4 prefix (e.g. ::ffff:127.0.0.1 → 127.0.0.1)
+  const normalized = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+
+  return isValidIP(normalized) ? normalized : 'unknown';
 };
 
 /**
@@ -138,6 +155,94 @@ const computeChecksum = (
   return crypto.createHash('sha256').update(payload).digest('hex');
 };
 
+// -- Audit Retry Queue & File Fallback -----------------------------------------
+
+const FALLBACK_LOG_DIR = path.resolve(process.cwd(), 'logs');
+const FALLBACK_LOG_FILE = path.join(FALLBACK_LOG_DIR, 'audit-fallback.jsonl');
+const MAX_QUEUE_SIZE = 500;
+const MAX_RETRIES = 3;
+const RETRY_INTERVAL_MS = 30_000; // 30 s
+
+interface QueuedAuditEntry {
+  data: Prisma.AuditLogUncheckedCreateInput;
+  retries: number;
+}
+
+const retryQueue: QueuedAuditEntry[] = [];
+
+const CRITICAL_EVENTS = new Set<string>([
+  ...HIGH_SEVERITY_EVENTS,
+]);
+
+/**
+ * Append a JSON-lines record to the fallback log file on disk.
+ * Used when both the primary DB write and all retries have failed.
+ */
+const writeToFallbackLog = (data: Prisma.AuditLogUncheckedCreateInput): void => {
+  try {
+    if (!fs.existsSync(FALLBACK_LOG_DIR)) {
+      fs.mkdirSync(FALLBACK_LOG_DIR, { recursive: true });
+    }
+    const line =
+      JSON.stringify({ ...data, _fallbackTs: new Date().toISOString() }) + '\n';
+    fs.appendFileSync(FALLBACK_LOG_FILE, line, 'utf-8');
+  } catch (fileErr) {
+    console.error('Audit fallback file write failed:', fileErr);
+  }
+};
+
+/**
+ * Add a failed audit entry to the in-memory retry queue.
+ * If the queue is full, non-critical entries are evicted first.
+ */
+const enqueueForRetry = (data: Prisma.AuditLogUncheckedCreateInput): void => {
+  if (retryQueue.length >= MAX_QUEUE_SIZE) {
+    const dropIdx = retryQueue.findIndex(
+      (e) => !CRITICAL_EVENTS.has(e.data.event)
+    );
+    if (dropIdx >= 0) {
+      const dropped = retryQueue.splice(dropIdx, 1)[0];
+      writeToFallbackLog(dropped.data);
+    } else {
+      const dropped = retryQueue.shift()!;
+      writeToFallbackLog(dropped.data);
+    }
+  }
+  retryQueue.push({ data, retries: 0 });
+};
+
+/**
+ * Attempt to flush all queued audit entries back to the database.
+ */
+const flushRetryQueue = async (): Promise<void> => {
+  if (retryQueue.length === 0) return;
+
+  const batch = retryQueue.splice(0, retryQueue.length);
+  const stillFailing: QueuedAuditEntry[] = [];
+
+  for (const entry of batch) {
+    try {
+      await prisma.auditLog.create({ data: entry.data });
+    } catch {
+      entry.retries += 1;
+      if (entry.retries < MAX_RETRIES) {
+        stillFailing.push(entry);
+      } else {
+        writeToFallbackLog(entry.data);
+      }
+    }
+  }
+
+  retryQueue.unshift(...stillFailing);
+};
+
+const retryTimer = setInterval(() => {
+  flushRetryQueue().catch((err) =>
+    console.error('Audit retry flush error:', err)
+  );
+}, RETRY_INTERVAL_MS);
+retryTimer.unref();
+
 // -- Primary Audit Logger ------------------------------------------------------
 
 export interface AuditLogOptions {
@@ -159,6 +264,7 @@ export const logAuditEvent = async (
   req: Request,
   options: AuditLogOptions = {}
 ): Promise<void> => {
+  let data: Prisma.AuditLogUncheckedCreateInput | undefined;
   try {
     const hashedEmail = options.email ? hashEmail(options.email) : null;
     const userAgent = normalizeHeaderValue(req.headers['user-agent']);
@@ -167,27 +273,33 @@ export const logAuditEvent = async (
 
     const checksum = computeChecksum(event, options.userId, options.entityId, now);
 
-    await prisma.auditLog.create({
-      data: {
-        event,
-        userId: options.userId,
-        hashedEmail,
-        ip: getClientIP(req),
-        userAgent,
-        deviceFingerprint: generateDeviceFingerprint(req),
-        success: options.success ?? true,
-        failureReason: options.failureReason,
-        metadata: (options.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        entityId: options.entityId,
-        entityType: options.entityType,
-        severity,
-        checksum,
-        createdAt: now,
-      },
-    });
+    data = {
+      event,
+      userId: options.userId,
+      hashedEmail,
+      ip: getClientIP(req),
+      userAgent,
+      deviceFingerprint: generateDeviceFingerprint(req),
+      success: options.success ?? true,
+      failureReason: options.failureReason,
+      metadata: (options.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      entityId: options.entityId,
+      entityType: options.entityType,
+      severity,
+      checksum,
+      createdAt: now,
+    };
+
+    await prisma.auditLog.create({ data });
   } catch (error) {
-    // Don't fail the request if audit logging fails
     console.error('Audit logging error:', error);
+
+    if (data) {
+      if (CRITICAL_EVENTS.has(event)) {
+        writeToFallbackLog(data);
+      }
+      enqueueForRetry(data);
+    }
   }
 };
 

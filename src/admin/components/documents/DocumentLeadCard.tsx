@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import StatusBadge from '../StatusBadge';
+import StatusBadge from '../../../components/shared/StatusBadge';
 import type { Lead, LeadDocument } from '../../types/admin';
 import { getLoanTypeLabel } from '@/data/loanProductsData';
 import {
@@ -212,7 +212,7 @@ export default function DocumentLeadCard({
 
                     <div className="flex items-center gap-3">
                       {/* Status Badge */}
-                      <StatusBadge status={doc.status} size="sm" />
+                      <StatusBadge status={doc.status} size="sm" variant="admin" />
 
                       {/* Actions */}
                       <div className="flex items-center gap-0.5 p-1 bg-gray-50 rounded-xl border border-gray-100">

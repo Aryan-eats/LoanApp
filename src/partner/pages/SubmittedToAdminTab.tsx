@@ -29,7 +29,7 @@ import {
   Construction,
   FlashOn,
 } from '@mui/icons-material';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import { useLeadsStore } from '../../stores/leadsStore';
 import type { Lead, LeadStatus, LoanType } from '../types/partner-dashboard';
@@ -368,7 +368,7 @@ export default function SubmittedToAdminTab() {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <StatusBadge status={lead.status} />
+                      <StatusBadge status={lead.status} variant="partner" />
                     </td>
                     <td className="px-5 py-4">
                       <div className="text-sm text-slate-600">{lead.createdAt}</div>
@@ -455,7 +455,7 @@ export default function SubmittedToAdminTab() {
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               <div className="flex items-center justify-between mb-6 p-4 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <StatusBadge status={selectedLead.status} />
+                  <StatusBadge status={selectedLead.status} variant="partner" />
                   {selectedLead.bankAssigned && (
                     <span className="text-sm text-slate-600">• {selectedLead.bankAssigned}</span>
                   )}
@@ -560,7 +560,7 @@ export default function SubmittedToAdminTab() {
                       </div>
                       <div className="flex-1 pb-2">
                         <div className="flex items-center gap-2">
-                          <StatusBadge status={event.status} size="sm" />
+                          <StatusBadge status={event.status} size="sm" variant="partner" />
                           <span className="text-xs text-slate-400">by {event.updatedBy}</span>
                         </div>
                         <p className="text-xs text-slate-500 mt-1">{event.timestamp}</p>
@@ -578,7 +578,7 @@ export default function SubmittedToAdminTab() {
                       <IndianRupee className="text-green-600" size={18} />
                       <span className="font-medium text-green-800">Commission</span>
                     </div>
-                    <StatusBadge status={selectedLead.commission.status} size="sm" />
+                    <StatusBadge status={selectedLead.commission.status} size="sm" variant="partner" />
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-sm text-green-700">

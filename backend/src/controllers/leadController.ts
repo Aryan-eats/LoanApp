@@ -161,6 +161,29 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
       prisma.lead.count({ where }),
     ]);
 
+    const requestedLimit = Number.parseInt(req.query.limit as string, 10);
+    const isLargeFetch = (Number.isFinite(requestedLimit) && requestedLimit >= 100) || req.query.export === 'true';
+    if (req.user.role !== 'partner' && isLargeFetch) {
+      await logAuditEvent('BULK_EXPORT', req, {
+        userId: req.user.id,
+        entityType: 'lead',
+        metadata: {
+          resource: 'leads',
+          format: req.query.format ?? 'json',
+          page,
+          limit,
+          total,
+          filters: {
+            status: req.query.status ?? null,
+            loanType: req.query.loanType ?? null,
+            search: req.query.search ? '[present]' : null,
+            sortBy: sortField,
+            sortOrder,
+          },
+        },
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: {

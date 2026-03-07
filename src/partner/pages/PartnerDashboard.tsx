@@ -19,7 +19,7 @@ import {
   Send,
 } from 'lucide-react';
 import { StatsCard } from '@/components/shared';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge from '../../components/shared/StatusBadge';
 import LeadFunnel from '../components/LeadFunnel';
 import { useLeadsStore } from '../../stores/leadsStore';
 import { useLocalLeadsStore } from '../../stores/localLeadsStore';
@@ -356,7 +356,7 @@ export default function PartnerDashboard() {
                           <span className="font-medium text-slate-800">{formatCurrency(lead.loanAmount)}</span>
                         </td>
                         <td className="px-5 py-4">
-                          <StatusBadge status={lead.status} />
+                          <StatusBadge status={lead.status} variant="partner" />
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">

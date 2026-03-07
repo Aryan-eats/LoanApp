@@ -143,10 +143,7 @@
 - [ ] `StepBasicIdentity.tsx` — fix stale-closure `otpError` checks in verify and resend flows
 - [ ] `StepBasicIdentity.tsx` — remove `console.log`/`console.error` that output `phoneVerificationToken` or full error payloads
 - [ ] `src/pages/PartnerOnboarding.tsx` — handle `response.success === false` explicitly: show error, re-enable submit button
-- [ ] `useMsg91.ts` — fix script cleanup (reference counting so shared script isn't removed by first unmount)
-- [ ] `useMsg91.ts` — fix retry loop: remove failed `<script>` elements before retrying; check `document.getElementById(scriptId)` before appending
-- [ ] `useMsg91.ts` — expose `isWidgetReady` state; `sendOTP` should await script load with timeout before calling `widget.sendOtp()`
-- [ ] `useMsg91.ts` — `sendOTP` catch must return `false` (not `true`) on exception
+
 
 ---
   
@@ -160,8 +157,8 @@
 - [ ] `src/components/application-form/SuccessPopup.tsx` — RAF focus falls back to container (`tabIndex="-1"`) when `closeButtonRef` is null
 - [ ] `src/admin/components/leads/AddLeadModal.tsx` — loan amount validation: check `isNaN` before `<= 0`
 - [ ] `nginx.conf` — add `map $http_upgrade $connection_upgrade` and use mapped variable in `/api/` proxy block; fixes keep-alive breakage
-- [ ] Consolidate duplicate `PrefetchLink` (`src/components/` vs `src/components/shared/`) — pick one, update imports
-- [ ] Consolidate `StatsCard`/`StatusBadge` variants between admin/partner into shared primitives with variant props
+- [x] Consolidate duplicate `PrefetchLink` (`src/components/` vs `src/components/shared/`) — pick one, update imports
+- [x] Consolidate `StatsCard`/`StatusBadge` variants between admin/partner into shared primitives with variant props
 - [ ] Centralized API error wrapper — map HTTP status codes to user-friendly messages for all `apiClient` calls
 - [ ] Session expiry warning modal 5 min before token expires
 - [ ] `AbortController` in `useFetch` — cancel in-flight requests on component unmount
@@ -173,14 +170,14 @@
 
 - [ ] Audit log silent failure — add retry queue or file-based fallback for critical events (`auditLogger.ts ~L58`)
 - [ ] IP spoofing in audit logs — configure `express` trust proxy; validate `x-forwarded-for` (`auditLogger.ts ~L22`)
-- [ ] Log `PASSWORD_CHANGE` in `profileController.ts`
-- [ ] Log account deactivation in `profileController.ts`
-- [ ] Log admin `lead export` events (large list fetches)
-- [ ] Move token blacklist to Redis (verify `tokenBlacklist.ts` is fully Redis-backed in prod)
+- [x] Log `PASSWORD_CHANGE` in `profileController.ts`
+- [x] Log account deactivation in `profileController.ts`
+- [x] Log admin `lead export` events (large list fetches)
+- [x] Move token blacklist to Redis (verify `tokenBlacklist.ts` is fully Redis-backed in prod)
 - [ ] Response caching for static lists (banks, doc types) — 15-30s TTL
 - [ ] Compression middleware enabled in production `backend/src/index.ts`
-- [ ] Virtual scrolling for admin lead tables (`react-window` or `tanstack/virtual`)
-- [ ] CI gates: security regression tests run on every merge (IDOR/BOLA paths, upload token replay)
+- [x] Virtual scrolling for admin lead tables (`react-window` or `tanstack/virtual`)
+- [x] CI gates: security regression tests run on every merge (IDOR/BOLA paths, upload token replay)
 - [ ] Proper DB indexes for lead queries (verify Prisma schema covers compound query patterns)
 
 ---

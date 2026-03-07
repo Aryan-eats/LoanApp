@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
 import { validateUUID } from '../middleware/validateUUID.js';
+import { cacheControl } from '../middleware/cacheControl.js';
 import {
   createLead,
   getLeads,
@@ -76,7 +77,7 @@ router.get('/dashboard', async (req, res) => {
  * Bank listing for partners (active banks only)
  * Reuses the admin listBanks controller which returns cached bank data.
  */
-router.get('/banks', async (_req, res) => {
+router.get('/banks', cacheControl(15), async (_req, res) => {
   // Inline handler rather than importing the full admin controller
   const { cacheWrap } = await import('../utils/cache.js');
   const { basePrisma } = await import('../config/prisma.js');

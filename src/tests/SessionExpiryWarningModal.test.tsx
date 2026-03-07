@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SessionExpiryWarningModal from '../components/SessionExpiryWarningModal';
 import { useAuthStore } from '../stores/authStore';
@@ -30,6 +30,8 @@ vi.mock('../api/apiClient', () => ({
 }));
 
 describe('SessionExpiryWarningModal', () => {
+  let logoutMock: ReturnType<typeof vi.fn>;
+
   const baseUser = {
     id: 'user-1',
     email: 'user@example.com',
@@ -43,7 +45,7 @@ describe('SessionExpiryWarningModal', () => {
   };
 
   beforeEach(() => {
-    const logoutMock = vi.fn().mockResolvedValue(undefined);
+    logoutMock = vi.fn().mockResolvedValue(undefined);
 
     vi.useFakeTimers();
     refreshSessionMock.mockReset();
@@ -54,12 +56,12 @@ describe('SessionExpiryWarningModal', () => {
       isAuthenticated: true,
       isLoading: false,
       error: null,
-      logout: logoutMock,
+      logout: logoutMock as unknown as () => Promise<void>,
     });
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
+    vi.clearAllTimers();
     vi.useRealTimers();
   });
 
@@ -88,17 +90,13 @@ describe('SessionExpiryWarningModal', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/session expiring soon/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /stay signed in/i }));
-
-    await waitFor(() => {
-      expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /stay signed in/i }));
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-
-    expect(useAuthStore.getState().logout).not.toHaveBeenCalled();
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(logoutMock).not.toHaveBeenCalled();
   });
 
   it('logs the user out once the warning countdown reaches expiry', async () => {
@@ -115,8 +113,6 @@ describe('SessionExpiryWarningModal', () => {
       vi.advanceTimersByTime(2_500);
     });
 
-    await waitFor(() => {
-      expect(useAuthStore.getState().logout).toHaveBeenCalledTimes(1);
-    });
+    expect(logoutMock).toHaveBeenCalledTimes(1);
   });
 });

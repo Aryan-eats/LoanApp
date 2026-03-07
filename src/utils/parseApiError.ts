@@ -184,7 +184,7 @@ export const decorateApiError = <T>(
       && typeof error === 'object'
       && 'response' in error
     ) {
-      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const axiosError = error as unknown as AxiosError<ApiErrorResponse>;
       if (typeof axiosError.response?.status === 'number') {
         decoratedError.status = axiosError.response.status;
       }
