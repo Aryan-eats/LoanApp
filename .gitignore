@@ -39,6 +39,10 @@ Desktop.ini
 # Docker
 docker-compose.override.yml
 
+# Internal docs
+production/
+docs/
+
 # Test coverage
 coverage/
 backend/coverage/
