@@ -13,8 +13,7 @@ dist-ssr
 *.local
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 .idea
 .DS_Store
 Thumbs.db
@@ -65,5 +64,5 @@ git-history.txt
 .aider*
 .claude/
 CLAUDE.md
-productions/
+production/
 docs/
