@@ -69,12 +69,12 @@ export default function PartnerSidebar() {
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 h-screen bg-white border-r border-slate-200 transition-all duration-300 ${
+      className={`fixed left-0 top-0 z-40 h-screen bg-slate-950/50 backdrop-blur-xl border-r border-white/10 transition-all duration-300 ${
         isCollapsed ? 'w-20' : 'w-64'
       }`}
     >
       {/* Logo Section */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="GrowthPath" className="h-18 w-auto" />
@@ -87,7 +87,7 @@ export default function PartnerSidebar() {
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-white/5 text-slate-400 transition-colors"
         >
           {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
@@ -101,13 +101,13 @@ export default function PartnerSidebar() {
             to={item.path}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative ${
               isActive(item.path)
-                ? 'bg-blue-50 text-blue-700 font-medium'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white'
             }`}
           >
             <span
               className={`flex-shrink-0 ${
-                isActive(item.path) ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                isActive(item.path) ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-300'
               }`}
             >
               {item.icon}
@@ -116,14 +116,14 @@ export default function PartnerSidebar() {
               <>
                 <span className="truncate">{item.label}</span>
                 {item.badge && (
-                  <span className="ml-auto bg-blue-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+                  <span className="ml-auto bg-indigo-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">
                     {item.badge}
                   </span>
                 )}
               </>
             )}
             {isCollapsed && item.badge && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white text-xs font-medium rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-xs font-medium rounded-full flex items-center justify-center border-2 border-slate-900">
                 {item.badge}
               </span>
             )}
@@ -138,10 +138,10 @@ export default function PartnerSidebar() {
       </nav>
 
       {/* Logout Section */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-slate-200 bg-white">
+      <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-white/10 bg-slate-950/50 backdrop-blur-xl">
         <button
           onClick={handleLogout}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all w-full ${
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full ${
             isCollapsed ? 'justify-center' : ''
           }`}
         >

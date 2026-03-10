@@ -275,9 +275,8 @@ export interface DashboardStats {
 }
 
 export interface LeadFunnel {
+  totalLeads: number;
   submitted: number;
-  docsCollected: number;
-  bankProcessing: number;
   approved: number;
   disbursed: number;
 }

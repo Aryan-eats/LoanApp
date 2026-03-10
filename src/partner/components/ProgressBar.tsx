@@ -8,8 +8,8 @@ interface ProgressBarProps {
 }
 
 const variantStyles = {
-  default: 'bg-blue-500',
-  success: 'bg-green-500',
+  default: 'bg-indigo-500',
+  success: 'bg-emerald-500',
   warning: 'bg-amber-500',
   error: 'bg-red-500',
 };
@@ -34,13 +34,13 @@ export default function ProgressBar({
     <div className="w-full">
       {(label || showPercentage) && (
         <div className="flex items-center justify-between mb-1">
-          {label && <span className="text-sm font-medium text-slate-700">{label}</span>}
+          {label && <span className="text-sm font-medium text-slate-200">{label}</span>}
           {showPercentage && (
-            <span className="text-sm font-medium text-slate-600">{percentage.toFixed(0)}%</span>
+            <span className="text-sm font-medium text-slate-400">{percentage.toFixed(0)}%</span>
           )}
         </div>
       )}
-      <div className={`w-full bg-slate-200 rounded-full overflow-hidden ${sizeStyles[size]}`}>
+      <div className={`w-full bg-slate-800/80 rounded-full overflow-hidden ${sizeStyles[size]}`}>
         <div
           className={`${sizeStyles[size]} ${variantStyles[variant]} rounded-full transition-all duration-500`}
           style={{ width: `${percentage}%` }}

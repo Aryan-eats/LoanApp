@@ -1,30 +1,28 @@
 interface LeadFunnelProps {
   data: {
+    totalLeads: number;
     submitted: number;
-    docsCollected: number;
-    bankProcessing: number;
     approved: number;
     disbursed: number;
   };
 }
 
 const funnelStages = [
-  { key: 'submitted', label: 'Submitted', color: 'bg-blue-500' },
-  { key: 'docsCollected', label: 'Docs Collected', color: 'bg-cyan-500' },
-  { key: 'bankProcessing', label: 'Bank Processing', color: 'bg-purple-500' },
+  { key: 'totalLeads', label: 'Lead Received', color: 'bg-slate-700' },
+  { key: 'submitted', label: 'Submitted to Bank', color: 'bg-indigo-500' },
   { key: 'approved', label: 'Approved', color: 'bg-emerald-500' },
-  { key: 'disbursed', label: 'Disbursed', color: 'bg-green-600' },
+  { key: 'disbursed', label: 'Disbursed', color: 'bg-green-500' },
 ];
 
 export default function LeadFunnel({ data }: LeadFunnelProps) {
   const maxValue = Math.max(...Object.values(data));
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
+    <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-5">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-slate-800">Lead Funnel</h3>
-          <p className="text-sm text-slate-500">Lead progression overview</p>
+          <h3 className="text-lg font-semibold text-slate-100">Lead Funnel</h3>
+          <p className="text-sm text-slate-400">Lead progression overview</p>
         </div>
       </div>
 
@@ -39,15 +37,15 @@ export default function LeadFunnel({ data }: LeadFunnelProps) {
           return (
             <div key={stage.key}>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-medium text-slate-700">{stage.label}</span>
+                <span className="text-sm font-medium text-slate-300">{stage.label}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800">{value}</span>
+                  <span className="text-sm font-semibold text-slate-100">{value}</span>
                   {index > 0 && (
-                    <span className="text-xs text-slate-400">({conversionRate}%)</span>
+                    <span className="text-xs text-slate-500">({conversionRate}%)</span>
                   )}
                 </div>
               </div>
-              <div className="h-8 bg-slate-100 rounded-lg overflow-hidden relative">
+              <div className="h-8 bg-white/5 rounded-lg overflow-hidden relative">
                 <div
                   className={`h-full ${stage.color} rounded-lg transition-all duration-500`}
                   style={{ width: `${percentage}%` }}
@@ -65,12 +63,11 @@ export default function LeadFunnel({ data }: LeadFunnelProps) {
         })}
       </div>
 
-      {/* Funnel Summary */}
-      <div className="mt-6 pt-4 border-t border-slate-100">
+      <div className="mt-6 pt-4 border-t border-white/10">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">Overall Conversion Rate</span>
-          <span className="font-semibold text-green-600">
-            {data.submitted > 0 ? ((data.disbursed / data.submitted) * 100).toFixed(1) : 0}%
+          <span className="text-slate-400">Overall Conversion Rate</span>
+          <span className="font-semibold text-emerald-400">
+            {data.totalLeads > 0 ? ((data.disbursed / data.totalLeads) * 100).toFixed(1) : 0}%
           </span>
         </div>
       </div>

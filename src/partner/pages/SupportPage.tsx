@@ -18,9 +18,9 @@ import { supportTickets } from '../data/placeholderData';
 type TicketPriorityValue = 'low' | 'medium' | 'high';
 
 const priorityConfig: Record<TicketPriorityValue, { label: string; color: string }> = {
-  low: { label: 'Low', color: 'bg-slate-100 text-slate-600' },
-  medium: { label: 'Medium', color: 'bg-amber-100 text-amber-700' },
-  high: { label: 'High', color: 'bg-red-100 text-red-700' },
+  low: { label: 'Low', color: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
+  medium: { label: 'Medium', color: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' },
+  high: { label: 'High', color: 'bg-red-500/10 text-red-400 border border-red-500/20' },
 };
 
 const categoryLabels: Record<string, string> = {
@@ -92,12 +92,12 @@ export default function SupportPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Help & Support</h1>
-          <p className="text-slate-500 mt-1">Get help with your queries and issues</p>
+          <h1 className="text-2xl font-bold text-slate-100">Help & Support</h1>
+          <p className="text-slate-400 mt-1">Get help with your queries and issues</p>
         </div>
         <button
           onClick={() => setShowNewTicket(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors shadow-sm cursor-pointer"
         >
           <Plus size={16} />
           Raise New Ticket
@@ -105,30 +105,30 @@ export default function SupportPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-5 hover:border-white/20 transition-all cursor-pointer">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <Phone className="text-blue-600" size={24} />
+            <div className="w-12 h-12 bg-indigo-500/20 rounded-xl flex items-center justify-center border border-indigo-500/30">
+              <Phone className="text-indigo-400" size={24} />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-800">Call Us</h3>
-              <p className="text-sm text-slate-500 mt-1">Mon-Sat, 9AM-7PM</p>
-              <a href="tel:+918001234567" className="text-blue-600 font-medium mt-2 inline-block hover:underline">
+              <h3 className="font-semibold text-slate-200">Call Us</h3>
+              <p className="text-sm text-slate-400 mt-1">Mon-Sat, 9AM-7PM</p>
+              <a href="tel:+918001234567" className="text-indigo-400 font-medium mt-2 inline-block hover:underline">
                 1800-123-4567
               </a>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-5 hover:border-white/20 transition-all cursor-pointer">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <MessageSquare className="text-green-600" size={24} />
+            <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center border border-emerald-500/30">
+              <MessageSquare className="text-emerald-400" size={24} />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-800">WhatsApp</h3>
-              <p className="text-sm text-slate-500 mt-1">Quick responses</p>
-              <a href="#" className="text-green-600 font-medium mt-2 inline-flex items-center gap-1 hover:underline">
+              <h3 className="font-semibold text-slate-200">WhatsApp</h3>
+              <p className="text-sm text-slate-400 mt-1">Quick responses</p>
+              <a href="#" className="text-emerald-400 font-medium mt-2 inline-flex items-center gap-1 hover:underline">
                 Chat Now
                 <ExternalLink size={14} />
               </a>
@@ -136,15 +136,15 @@ export default function SupportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-5 hover:border-white/20 transition-all cursor-pointer">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-              <Mail className="text-purple-600" size={24} />
+            <div className="w-12 h-12 bg-violet-500/20 rounded-xl flex items-center justify-center border border-violet-500/30">
+              <Mail className="text-violet-400" size={24} />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-800">Email</h3>
-              <p className="text-sm text-slate-500 mt-1">24-48 hrs response</p>
-              <a href="mailto:support@growthpath.in" className="text-purple-600 font-medium mt-2 inline-block hover:underline">
+              <h3 className="font-semibold text-slate-200">Email</h3>
+              <p className="text-sm text-slate-400 mt-1">24-48 hrs response</p>
+              <a href="mailto:support@growthpath.in" className="text-violet-400 font-medium mt-2 inline-block hover:underline">
                 support@growthpath.in
               </a>
             </div>
@@ -153,11 +153,11 @@ export default function SupportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200">
-          <div className="px-5 py-4 border-b border-slate-100">
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
+          <div className="px-5 py-4 border-b border-white/10">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-800">My Tickets</h3>
-              <span className="text-sm text-slate-500">{supportTickets.length} tickets</span>
+              <h3 className="font-semibold text-slate-100">My Tickets</h3>
+              <span className="text-sm text-slate-400">{supportTickets.length} tickets</span>
             </div>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -166,89 +166,89 @@ export default function SupportPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search tickets..."
-                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-slate-800/50 border border-white/10 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+          <div className="divide-y divide-white/5 max-h-96 overflow-y-auto">
             {filteredTickets.length > 0 ? (
               filteredTickets.map((ticket) => (
                 <div
                   key={ticket.id}
                   onClick={() => setSelectedTicket(ticket)}
-                  className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors ${
-                    selectedTicket?.id === ticket.id ? 'bg-blue-50' : ''
+                  className={`p-4 cursor-pointer hover:bg-white/5 transition-colors ${
+                    selectedTicket?.id === ticket.id ? 'bg-indigo-500/10' : ''
                   }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">{ticket.id}</span>
+                        <span className="text-xs text-slate-500 font-mono">{ticket.id}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${priorityConfig[ticket.priority].color}`}>
                           {priorityConfig[ticket.priority].label}
                         </span>
                       </div>
-                      <h4 className="font-medium text-slate-800 mt-1 truncate">{ticket.subject}</h4>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <h4 className="font-medium text-slate-200 mt-1 truncate">{ticket.subject}</h4>
+                      <p className="text-xs text-slate-400 mt-1">
                         {categoryLabels[ticket.category]} • {ticket.createdAt}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={ticket.status} size="sm" variant="partner" />
-                      <ChevronRight size={16} className="text-slate-400" />
+                      <ChevronRight size={16} className="text-slate-500" />
                     </div>
                   </div>
                 </div>
               ))
             ) : (
               <div className="p-8 text-center">
-                <p className="text-slate-500">No tickets found</p>
+                <p className="text-slate-400">No tickets found</p>
               </div>
             )}
           </div>
         </div>
 
         {selectedTicket ? (
-          <div className="bg-white rounded-xl border border-slate-200">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-500">{selectedTicket.id}</span>
+                  <span className="text-sm text-slate-400 font-mono">{selectedTicket.id}</span>
                   <StatusBadge status={selectedTicket.status} size="sm" variant="partner" />
                 </div>
-                <h3 className="font-semibold text-slate-800 mt-1">{selectedTicket.subject}</h3>
+                <h3 className="font-semibold text-slate-100 mt-1">{selectedTicket.subject}</h3>
               </div>
               <button
                 onClick={() => setSelectedTicket(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 max-h-72 overflow-y-auto border-b border-slate-100">
+            <div className="p-5 max-h-72 overflow-y-auto border-b border-white/10">
               <div className="space-y-4">
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-sm font-semibold">Y</span>
                   </div>
-                  <div className="flex-1 bg-blue-50 rounded-lg p-3">
+                  <div className="flex-1 bg-indigo-500/10 border border-indigo-500/10 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-800">You</span>
+                      <span className="text-sm font-medium text-slate-200">You</span>
                       <span className="text-xs text-slate-400">{selectedTicket.createdAt}</span>
                     </div>
-                    <p className="text-sm text-slate-600">{selectedTicket.description}</p>
+                    <p className="text-sm text-slate-300">{selectedTicket.description}</p>
                   </div>
                 </div>
 
                 {selectedTicket.messages.map((message) => (
                   <div key={message.id} className="flex gap-3">
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      className={`w-8 h-8 rounded-full border flex items-center justify-center flex-shrink-0 ${
                         message.sender === 'support'
-                          ? 'bg-green-100 text-green-600'
-                          : 'bg-blue-100 text-blue-600'
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                          : 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
                       }`}
                     >
                       <span className="text-sm font-semibold">
@@ -256,17 +256,17 @@ export default function SupportPage() {
                       </span>
                     </div>
                     <div
-                      className={`flex-1 rounded-lg p-3 ${
-                        message.sender === 'support' ? 'bg-green-50' : 'bg-blue-50'
+                      className={`flex-1 rounded-lg border p-3 ${
+                        message.sender === 'support' ? 'bg-emerald-500/10 border-emerald-500/10' : 'bg-indigo-500/10 border-indigo-500/10'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-slate-800">
+                        <span className="text-sm font-medium text-slate-200">
                           {message.sender === 'support' ? message.senderName : 'You'}
                         </span>
                         <span className="text-xs text-slate-400">{message.timestamp}</span>
                       </div>
-                      <p className="text-sm text-slate-600">{message.message}</p>
+                      <p className="text-sm text-slate-300">{message.message}</p>
                     </div>
                   </div>
                 ))}
@@ -282,16 +282,16 @@ export default function SupportPage() {
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder="Type your message..."
                       rows={2}
-                      className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      className="w-full px-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                     />
-                    <button className="absolute right-2 bottom-2 p-1.5 text-slate-400 hover:text-slate-600 transition-colors">
+                    <button className="absolute right-2 bottom-2 p-1.5 text-slate-400 hover:text-indigo-400 transition-colors">
                       <Paperclip size={16} />
                     </button>
                   </div>
                   <button
                     onClick={handleSendMessage}
                     disabled={!newMessage.trim()}
-                    className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Send size={18} />
                   </button>
@@ -301,31 +301,31 @@ export default function SupportPage() {
           </div>
         ) : (
           /* FAQ Section */
-          <div className="bg-white rounded-xl border border-slate-200">
-            <div className="px-5 py-4 border-b border-slate-100">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
+            <div className="px-5 py-4 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <HelpCircle className="text-blue-600" size={20} />
-                <h3 className="font-semibold text-slate-800">Frequently Asked Questions</h3>
+                <HelpCircle className="text-indigo-400" size={20} />
+                <h3 className="font-semibold text-slate-100">Frequently Asked Questions</h3>
               </div>
             </div>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-white/5">
               {faqItems.map((faq, index) => (
                 <div key={index}>
                   <button
                     onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
-                    className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
+                    className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
                   >
-                    <span className="font-medium text-slate-800 pr-4">{faq.question}</span>
+                    <span className="font-medium text-slate-200 pr-4">{faq.question}</span>
                     <ChevronRight
                       size={18}
-                      className={`text-slate-400 flex-shrink-0 transition-transform ${
+                      className={`text-slate-500 flex-shrink-0 transition-transform ${
                         expandedFaq === index ? 'rotate-90' : ''
                       }`}
                     />
                   </button>
                   {expandedFaq === index && (
                     <div className="px-5 pb-4">
-                      <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">{faq.answer}</p>
+                      <p className="text-sm text-slate-300 bg-slate-800/50 border border-white/5 p-3 rounded-lg">{faq.answer}</p>
                     </div>
                   )}
                 </div>
@@ -336,13 +336,13 @@ export default function SupportPage() {
       </div>
 
       {showNewTicket && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-800">Raise New Ticket</h2>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-xl shadow-[0_0_40px_rgba(0,0,0,0.3)] max-w-lg w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-100">Raise New Ticket</h2>
               <button
                 onClick={() => setShowNewTicket(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
               >
                 <X size={20} />
               </button>
@@ -350,23 +350,23 @@ export default function SupportPage() {
 
             <div className="p-6 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Subject *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Subject *</label>
                 <input
                   type="text"
                   value={newTicketForm.subject}
                   onChange={(e) => setNewTicketForm({ ...newTicketForm, subject: e.target.value })}
                   placeholder="Brief description of your issue"
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 bg-slate-800 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Category *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Category *</label>
                   <select
                     value={newTicketForm.category}
                     onChange={(e) => setNewTicketForm({ ...newTicketForm, category: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-white/10 rounded-lg text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Select category</option>
                     <option value="lead_issue">Lead Issue</option>
@@ -378,13 +378,13 @@ export default function SupportPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Priority</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Priority</label>
                   <select
                     value={newTicketForm.priority}
                     onChange={(e) =>
                       setNewTicketForm({ ...newTicketForm, priority: e.target.value as TicketPriorityValue })
                     }
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-white/10 rounded-lg text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -394,43 +394,43 @@ export default function SupportPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Description *</label>
                 <textarea
                   value={newTicketForm.description}
                   onChange={(e) => setNewTicketForm({ ...newTicketForm, description: e.target.value })}
                   placeholder="Provide detailed information about your issue..."
                   rows={4}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-4 py-2.5 bg-slate-800 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-white/5">
                 <div className="flex items-center gap-2 mb-2">
                   <Paperclip size={16} className="text-slate-400" />
-                  <span className="text-sm font-medium text-slate-700">Attachments</span>
+                  <span className="text-sm font-medium text-slate-200">Attachments</span>
                 </div>
                 <label className="block">
                   <input type="file" multiple className="hidden" />
-                  <span className="inline-flex items-center gap-2 px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg text-sm text-slate-500 cursor-pointer hover:border-blue-400 hover:text-blue-600 transition-colors">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 border-2 border-dashed border-slate-600 rounded-lg text-sm text-slate-400 cursor-pointer hover:border-indigo-400 hover:text-indigo-400 transition-colors">
                     <Plus size={16} />
                     Add files (optional)
                   </span>
                 </label>
-                <p className="text-xs text-slate-400 mt-2">Max 5 files, 5MB each. Supports PDF, JPG, PNG</p>
+                <p className="text-xs text-slate-500 mt-2">Max 5 files, 5MB each. Supports PDF, JPG, PNG</p>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
+            <div className="px-6 py-4 border-t border-white/10 bg-slate-800/50 flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowNewTicket(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
+                className="px-4 py-2 text-slate-300 hover:text-slate-100 hover:bg-white/5 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-white/10"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitTicket}
                 disabled={!newTicketForm.subject || !newTicketForm.category || !newTicketForm.description}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 Submit Ticket
               </button>

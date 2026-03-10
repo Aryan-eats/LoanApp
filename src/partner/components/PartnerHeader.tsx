@@ -55,27 +55,27 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-white border-b border-slate-200 z-30 transition-all duration-300">
+    <header className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-slate-950/80 backdrop-blur-md border-b border-white/10 z-30 transition-all duration-300">
       <div className="h-full flex items-center justify-between px-4 lg:px-6">
         {/* Left Section - Mobile Menu & Search */}
         <div className="flex items-center gap-4">
           {/* Mobile Menu Toggle */}
           <button
             onClick={onMenuToggle}
-            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+            className="lg:hidden p-2 rounded-lg hover:bg-white/5 text-slate-400"
           >
             {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
 
           {/* Search Bar */}
           <div className="hidden md:flex items-center relative">
-            <Search size={18} className="absolute left-3 text-slate-400" />
+            <Search size={18} className="absolute left-3 text-slate-500" />
             <input
               type="text"
               placeholder="Search leads, clients..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-80 pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-slate-400"
+              className="w-80 pl-10 pr-4 py-2 bg-slate-900/50 border border-white/10 rounded-lg text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-500"
             />
           </div>
         </div>
@@ -94,19 +94,19 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
                 setShowNotifications(!showNotifications);
                 setShowProfile(false);
               }}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 relative transition-colors"
+              className="p-2 rounded-lg hover:bg-white/5 text-slate-400 relative transition-colors"
             >
               <Bell size={20} />
             </button>
 
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                  <h3 className="font-semibold text-slate-800">Notifications</h3>
+              <div className="absolute right-0 mt-2 w-80 bg-slate-900 rounded-xl shadow-xl border border-white/10 overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-100">Notifications</h3>
                 </div>
                 <div className="px-4 py-8 text-center text-slate-500">
-                  <Bell size={32} className="mx-auto mb-2 text-slate-300" />
+                  <Bell size={32} className="mx-auto mb-2 text-slate-600" />
                   <p className="text-sm">No new notifications</p>
                 </div>
               </div>
@@ -120,15 +120,15 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
                 setShowProfile(!showProfile);
                 setShowNotifications(false);
               }}
-              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
             >
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-semibold">
                   {displayInfo.fullName.charAt(0)}
                 </span>
               </div>
               <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-slate-700 leading-tight">
+                <p className="text-sm font-medium text-slate-200 leading-tight">
                   {displayInfo.fullName}
                 </p>
                 <p className="text-xs text-slate-500">{displayInfo.partnerCode}</p>
@@ -138,10 +138,10 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
 
             {/* Profile Dropdown Menu */}
             {showProfile && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <p className="font-medium text-slate-800">{displayInfo.fullName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{displayInfo.email}</p>
+              <div className="absolute right-0 mt-2 w-56 bg-slate-900 rounded-xl shadow-xl border border-white/10 overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-white/5">
+                  <p className="font-medium text-slate-100">{displayInfo.fullName}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{displayInfo.email}</p>
                   <div className="flex items-center gap-1.5 mt-2">
                     <span
                       className={`w-2 h-2 rounded-full ${
@@ -156,27 +156,27 @@ export default function PartnerHeader({ onMenuToggle, isMobileMenuOpen }: Partne
                 <div className="py-1">
                   <Link
                     to="/partner/profile"
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
                   >
                     My Profile
                   </Link>
                   <Link
                     to="/partner/commissions"
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
                   >
                     My Earnings
                   </Link>
                   <Link
                     to="/partner/support"
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
                   >
                     Help & Support
                   </Link>
                 </div>
-                <div className="border-t border-slate-100 py-1">
+                <div className="border-t border-white/5 py-1">
                   <button 
                     onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
                   >
                     Logout
                   </button>

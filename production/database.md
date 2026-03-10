@@ -1,1081 +1,737 @@
-# Database Layer Review and MVP Coverage — Loan App Backend
+# Database Schema — Red Flag Analysis
 
-
-> **Date:** 2026-03-06  
-> **Stack:** PostgreSQL · Prisma ORM (with `@prisma/adapter-pg`) · Redis (ioredis) · Node.js  
-> **Files analysed:** `production/task.md`, `prisma/schema.prisma`, `src/config/prisma.ts`, `src/config/redis.ts`, `src/utils/cache.ts`, `src/utils/auditLogger.ts`, `src/utils/leadHelpers.ts`, `src/services/userService.ts`, `src/services/authService.ts`, `src/services/documentService.ts`, `src/controllers/adminController.ts`, `src/controllers/authController.ts`, `src/controllers/leadController.ts`, `src/controllers/partnerController.ts`, `src/controllers/documentController.ts`, `src/scripts/seedDocRequirements.ts`
-
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [MVP Requirement Coverage](#2-mvp-requirement-coverage)
-3. [Required Database Changes for MVP](#3-required-database-changes-for-mvp)
-4. [Configuration](#4-configuration)
-5. [Query Correctness](#5-query-correctness)
-6. [Performance](#6-performance)
-7. [Async Opportunities](#7-async-opportunities)
-8. [Caching](#8-caching)
-9. [Indexing](#9-indexing)
-10. [Prioritised Action List](#10-prioritised-action-list)
+> **Analyzed**: `backend/prisma/schema.prisma`, all migration SQL, and backend query patterns  
+> **Date**: 2026-03-10 (re-verified)  
+> **Scope**: 14 tables, 7 enums, 40+ audit event types
 
 ---
 
-## 1. Executive Summary
+## SUMMARY
 
-The current database implementation already covers a meaningful part of the MVP:
-
-- `User`, `ActiveSession`, `PasswordHistory`, `OtpChallenge`, and `AuditLog` provide a solid auth and admin foundation.
-- `PartnerData` already behaves like a lightweight partner-side CRM for local client capture.
-- `Lead`, `LeadTimeline`, and `LeadDocument` already support submitted loan cases, pipeline state, document handling, and auditability.
-- `Bank`, `BankCommissionRate`, and `LenderDocRequirement` already provide a lender catalog plus document requirements.
-- `DocumentUploadToken` already enables tokenized customer document upload links.
-
-The main MVP gaps are structural rather than foundational:
-
-- client data is split across `PartnerData` and `Lead`, with no canonical link between the two;
-- lender eligibility is only partially modeled;
-- follow-up reminders are not modeled at all;
-- customer tracking links and customer-visible case updates are not modeled;
-- document storage is lead-centric, not full client-vault centric for pre-submission files.
+- **Total issues found: 37** (🔴 Critical: 3 | 🟠 High: 12 | 🟡 Medium: 15 | 🔵 Low: 7)
+- **Top 3 most urgent fixes:**
+  1. 🔴 All `TIMESTAMP(3)` columns are timezone-naive — must be `TIMESTAMPTZ`
+  2. 🔴 `users` table is a 50+ column god table mixing auth, profile, KYC, banking, and consent
+  3. 🔴 `audit_logs` and `lead_timeline` tables have no partitioning strategy — will degrade at scale
+- **Verification result:** The current list was not complete. After checking the live Prisma schema, manual SQL, and controller/service query paths, there are additional index, uniqueness, enum-drift, and query-shape issues that should be included before calling the database production-ready.
 
 ---
 
-## 2. MVP Requirement Coverage
+## CAPACITY VERDICT
 
-Status legend used below: `Implemented`, `Partial`, `Missing`.
-
-| MVP requirement | Current database support | Status | What is already implemented | What still needs to change |
-|----------------|--------------------------|--------|-----------------------------|----------------------------|
-| Partner Dashboard | `PartnerData`, `Lead`, `LeadDocument`, `LeadTimeline`, `AuditLog`, commission fields on `Lead` | Partial | Core counts are derivable: total clients, active cases, docs pending, submitted/approved/disbursed cases, recent activity, approval/disbursal metrics. | Add follow-up/reminder entities. Consider pre-aggregated dashboard summaries later for 10k partners. |
-| Client Management System | `PartnerData` for partner-side records, `Lead` for submitted cases | Partial | Personal, contact, income, city, loan amount, tenure, purpose, notes, and local workflow state already exist. | Add missing financial fields such as `existingEmis` and `cibilScore`. Normalize the split between `PartnerData` and `Lead` by linking them directly or introducing a canonical `Client`/`LoanCase` model. |
-| Client pipeline stages | `LocalLeadStatus`, `LeadStatus`, `LeadTimeline` | Partial | There is already a pipeline and timeline mechanism. | Required stages do not align cleanly with the PRD. Add or remap stages for `lead_received`, `file_preparation`, and `bank_selection` so reporting is consistent. |
-| Document Vault | `LeadDocument`, `DocumentUploadToken`, `r2ObjectKey`, `fileUrl`, `DocumentStatus` | Partial | Documents are typed, status-tracked, linked to a case, and can be uploaded by tokenized customer link. | Support document storage before submission as part of the partner's client vault, not only after a `Lead` exists. Add optional versioning, expiry, checklist completion, and verification metadata if the vault will be operationally central. |
-| Lender Criteria Library | `Bank`, `BankCommissionRate`, `LenderDocRequirement`, seeded doc requirements | Partial | Bank profile, supported loan types, rate range, fee, tenure, amount range, TAT, and required documents are already modeled. | Add explicit eligibility criteria: minimum income, minimum CIBIL, FOIR, eligible employment categories, and product-level rules. Right now doc requirements exist, but approval criteria do not. |
-| Loan Calculators | EMI-related fields on `Lead` (`interestRate`, `emi`, `estimatedEMI`) | Partial | The database can store EMI results once a case exists. | For the MVP, calculators can stay stateless and need no dedicated tables. Add `CalculationHistory` only if saved comparisons or partner advisory history becomes a product requirement. |
-| Case submission to GPS India | `Lead`, `LeadTimeline`, `partnerId`, `preferredBank`, `bankAssigned`, commission fields | Partial | Submitted cases are clearly represented and can move through bank processing, approval, and disbursal. | Add explicit submission metadata such as `sourcePartnerDataId`, `submittedToGpsAt`, `submittedBy`, and `manualLenderName` for lenders that are not in the catalog. |
-| Admin Dashboard | `User`, `Lead`, `LeadDocument`, `Bank`, `AuditLog`, onboarding and KYC fields | Partial | Basic partner management, case management, lender management, and document monitoring are supported by existing tables. | If admin workload grows, add explicit assignment and queue tables. For MVP this is optional, but helpful for internal GPS processing ownership. |
-| Authentication system | `User`, `ActiveSession`, `PasswordHistory`, `OtpChallenge`, `AuditLog` | Partial | Admin and partner authentication are well covered, including sessions, OTP, audit logs, KYC, and onboarding state. | The PRD calls for `Admin`, `Partner`, and `Customer`. There is no `customer` role or dedicated customer-access model yet. |
-| Customer tracking link | `DocumentUploadToken` only | Partial | Customer document upload links already exist and expose pending documents for a lead. | Add a dedicated tracking-link model plus customer-visible status updates, timeline events, and question/query capture. The current token model is upload-focused, not case-tracking focused. |
-| 10k partner architecture readiness | Existing indexes on `Lead`, `User`, `AuditLog`, `ActiveSession` | Partial | Core relational design is viable and several useful indexes already exist. | Implement the scaling changes already identified in this document: better pooling, async audit logging, search indexes, pagination, and a cleaner analytics/query strategy. |
-
-### Implemented Today
-
-- Partner onboarding, KYC, banking details, and consent capture already exist on `User`.
-- Partner-side local client capture already exists in `PartnerData`.
-- Submitted case workflow already exists in `Lead` plus `LeadTimeline`.
-- Document metadata and secure upload-link support already exist in `LeadDocument` and `DocumentUploadToken`.
-- Lender document requirements are already persisted and seedable through `LenderDocRequirement`.
-
----
-
-## 3. Required Database Changes for MVP
-
-These are the product-driven schema changes still needed, separate from the performance and query fixes documented later.
-
-### P0 - Must add before the MVP data model is considered complete
-
-1. Unify partner-local clients and submitted cases.
-  Short-term: add `sourcePartnerDataId` on `Lead` and make the relationship explicit.
-  Long-term: consider replacing the split with a canonical `Client` plus `LoanCase` model.
-
-2. Add missing client financial fields required by the PRD.
-  Add fields such as `existingEmis`, `cibilScore`, `loanPurpose` on the canonical case record, and optionally `monthlyObligations` or `foirSnapshot` if eligibility logic will be saved.
-
-3. Add lender eligibility rules, not just document requirements.
-  Recommended new model: `LenderEligibilityRule` keyed by lender and loan type with fields like `minIncome`, `minCibilScore`, `maxFoir`, `employmentTypes`, `minAge`, `maxAge`, `maxLoanAmount`, `cityScope`, and `notes`.
-
-4. Add follow-up and reminder support.
-  Recommended new model: `FollowUpReminder` with `partnerId`, `partnerDataId` or `leadId`, `title`, `note`, `dueAt`, `priority`, `status`, `completedAt`, and `createdBy`.
-
-5. Add customer tracking access and customer-facing timeline records.
-  Recommended models: `LeadTrackingLink` for secure access, `LeadTrackingEvent` for visible milestone updates, and `LeadCustomerQuery` if customers should ask/respond to document or processing questions.
-
-### P1 - Strongly recommended to match the workflow described in the PRD
-
-1. Expand stage enums to map cleanly to the business pipeline.
-  Today the statuses are close, but not exact. Add or standardize stages for `lead_received`, `file_preparation`, `bank_selection`, `submitted`, `approved`, and `disbursed` across both partner-local and GPS-submitted flows.
-
-2. Make the document vault client-centric, not only lead-centric.
-  Either add nullable `partnerDataId` support to `LeadDocument` or introduce a separate `PartnerClientDocument` model so partners can organize files before submission to GPS.
-
-3. Capture submission metadata for cases sent to GPS India.
-  Add `submittedToGpsAt`, `submittedByUserId`, `gpsSubmissionStatus`, `manualLenderName`, and optionally `gpsCaseReference`.
-
-4. Add lender comparison detail if the platform will show partner-side comparisons.
-  This can be modeled either through richer `Bank` product tables or a normalized `LenderProduct` model instead of storing most criteria directly on `Bank`.
-
-### P2 - Optional now, useful once usage grows
-
-1. Add `CalculationHistory` if partners need saved EMI and balance-transfer scenarios.
-
-2. Add dashboard summary tables or materialized views if live aggregation over `Lead`, `PartnerData`, and `LeadDocument` becomes slow at scale.
-
-3. Add admin work-queue or assignment tables if GPS internal ops need ownership tracking per submitted case.
-
----
-
-## 4. Configuration
-
----
-
-<!-- ### CFG-01
-
-**[SEVERITY: critical]**  
-**Location:** `backend/src/config/prisma.ts` — `new Pool({ connectionString })`  
-**Issue:** PostgreSQL connection pool is created with **no explicit size, timeout, or idle-timeout configuration**. The `pg` default pool size is **10 connections**. Two `PrismaClient` instances (`prisma` + `basePrisma`) share this one `Pool` object, but Prisma itself also holds an internal connection-management layer on top — meaning connections are not perfectly predictable. Under realistic concurrent load (tens of simultaneous API requests), the pool will be exhausted and requests will queue or time out.  
-**Why it matters:** Pool exhaustion = hanging requests, cascading timeouts, and 500 errors under load. This is the single most impactful infrastructure risk.  
-**Fix:**
-
-```typescript
-// src/config/prisma.ts
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.PG_POOL_MAX ?? '20', 10),       // tune per server RAM / PG max_connections
-  min: parseInt(process.env.PG_POOL_MIN ?? '2', 10),
-  idleTimeoutMillis: 30_000,                                  // release idle connections after 30s
-  connectionTimeoutMillis: 5_000,                             // fail fast if pool is exhausted
-  statement_timeout: 15_000,                                  // kill runaway queries (ms)
-  application_name: 'loan-app-backend',
-});
+- **Short answer:** No. The issues already listed are not the only database issues, and those fixes alone are not enough to confidently support `10k` partner-dashboard users plus `5k` website users.
+- **Important nuance:** `15k` total users is not a large number for PostgreSQL by itself. The real risk is not user count; it is the shape of the hot queries, audit-log growth, and whether Redis plus proper pooling are enabled in production.
+- **Current state after code verification:**
+  1. Website traffic is mostly read-heavy and should be manageable if Redis caching is enabled for banks and stats endpoints.
+  2. Partner/admin dashboard traffic is the real bottleneck because it relies on `%contains%` searches, offset pagination, repeated counts, and lead lists that do not yet have the right composite indexes.
+  3. The backend pool is currently configured with `PG_POOL_MAX=20` by default. That is fine for a small deployment, but it is not enough evidence by itself that the system is ready for multi-instance production traffic.
+- **Minimum bar before claiming this scale target is safe:**
+```text
+- Enable Redis in production and verify cache hit rates on banks/stats/audit counts
+- Add pgBouncer or equivalent external connection pooling if running multiple app instances
+- Add the missing search/list composite indexes documented below
+- Replace repeated audit COUNT scans with a single aggregate query or rollup table
+- Load test with realistic lead volume, not just user count
+- Run EXPLAIN ANALYZE on partner list, lead list, audit log list, and commission queries after indexing
 ```
 
-Add `PG_POOL_MAX` and `PG_POOL_MIN` to your `.env` files with environment-appropriate values:
-- Dev: `max=5`
-- Staging: `max=10`
-- Production: `max=20--40` (monitor `pg_stat_activity` and tune)
-
 ---
 
-### CFG-02
+## RED FLAGS
 
-**[SEVERITY: warning]**  
-**Location:** `backend/src/config/prisma.ts` — `datasource db`  
-**Issue:** The Prisma schema datasource block has **no explicit `url` field**:
+### 1. DATA INTEGRITY
+
+**🔴 `leads.partner_id` — Prisma schema says nullable but DB enforces NOT NULL**
+- **Location:** `leads.partner_id`
+- **Problem:** The Prisma schema declares `partnerId String?` (optional), but the init migration creates the column as `TEXT NOT NULL`. This mismatch means the Prisma client allows `null` in TypeScript code, but the database will reject it at runtime. The `ON DELETE SetNull` in the current Prisma schema is also incompatible with a NOT NULL column — if the referenced partner is deleted, the DB cannot set the column to NULL and will throw.
+- **Fix:**
 ```prisma
-datasource db {
-  provider = "postgresql"
-}
-```
-Prisma implicitly falls back to `DATABASE_URL`. This works but is non-obvious and will cause silent failures if the env var is renamed. It also means `prisma generate` and `prisma migrate` rely on an undocumented convention.  
-**Why it matters:** Operational safety. Any env var rename silently breaks migrations without a schema-level hint.  
-**Fix:**
-
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-``` -->
-
----
-
-### CFG-03
-<!-- 
-**[SEVERITY: warning]**  
-**Location:** `backend/src/config/prisma.ts` — two `PrismaClient` instances  
-**Issue:** Two Prisma clients (`prisma` with the field-encryption extension, `basePrisma` without) are both sharing the same underlying `pg.Pool`. This is the correct workaround for the TypeScript extension typing issue, but it doubles the Prisma overhead (two query engines, two interceptor chains) and makes connection accounting harder.  
-**Why it matters:** Adds cognitive overhead; any future Prisma middleware added to `prisma` won't automatically apply to `basePrisma` and vice-versa, creating silent correctness gaps.  
-**Fix (long-term):** Use a single client with proper type casting when calling non-encrypted models. Short-term, document explicitly which models use each client in a comment block.
-
---- -->
-
-### CFG-04
-
-<!-- **[SEVERITY: warning]**  
-**Location:** `backend/src/config/redis.ts`  
-**Issue:** The Redis client is created with `lazyConnect: true` but immediately calls `client.connect()` manually. This is technically correct but contradictory — `lazyConnect` was set to prevent auto-connection on construction, then the code connects right away. There is also **no `connectTimeout` or `commandTimeout`** configured. A slow Redis (network partition, overloaded instance) will block node event loop command calls indefinitely.  
-**Why it matters:** No command timeout = requests hang forever when Redis is degraded. In a production environment with Redis as a critical dependency for token blacklisting and rate-limiting, this causes cascading failure.  
-**Fix:**
-
-```typescript
-client = new Redis(redisUrl, {
-  lazyConnect: false,               // just connect immediately and be explicit
-  maxRetriesPerRequest: 3,
-  connectTimeout: 5_000,            // fail fast on connect
-  commandTimeout: 2_000,            // fail fast on stalled commands
-  retryStrategy(times) {
-    if (times > 10) return null;    // stop retrying after 10 attempts
-    return Math.min(times * 200, 5_000);
-  },
-  reconnectOnError(err) {
-    const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
-    return targetErrors.some((e) => err.message.includes(e));
-  },
-});
+-- Option A: Align Prisma to match DB (recommended — partner_id is always set)
+partnerId  String   @map("partner_id")
+partner    User     @relation(fields: [partnerId], references: [id], onDelete: Restrict)
 ```
 
---- -->
+**🟠 Missing CHECK constraints on bounded numeric columns**
+- **Location:** `leads.interest_rate`, `leads.commission_rate`, `banks.interest_rate_min/max`, `banks.approval_rate`
+- **Problem:** Interest rates should be bounded (e.g., 0–100), approval rates 0–100. Without CHECK constraints, invalid data (negative rates, 999%) can be inserted by any code path or migration script.
+- **Fix:**
+```sql
+ALTER TABLE leads ADD CONSTRAINT chk_leads_interest_rate
+  CHECK (interest_rate >= 0 AND interest_rate <= 100);
 
-### CFG-05
+ALTER TABLE leads ADD CONSTRAINT chk_leads_commission_rate
+  CHECK (commission_rate >= 0 AND commission_rate <= 100);
 
-<!-- **[SEVERITY: warning]**  
-**Location:** Redis server configuration (not in code, but systemic)  
-**Issue:** No `maxmemory-policy` is configured or documented. If Redis memory fills up (token blacklist + OTP store + cache all grow unbounded), Redis will either reject writes (`noeviction`) or silently drop wrong keys (`allkeys-lru`).  
-**Why it matters:** The token blacklist (`tokenBlacklist`) is security-critical. If Redis evicts blacklisted tokens under memory pressure, previously-invalidated JWTs could be re-accepted, allowing session replay attacks.  
-**Fix:** Set `maxmemory-policy volatile-lru` in `redis.conf` (only evict keys with a TTL — cache and OTPs have TTLs, blacklisted tokens have TTLs). Never evict keys without a TTL:
+ALTER TABLE banks ADD CONSTRAINT chk_banks_approval_rate
+  CHECK (approval_rate >= 0 AND approval_rate <= 100);
 
-```conf
-maxmemory 512mb
-maxmemory-policy volatile-lru
+ALTER TABLE banks ADD CONSTRAINT chk_banks_interest_rates
+  CHECK (interest_rate_min >= 0 AND interest_rate_max >= interest_rate_min);
 ```
 
-And add a health check that alerts when Redis memory exceeds 80%.
-
---- -->
-
-### CFG-06
-
-<!-- **[SEVERITY: suggestion]**  
-**Location:** `backend/src/config/prisma.ts` — no SSL in production  
-**Issue:** The `pg.Pool` does not configure SSL. If the database is hosted remotely (RDS, Supabase, Neon, etc.) and `sslmode` is not enforced at the database server level, connections may be unencrypted.  
-**Why it matters:** Unencrypted DB connections expose PII (loan amounts, Aadhaar numbers, PAN numbers) in transit.  
-**Fix:**
-
-```typescript
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: true }
-    : false,
-  // ... rest of config
-});
+**🟠 No UNIQUE constraint on `leads.client_phone + leads.loan_type + leads.partner_id` for deduplication**
+- **Location:** `leads`
+- **Problem:** Nothing prevents the same partner from submitting duplicate leads for the same client and loan type. At scale, this leads to data quality issues and wasted bank processing effort.
+- **Fix:**
+```sql
+-- Partial unique index to prevent active duplicates
+CREATE UNIQUE INDEX uq_leads_active_dedup
+  ON leads (partner_id, client_phone, loan_type)
+  WHERE status NOT IN ('rejected', 'disbursed');
 ```
 
---- -->
+**🟠 `users.email` uniqueness is case-sensitive and `users.phone` has no DB-enforced uniqueness**
+- **Location:** `users.email`, `users.phone`
+- **Problem:** Controllers lowercase email and manually check for duplicate phone numbers, but the database does not enforce normalized uniqueness. That leaves race conditions under concurrent registration and allows duplicate rows from scripts, raw SQL, or future code paths. This is especially risky for login, OTP, and partner onboarding flows.
+- **Fix:**
+```sql
+-- Better fix: use normalized uniqueness at the DB layer
+CREATE EXTENSION IF NOT EXISTS citext;
 
-## 5. Query Correctness
+ALTER TABLE users
+  ALTER COLUMN email TYPE CITEXT;
 
----
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_phone_normalized
+  ON users ((regexp_replace(phone, '\\D', '', 'g')))
+  WHERE phone IS NOT NULL;
+```
 
-### QC-01
+- **Alternate fix:** If you do not want `CITEXT`, keep `TEXT` and create `UNIQUE INDEX uq_users_email_lower ON users (LOWER(email));`.
 
-<!-- **[SEVERITY: critical]**  
-**Location:** `adminController.ts` — `listUsers()`  
-**Issue:** `prisma.user.findMany({ orderBy: { createdAt: 'desc' } })` — **no pagination, no `select` clause**. Returns every user record in the database with every field, including `password` (bcrypt hash), `resetPasswordToken`, `otpHash`, `refreshToken`, and other sensitive columns.  
-**Why it matters:** (1) Unbounded result set will OOM the Node process when user count grows. (2) Sensitive fields like password hashes and reset tokens should never be sent over the wire, even to admins.  
-**Fix:**
+**🟡 `lead_documents.file_size` stored as TEXT instead of INTEGER**
+- **Location:** `lead_documents.file_size`
+- **Problem:** Storing file size as text prevents numeric comparisons (e.g., "find documents > 5MB"). Aggregation queries (`SUM`, `AVG`) are impossible without casting.
+- **Fix:**
+```sql
+-- In a new migration:
+ALTER TABLE lead_documents
+  ALTER COLUMN file_size TYPE BIGINT USING file_size::BIGINT;
+```
 
-```typescript
-export const listUsers = async (req: Request, res: Response): Promise<void> => {
-  const page  = parseInt(req.query.page  as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 50;
+**🟡 `document_upload_tokens` — no constraint preventing reuse**
+- **Location:** `document_upload_tokens.used_at`
+- **Problem:** Token consumption relies purely on application logic checking `usedAt IS NULL`. A CHECK constraint or partial unique index would provide database-level protection against token reuse.
+- **Fix:**
+```sql
+-- Partial index: only one unused token per document at a time
+CREATE UNIQUE INDEX uq_upload_token_unused
+  ON document_upload_tokens (document_id)
+  WHERE used_at IS NULL;
+```
 
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: {
-        id: true, email: true, firstName: true, lastName: true,
-        phone: true, role: true, isActive: true, isEmailVerified: true,
-        isPhoneVerified: true, createdAt: true, onboardingStatus: true,
-        kycStatus: true, partnerType: true, city: true,
-      },
-    }),
-    prisma.user.count(),
-  ]);
-
-  res.status(200).json({ success: true, data: { users, pagination: { page, limit, total } } });
-};
+**🟡 `otp_challenges.failed_attempts` — no CHECK constraint**
+- **Location:** `otp_challenges.failed_attempts`
+- **Problem:** No constraint prevents negative values. Should be bounded.
+- **Fix:**
+```sql
+ALTER TABLE otp_challenges ADD CONSTRAINT chk_otp_failed_attempts
+  CHECK (failed_attempts >= 0);
 ```
 
 ---
 
-### QC-02
+### 2. PERFORMANCE TRAPS
 
-**[SEVERITY: critical]**  
-**Location:** `adminController.ts` — `listPartners()` (the inline version, not `partnerController.getPartners`)  
-**Issue:** `prisma.user.findMany({ where, orderBy: { createdAt: 'desc' } })` — **no pagination**. On a system with thousands of partners, this returns the entire table in one response. Additionally, `user.panNumber`, `user.accountNumber`, `user.ifscCode`, `user.aadhaarNumber` are unconditionally included in the response, bypassing any field-level encryption masking.  
-**Why it matters:** Unbounded response + raw PII leak to admin dashboard.  
-**Fix:** Apply pagination (same as QC-01 pattern). Use the already-paginated `partnerController.getPartners` instead of this duplicate. Remove this function entirely or redirect to the canonical one.
+**🔴 `audit_logs` and `lead_timeline` — unbounded append-only tables with no partitioning**
+- **Location:** `audit_logs`, `lead_timeline`
+- **Problem:** Both tables grow unboundedly. `audit_logs` in particular will accumulate millions of rows in production (40+ event types, every login/action logged). Without range partitioning on `created_at`, queries degrade, VACUUM becomes expensive, and archival requires full table scans. The immutability triggers make maintenance even harder.
+- **Fix:**
+```sql
+-- Convert audit_logs to range-partitioned table (requires recreation)
+CREATE TABLE audit_logs_new (
+  LIKE audit_logs INCLUDING ALL
+) PARTITION BY RANGE (created_at);
 
----
+-- Create monthly partitions
+CREATE TABLE audit_logs_y2026m01 PARTITION OF audit_logs_new
+  FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+CREATE TABLE audit_logs_y2026m02 PARTITION OF audit_logs_new
+  FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+-- ... create partitions for each month
 
-### QC-03
-
-**[SEVERITY: critical]**  
-**Location:** `src/utils/auditLogger.ts` — `logAuditEvent()` → `getLastChecksum()`  
-**Issue:** Every single audit event (login, logout, lead create, lead status change, document upload, etc.) triggers **two synchronous sequential DB round trips before the response can complete**:
-1. `prisma.auditLog.findFirst({ orderBy: { createdAt: 'desc' }, select: { checksum: true } })` — reads latest row
-2. `prisma.auditLog.create(...)` — writes new row
-
-The **checksum chaining has a race condition**: under concurrent requests, multiple calls to `getLastChecksum()` will return the same "previous checksum", causing two logs to have identical `previousChecksum` values. The integrity chain is silently broken under any concurrency.  
-**Why it matters:** (1) Adds 2 DB round trips to every user-facing action — login latency +15–40ms. (2) The audit chain correctness guarantee is **invalidated by concurrent requests**, making the checksum feature misleading.  
-**Fix:**
-
-For **latency**: fire-and-forget the audit log (see Async section AO-01).  
-For **chain integrity**: if true chaining is required, use a PostgreSQL sequence or a dedicated `SERIAL` column + database-side trigger to compute checksums, or accept that checksums are per-row integrity hashes (not chained), removing the `getLastChecksum` query entirely:
-
-```typescript
-// Remove getLastChecksum and the chaining. Use a self-contained row checksum only:
-const checksum = computeChecksum(event, options.userId, options.entityId, now, null);
-// Then just: await prisma.auditLog.create({ data: { ...checksum } })
-// No pre-query needed.
-``` -->
-
----
-
-### QC-04
-
-<!-- **[SEVERITY: warning]**  
-**Location:** `authController.ts` — `login()` — multi-step writes without a transaction  
-**Issue:** After authentication succeeds, the login handler performs **5 sequential, non-transactional DB writes**:
-1. `resetLoginAttempts` → `user.update`
-2. `user.update` (store refreshToken + lastLogin)
-3. `addSession` → transaction (upsert session + prune old sessions)
-4. `logAuditEvent` → `auditLog.findFirst` + `auditLog.create`
-
-If the server crashes or a DB error occurs between steps 1 and 4, partial state is left: attempts reset but no refresh token written, or refresh token written but no session created.  
-**Why it matters:** Inconsistent session state can cause subtle auth bugs — user appears logged in (has token) but has no active session record, or vice versa.  
-**Fix:** Wrap the core login writes (attempts reset + refresh token + session) in a single transaction:
-
-```typescript
-await prisma.$transaction(async (tx) => {
-  await tx.user.update({
-    where: { id: user.id },
-    data: {
-      failedLoginAttempts: 0,
-      lockUntil: null,
-      lastLogin: new Date(),
-      refreshToken: hashToken(refreshToken),
-      refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
-    },
-  });
-  await tx.activeSession.upsert({ ... });
-  // prune old sessions in same tx
-});
-// logAuditEvent AFTER tx — fire-and-forget (see AO-01)
+-- Automate partition creation with pg_partman or a cron job
 ```
 
---- -->
+**🟠 Missing indexes on `clientFullName` and `clientEmail` used in lead search**
+- **Location:** `leads.client_full_name`, `leads.client_email`
+- **Problem:** Lead search uses `contains` with `mode: 'insensitive'` on `client_full_name`, `client_phone`, and `client_email`. Only `client_phone` is indexed. The insensitive `LIKE '%term%'` on unindexed text columns causes sequential scans on every search.
+- **Fix:**
+```sql
+-- pg_trgm GIN indexes for ILIKE/contains queries
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-### QC-05
+CREATE INDEX idx_leads_client_full_name_trgm
+  ON leads USING GIN (client_full_name gin_trgm_ops);
 
-<!-- **[SEVERITY: warning]**  
-**Location:** `authController.ts` — `refreshAccessToken()` — `findFirst` instead of `findUnique`  
-**Issue:**
-
-```typescript
-const user = await prisma.user.findFirst({
-  where: {
-    id: refreshPayload.sub,
-    refreshToken: hashed,
-    refreshTokenExpires: { gt: new Date() },
-  },
-});
+CREATE INDEX idx_leads_client_email_trgm
+  ON leads USING GIN (client_email gin_trgm_ops);
 ```
 
-Using `findFirst` for a lookup by `id` (primary key) is semantically wrong — `id` is unique, so `findUnique` should be used. The current query asks Prisma to scan for the first matching row rather than doing a direct key lookup. While Prisma/PG optimises this because `id` is a PK, the intent is unclear and `refreshToken + refreshTokenExpires` filters happen after the PK lookup without an index on `refreshToken`.  
-**Why it matters:** Code clarity and slight performance: the composite filter cannot use an index on `refreshToken`.  
-**Fix:**
+**🟠 Missing trigram search indexes on `users` fields used by partner/admin search**
+- **Location:** `users.first_name`, `users.last_name`, `users.email`, `users.phone`, `users.city`
+- **Problem:** `partnerController.getPartners` uses `contains`/`mode: 'insensitive'` on first name, last name, email, phone, and city. The current `role` and `phone` B-tree indexes do not help for `%term%` searches, so admin/partner search will degrade into sequential scans as the `users` table grows.
+- **Fix:**
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-```typescript
-const user = await prisma.user.findUnique({ where: { id: refreshPayload.sub } });
-if (!user || user.refreshToken !== hashed || !user.refreshTokenExpires || user.refreshTokenExpires <= new Date()) {
-  return res.status(401).json({ ... });
-}
+CREATE INDEX idx_users_first_name_trgm ON users USING GIN (first_name gin_trgm_ops);
+CREATE INDEX idx_users_last_name_trgm  ON users USING GIN (last_name gin_trgm_ops);
+CREATE INDEX idx_users_email_trgm      ON users USING GIN (email gin_trgm_ops);
+CREATE INDEX idx_users_phone_trgm      ON users USING GIN (phone gin_trgm_ops);
+CREATE INDEX idx_users_city_trgm       ON users USING GIN (city gin_trgm_ops);
 ```
 
---- -->
+- **Better fix:** Create a stored search column such as `search_document = concat_ws(' ', first_name, last_name, email, phone, city)` and put a single trigram GIN index on that column.
 
-### QC-06
+**🟠 UUIDs as primary keys — B-tree fragmentation on high-insert tables**
+- **Location:** All tables (UUID v4 PKs)
+- **Problem:** Random UUIDs cause B-tree index page splits and poor cache locality. On high-insert tables (`audit_logs`, `leads`, `lead_timeline`), this degrades write throughput by 20-40% compared to sequential keys. UUIDs are 16 bytes vs 8 bytes for BIGINT, doubling index size.
+- **Fix:**
+```sql
+-- For new high-insert tables, prefer UUIDv7 (time-ordered) or BIGSERIAL
+-- UUIDv7 maintains the benefits of UUIDs (distributed generation)
+-- while preserving insert order for B-tree efficiency.
+-- Prisma doesn't natively support UUIDv7; use gen_random_uuid() with
+-- a custom function or switch to BIGSERIAL for audit_logs/lead_timeline.
 
-**[SEVERITY: warning]**  
-**Location:** `leadController.ts` — `updateLead()` and `updateLeadStatus()` and `assignBank()` — post-transaction re-fetch  
-**Issue:** After every transactional write, these handlers do an additional `findUnique` with `include: { documents: true, timeline: true }`. For a lead with 10 timeline entries and 8 documents, this fetches 18 extra rows **every time**, on every status update.  
-**Why it matters:** Unnecessary read amplification on a hot write path. Timeline grows indefinitely per lead, making this worse over time.  
-**Fix:** Return only the updated fields in the response (or use Prisma's `include` inside the transaction's final `update` call to return the updated record without a second round trip):
-
-```typescript
-const updatedLead = await prisma.$transaction(async (tx) => {
-  const lead = await tx.lead.update({
-    where: { id: leadId },
-    data: { status },
-    include: { documents: true, timeline: { orderBy: { timestamp: 'desc' }, take: 20 } },
-  });
-  await tx.leadTimeline.create({ ... });
-  return lead;
-});
+CREATE OR REPLACE FUNCTION uuid_v7() RETURNS uuid AS $$
+DECLARE
+  unix_ts_ms bytea;
+  uuid_bytes bytea;
+BEGIN
+  unix_ts_ms = substring(int8send(floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint) from 3);
+  uuid_bytes = unix_ts_ms || gen_random_bytes(10);
+  uuid_bytes = set_byte(uuid_bytes, 6, (b'0111' || get_byte(uuid_bytes, 6)::bit(4))::bit(8)::int);
+  uuid_bytes = set_byte(uuid_bytes, 8, (b'10' || get_byte(uuid_bytes, 8)::bit(6))::bit(8)::int);
+  RETURN encode(uuid_bytes, 'hex')::uuid;
+END
+$$ LANGUAGE plpgsql VOLATILE;
 ```
 
----
-
-### QC-07
-
-**[SEVERITY: warning]**  
-**Location:** `partnerController.ts` — `getPartners()` — 3 queries per request  
-**Issue:** The handler runs:
-1. `user.findMany` (paginated partners)
-2. `user.count` (total for pagination)
-3. `lead.groupBy` (lead counts per partner)
-
-Even though this is not a classic N+1 (it's 3 fixed queries not N), the third query (`groupBy`) runs separately after the user list is obtained. This can be merged or eliminated:  
-**Fix:** For the common case use a raw `SELECT` with `LEFT JOIN ... GROUP BY` or cache partner lead counts (they change rarely relative to page loads).
-
----
-
-### QC-08
-
-**[SEVERITY: warning]**  
-**Location:** `userService.ts` — `addToPasswordHistory()` — fetch-all inside a transaction  
-**Issue:**
-
-```typescript
-const allHistory = await tx.passwordHistory.findMany({
-  where: { userId },
-  orderBy: { changedAt: 'asc' },
-});
+**🟡 `banks.supported_loan_types` — array column queried with `hasSome` but no GIN index**
+- **Location:** `banks.supported_loan_types`
+- **Problem:** Bank matching service filters `supportedLoanTypes: { hasSome: [loanType] }` which translates to `&& ARRAY[...]`. Without a GIN index, this is a seq scan. With few banks it's fine, but the pattern is incorrect.
+- **Fix:**
+```sql
+CREATE INDEX idx_banks_supported_loan_types
+  ON banks USING GIN (supported_loan_types);
 ```
 
-This fetches ALL password history records to determine which to delete, while holding a transaction lock. If a user somehow accumulated many records (bug, edge case), this is wasteful.  
-**Fix:** Use a targeted delete — delete the oldest entries if count > limit, without fetching all:
+**🟡 `users` table wide scans for admin partner listing**
+- **Location:** `users`
+- **Problem:** The admin controller queries users with `role = 'partner'` and paginates by `createdAt DESC`. The existing index on `role` alone doesn't cover the sort. This forces a sort operation after index scan.
+- **Fix:**
+```sql
+CREATE INDEX idx_users_role_created_at
+  ON users (role, created_at DESC);
+```
 
-```typescript
-await tx.passwordHistory.create({ data: { userId, hash: hashedPassword } });
+**🟠 Missing composite indexes for partner/admin lead listing and dashboard sorting**
+- **Location:** `leads.partner_id`, `leads.status`, `leads.created_at`, `leads.updated_at`
+- **Problem:** The hot lead queries are not just `WHERE partner_id = ?`; they are `WHERE partner_id = ? ORDER BY created_at DESC`, `WHERE partner_id = ? AND status = ? ORDER BY created_at DESC`, and commission/history views ordered by `updated_at DESC`. The current index set is too fragmented, so PostgreSQL will often bitmap-scan then sort instead of serving these pages directly from an index.
+- **Fix:**
+```sql
+CREATE INDEX idx_leads_partner_created_at
+  ON leads (partner_id, created_at DESC);
 
-// Delete oldest beyond limit using a subquery
-const count = await tx.passwordHistory.count({ where: { userId } });
-if (count > PASSWORD_HISTORY_LIMIT) {
-  const oldest = await tx.passwordHistory.findMany({
-    where: { userId },
-    orderBy: { changedAt: 'asc' },
-    take: count - PASSWORD_HISTORY_LIMIT,
-    select: { id: true },
-  });
-  await tx.passwordHistory.deleteMany({ where: { id: { in: oldest.map(h => h.id) } } });
-}
+CREATE INDEX idx_leads_partner_status_created_at
+  ON leads (partner_id, status, created_at DESC);
+
+CREATE INDEX idx_leads_partner_updated_at
+  ON leads (partner_id, updated_at DESC);
+
+CREATE INDEX idx_leads_partner_disbursed_commissions
+  ON leads (partner_id, updated_at DESC)
+  WHERE status = 'disbursed' AND commission_amount IS NOT NULL;
+```
+
+- **Better fix:** After adding the indexes, move partner/admin lead lists to cursor pagination instead of `OFFSET`, because deep pages will still degrade on large lead tables.
+
+**🟡 `active_sessions` recent-session query lacks a composite sort index**
+- **Location:** `active_sessions.user_id`, `active_sessions.last_active`
+- **Problem:** The user service fetches sessions by `user_id` ordered by `last_active DESC`. The current index on `user_id` alone does not cover the sort, so session-management pages do unnecessary extra work.
+- **Fix:**
+```sql
+CREATE INDEX idx_active_sessions_user_last_active
+  ON active_sessions (user_id, last_active DESC);
 ```
 
 ---
 
-### QC-09
+### 3. DATA TYPE MISUSE
 
-**[SEVERITY: warning]**  
-**Location:** `partnerController.ts` — `getPartnerById()` and `getCurrentPartnerProfile()` — no caching, 2 queries  
-**Issue:** Both handlers do `findFirst` + `lead.count`. These are called on every partner dashboard page load with zero caching.  
-**Why it matters:** `getCurrentPartnerProfile` is likely called on every authenticated page load for partner users. At 100 concurrent partners = 200 DB queries per poll cycle.  
-**Fix:** Cache the partner profile for 60 seconds (invalidate on partner update events):
+**🔴 All `TIMESTAMP(3)` columns should be `TIMESTAMPTZ`**
+- **Location:** Every table — `created_at`, `updated_at`, `last_login`, `otp_expires`, `lock_until`, `changed_at`, `last_active`, `uploaded_at`, `timestamp`, `eligibility_checked_at`, `commission_paid_at`, `onboarding_completed_at`, `expires_at`, `used_at`
+- **Problem:** Prisma maps `DateTime` to `TIMESTAMP(3)` (without timezone). This is dangerous for a fintech app: if the server timezone changes, or the app is deployed across regions, all stored times silently become incorrect. Commission payout timestamps, audit log times, and OTP expiry checks become unreliable. The `lender_doc_requirements` manual migration correctly uses `TIMESTAMPTZ` but the Prisma-managed tables do not.
+- **Fix:**
+```sql
+-- For each table, alter timestamp columns:
+ALTER TABLE users ALTER COLUMN created_at TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN updated_at TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN last_login TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN otp_expires TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN lock_until TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN reset_password_expires TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN refresh_token_expires TYPE TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN onboarding_completed_at TYPE TIMESTAMPTZ;
+-- ... repeat for all tables
 
+-- In Prisma, use the @db.Timestamptz annotation or native type:
+-- createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+```
+
+**🟠 `leads.client_date_of_birth` stored as TEXT**
+- **Location:** `leads.client_date_of_birth`, `partner_data.date_of_birth`
+- **Problem:** Storing dates as free-form text allows invalid values ("32-13-2000", "tomorrow", "abc"). Age calculations require parsing. Date-based queries (e.g., "leads where client is under 21") are impossible without casting.
+- **Fix:**
+```sql
+-- Migrate to DATE type (after data cleanup):
+ALTER TABLE leads
+  ALTER COLUMN client_date_of_birth TYPE DATE
+  USING client_date_of_birth::DATE;
+-- Note: encrypted fields may need decryption before migration
+```
+
+**🔵 `BankCommissionRate.interestRate` stored as TEXT instead of DECIMAL**
+- **Location:** `bank_commission_rates.interest_rate`
+- **Problem:** All other rate fields in the schema use `@db.Decimal(5, 2)` (e.g., `leads.interest_rate`, `banks.interest_rate_min/max`, `partnerCommission`). This one field stores interest rate as free-form text, making numeric comparisons, sorting, and aggregation impossible. This also defeats CHECK constraints.
+- **Fix:**
+```sql
+ALTER TABLE bank_commission_rates
+  ALTER COLUMN interest_rate TYPE DECIMAL(5,2)
+  USING interest_rate::DECIMAL;
+```
+
+**🟡 `users.years_in_operation` and `users.expected_leads` stored as TEXT**
+- **Location:** `users.years_in_operation`, `users.expected_leads`
+- **Problem:** These are logically numeric values stored as text. Range queries ("partners with > 5 years experience") and aggregations are impossible without casting, and the schema allows garbage values.
+- **Fix:**
+```sql
+ALTER TABLE users
+  ALTER COLUMN years_in_operation TYPE INTEGER USING years_in_operation::INTEGER;
+ALTER TABLE users
+  ALTER COLUMN expected_leads TYPE INTEGER USING expected_leads::INTEGER;
+```
+
+**🟡 `users.has_experience` stored as TEXT instead of BOOLEAN**
+- **Location:** `users.has_experience`
+- **Problem:** This is semantically a boolean ("yes"/"no" or "true"/"false") stored as free-form text. Querying requires string matching with potential inconsistencies ("Yes", "yes", "Y", "true").
+- **Fix:**
+```sql
+ALTER TABLE users
+  ALTER COLUMN has_experience TYPE BOOLEAN
+  USING CASE WHEN has_experience IN ('yes', 'true', '1') THEN TRUE ELSE FALSE END;
+```
+
+**🔵 `banks.total_disbursed` stored as TEXT with currency symbol**
+- **Location:** `banks.total_disbursed`
+- **Problem:** Default value is `'₹0'` — mixing formatting with data storage. Numeric comparisons and summation are impossible. Sorting by disbursed amount will be lexicographic.
+- **Fix:**
+```sql
+ALTER TABLE banks ADD COLUMN total_disbursed_amount DECIMAL(15,2) DEFAULT 0;
+-- Backfill from text column, then drop the text column
+UPDATE banks SET total_disbursed_amount = REPLACE(REPLACE(total_disbursed, '₹', ''), ',', '')::DECIMAL;
+ALTER TABLE banks DROP COLUMN total_disbursed;
+ALTER TABLE banks RENAME COLUMN total_disbursed_amount TO total_disbursed;
+```
+
+---
+
+### 4. SECURITY & COMPLIANCE
+
+**🟠 No Row-Level Security (RLS) on multi-tenant tables**
+- **Location:** `leads`, `partner_data`, `lead_documents`
+- **Problem:** Partner data isolation relies entirely on application-layer WHERE clauses (`WHERE partner_id = ?`). If any code path misses this filter (new endpoint, admin tool, direct DB access), one partner can view another's leads and client PII. In fintech, this is a regulatory violation. RLS provides defense-in-depth.
+- **Fix:**
+```sql
+-- Enable RLS on leads
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+
+-- Partners can only see their own leads
+CREATE POLICY partner_isolation ON leads
+  FOR ALL
+  USING (
+    partner_id = current_setting('app.current_user_id', true)
+    OR current_setting('app.current_user_role', true) IN ('admin', 'super_admin')
+  );
+
+-- Set session variables in your connection middleware:
+-- SET LOCAL app.current_user_id = '<user_id>';
+-- SET LOCAL app.current_user_role = '<role>';
+```
+
+**🟠 `partner_data` stores PII (PAN, DOB, phone, address) without documented encryption**
+- **Location:** `partner_data.pan_number`, `partner_data.date_of_birth`, `partner_data.phone`, `partner_data.current_address`
+- **Problem:** The `leads` table has field encryption for `clientPanNumber`, `clientAadhaar`, and `clientDateOfBirth` via the Prisma middleware. However, `partner_data` contains the same sensitive fields (`pan_number`, `date_of_birth`) and it's unclear if the encryption middleware covers this table. If not, PII is stored in plaintext.
+- **Fix:**
 ```typescript
-const profile = await cacheWrap(
-  `partner:profile:${userId}`,
-  async () => {
-    const user = await prisma.user.findFirst({ where: { id: userId, role: 'partner' } });
-    const leadCount = await prisma.lead.count({ where: { partnerId: userId } });
-    return formatPartnerResponse(user!, leadCount);
-  },
-  60
+// Ensure fieldEncryption middleware covers partner_data model:
+const PARTNER_DATA_ENCRYPTED_FIELDS = ['panNumber', 'dateOfBirth', 'currentAddress'];
+// Add to the Prisma encryption middleware config
+```
+
+**🟡 `audit_logs` has no retention/archival policy enforced at DB level**
+- **Location:** `audit_logs`
+- **Problem:** RBI guidelines require 5-year retention of financial audit trails. The immutability triggers prevent deletion, but there's no mechanism to archive old records or enforce minimum retention. If someone bypasses triggers (e.g., disabling them as the comment suggests), data could be lost.
+- **Fix:**
+```sql
+-- Add a retention check trigger
+CREATE OR REPLACE FUNCTION enforce_audit_retention()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.created_at > NOW() - INTERVAL '5 years' THEN
+    RAISE EXCEPTION 'Cannot delete audit logs less than 5 years old (RBI compliance)';
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**🟡 No `updated_at` trigger — relies on Prisma `@updatedAt`**
+- **Location:** All tables with `updated_at`
+- **Problem:** `@updatedAt` only works through the Prisma client. Direct SQL updates (migrations, admin scripts, raw queries) will not update this field. The `partner_data` manual migration sets `DEFAULT CURRENT_TIMESTAMP` for both `created_at` and `updated_at`, but `updated_at` won't auto-update on subsequent writes without a trigger.
+- **Fix:**
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply to all tables with updated_at
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_leads_updated_at BEFORE UPDATE ON leads
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_partner_data_updated_at BEFORE UPDATE ON partner_data
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_banks_updated_at BEFORE UPDATE ON banks
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_otp_challenges_updated_at BEFORE UPDATE ON otp_challenges
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+---
+
+### 5. SCHEMA DESIGN SMELLS
+
+**🔴 `users` table is a god table — 50+ columns mixing 5+ concerns**
+- **Location:** `users`
+- **Problem:** This single table contains: authentication fields (password, OTP, tokens, locked state, failed attempts), personal profile (name, phone, city), partner onboarding (partnerType, businessName, yearsInOperation), KYC (aadhaarNumber, panNumber, kycStatus), banking details (accountNumber, ifscCode, upiId), and consent flags. This causes:
+  - Every query loads/locks all 50+ columns even when only checking auth
+  - Schema changes for onboarding affect the auth-critical table
+  - NULL-heavy rows (most columns are optional) waste storage and complicate validation
+  - Adding new partner types or KYC requirements requires altering this massive table
+- **Fix:**
+```sql
+-- Vertical partition into focused tables:
+
+-- 1. users (auth only)
+-- Keep: id, email, password, phone, role, isActive, failedLoginAttempts, 
+--        lockUntil, refreshToken, refreshTokenExpires, otpHash, otpExpires,
+--        resetPasswordToken, resetPasswordExpires, isEmailVerified, isPhoneVerified,
+--        lastLogin, createdAt, updatedAt
+
+-- 2. partner_profiles (1:1 with users WHERE role='partner')
+CREATE TABLE partner_profiles (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  partner_type "PartnerType",
+  business_name TEXT,
+  business_address TEXT,
+  years_in_operation INTEGER,
+  has_experience BOOLEAN,
+  expected_leads INTEGER,
+  city TEXT,
+  state TEXT,
+  pincode TEXT,
+  onboarding_status "OnboardingStatus" DEFAULT 'pending',
+  onboarding_completed_at TIMESTAMPTZ,
+  internal_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. partner_kyc (1:1, encrypted PII)
+CREATE TABLE partner_kyc (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  aadhaar_number TEXT,  -- encrypted
+  pan_number TEXT,       -- encrypted
+  gst_number TEXT,       -- encrypted
+  kyc_status "KycStatus" DEFAULT 'pending',
+  kyc_rejection_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. partner_banking (1:1, encrypted)
+CREATE TABLE partner_banking (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  account_holder_name TEXT,
+  bank_name TEXT,
+  account_number TEXT,   -- encrypted
+  ifsc_code TEXT,        -- encrypted
+  upi_id TEXT,           -- encrypted
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. partner_consents (1:1)
+CREATE TABLE partner_consents (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  consent_data_share BOOLEAN DEFAULT FALSE,
+  consent_commission BOOLEAN DEFAULT FALSE,
+  declaration_not_employed BOOLEAN DEFAULT FALSE,
+  consent_privacy_policy BOOLEAN DEFAULT FALSE,
+  consented_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
----
-
-### QC-10
-
-**[SEVERITY: warning]**  
-**Location:** `leadController.ts` — `getLeads()` — search with `ILIKE '%term%'` (leading wildcard)  
-**Issue:**
-
-```typescript
-where.OR = [
-  { clientFullName: { contains: search, mode: 'insensitive' } },
-  { clientPhone:    { contains: search, mode: 'insensitive' } },
-  { clientEmail:    { contains: search, mode: 'insensitive' } },
-];
-```
-
-`contains` with `mode: 'insensitive'` translates to `ILIKE '%term%'`. A **leading wildcard kills index usage** — PostgreSQL cannot use a B-tree index for `ILIKE '%foo%'`. This results in a sequential scan of every lead row on every search.  
-**Why it matters:** With 10,000+ leads, every search causes a full table scan. Latency degrades linearly with data growth.  
-**Fix (short-term):** Add a `pg_trgm` GIN index:
-
+**🟠 `leads` table has denormalized `partner_name` alongside `partner_id` FK**
+- **Location:** `leads.partner_name`
+- **Problem:** `partner_name` is denormalized from `users.first_name + last_name`. If a partner updates their name, all existing leads show stale data unless a backfill is run. This is a classic update anomaly. The field is NOT NULL, adding brittleness.
+- **Fix:**
 ```sql
--- Migration
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX leads_client_full_name_trgm ON leads USING GIN (client_full_name gin_trgm_ops);
-CREATE INDEX leads_client_phone_trgm ON leads USING GIN (client_phone gin_trgm_ops);
-CREATE INDEX leads_client_email_trgm ON leads USING GIN (client_email gin_trgm_ops);
+-- Option A: Drop the column and JOIN at query time
+ALTER TABLE leads DROP COLUMN partner_name;
+-- Query: SELECT l.*, u.first_name || ' ' || u.last_name AS partner_name
+--        FROM leads l JOIN users u ON l.partner_id = u.id;
+
+-- Option B: If denormalization is intentional for performance,
+-- document it and add a trigger to keep it in sync:
+CREATE OR REPLACE FUNCTION sync_partner_name() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE leads SET partner_name = NEW.first_name || ' ' || NEW.last_name
+  WHERE partner_id = NEW.id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sync_partner_name AFTER UPDATE OF first_name, last_name ON users
+  FOR EACH ROW EXECUTE FUNCTION sync_partner_name();
 ```
 
-**Fix (long-term):** Add a PostgreSQL `tsvector` full-text search column, or route search through Meilisearch/Elasticsearch.
-
----
-
-### QC-11
-
-**[SEVERITY: warning]**  
-**Location:** `adminController.ts` — `assignBank()` — loop with individual `create` calls inside transaction  
-**Issue:**
-
-```typescript
-for (const entry of timelineEntries) {
-  await tx.leadTimeline.create({ data: { ... } });
-}
-```
-
-Sequential awaited creates inside a transaction hold the transaction open longer per entry.  
-**Fix:** Use `createMany`:
-
-```typescript
-await tx.leadTimeline.createMany({
-  data: timelineEntries.map(entry => ({
-    leadId,
-    status: entry.status,
-    timestamp: new Date(),
-    updatedBy: `${req.user?.firstName} ${req.user?.lastName}`,
-    note: entry.note,
-  })),
-});
-```
-
----
-
-### QC-12
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `getStats()` — 6 separate COUNT queries  
-**Issue:**
-
-```typescript
-await Promise.all([
-  prisma.user.count(),
-  prisma.user.count({ where: { isActive: true } }),
-  prisma.user.count({ where: { role: 'partner' } }),
-  prisma.user.count({ where: { role: 'admin' } }),
-  prisma.user.count({ where: { isEmailVerified: true } }),
-  prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
-]);
-```
-
-6 round trips, even in `Promise.all`. Can be reduced to 1 raw SQL with conditional aggregation:  
-**Fix:**
-
-```typescript
-const result = await prisma.$queryRaw<[{
-  total: bigint; active: bigint; partners: bigint;
-  admins: bigint; verified: bigint; new_this_week: bigint;
-}]>`
-  SELECT
-    COUNT(*)                                                   AS total,
-    COUNT(*) FILTER (WHERE is_active = true)                   AS active,
-    COUNT(*) FILTER (WHERE role = 'partner')                   AS partners,
-    COUNT(*) FILTER (WHERE role = 'admin')                     AS admins,
-    COUNT(*) FILTER (WHERE is_email_verified = true)           AS verified,
-    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS new_this_week
-  FROM users
-`;
-```
-
----
-
-### QC-13
-
-**[SEVERITY: suggestion]**  
-**Location:** `auditLogger.ts` — `checkSuspiciousActivity()` — querying audit logs on every login  
-**Issue:** On every successful login, `checkSuspiciousActivity` queries the last 5 `LOGIN_SUCCESS` audit logs for the user in the past 24h. This adds a DB read to an already write-heavy login flow.  
-**Why it matters:** The `active_sessions` table already tracks device fingerprints — it is a more authoritative and much cheaper source.  
-**Fix:** Check for the device fingerprint in `active_sessions` instead of scanning `audit_logs`:
-
-```typescript
-export const checkSuspiciousActivity = async (
-  userId: string,
-  currentFingerprint: string
-): Promise<boolean> => {
-  const sessionExists = await prisma.activeSession.findUnique({
-    where: { userId_deviceFingerprint: { userId, deviceFingerprint: currentFingerprint } },
-    select: { id: true },
-  });
-  return !sessionExists; // new device = suspicious
-};
-```
-
-This is a single PK lookup instead of a range scan on `audit_logs`.
-
----
-
-### QC-14
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `auditExportJobs` — in-memory job map  
-**Issue:** The export job registry (`const auditExportJobs = new Map<string, AuditExportJob>()`) is **process-local and memory-only**. On server restart, crash, or horizontal scaling (multiple instances), all job state is lost. Users polling a job status after a deploy will receive 404.  
-**Why it matters:** Export is triggered by admin for compliance/legal reasons. Job loss = admin has to retry, potentially duplicating massive DB reads.  
-**Fix:** Persist job state in Redis with a 24h TTL:
-
-```typescript
-const JOB_KEY = (id: string) => `audit:export:job:${id}`;
-
-const saveJob = (job: AuditExportJob) =>
-  getRedisClient().set(JOB_KEY(job.id), JSON.stringify(job), 'EX', 86400);
-
-const getJob = async (id: string): Promise<AuditExportJob | null> => {
-  const raw = await getRedisClient().get(JOB_KEY(id));
-  return raw ? JSON.parse(raw) : null;
-};
-```
-
----
-
-## 6. Performance
-
----
-
-### PERF-01
-
-**[SEVERITY: critical]**  
-**Location:** `auditLogger.ts` — `logAuditEvent()` on every request  
-**Issue:** Synchronous DB write (preceded by a read for checksum) is called on every audited action — including login, token refresh, lead updates, and document uploads. This adds ~20–60ms to every one of these latency-sensitive requests.  
-**Estimate:** At 100 req/s, audit writes alone generate 200 DB operations/s (100 reads + 100 writes) on the `audit_logs` table. At 1000 req/s this becomes a bottleneck.  
-**Fix:** See AO-01.
-
----
-
-### PERF-02
-
-**[SEVERITY: warning]**  
-**Location:** `userService.ts` — `isPasswordReused()` — sequential bcrypt compares  
-**Issue:**
-
-```typescript
-for (const entry of history) {
-  const isMatch = await bcrypt.compare(newPassword, entry.hash); // ~300ms each at cost 12
-  if (isMatch) return true;
-}
-```
-
-BCrypt with cost 12 takes ~300ms per compare. In the worst case (5 history entries, none match), this adds **~1.5 seconds** to the password-change flow — fully blocking the event loop on CPU-intensive work.  
-**Why it matters:** Entirely blocks the Node.js event loop for 1.5s on a password change. Other requests are starved.  
-**Fix:** Run bcrypt compares in parallel and short-circuit on first match:
-
-```typescript
-export const isPasswordReused = async (userId: string, newPassword: string): Promise<boolean> => {
-  const history = await prisma.passwordHistory.findMany({
-    where: { userId }, orderBy: { changedAt: 'desc' }, take: PASSWORD_HISTORY_LIMIT,
-    select: { hash: true },
-  });
-
-  const results = await Promise.all(history.map(entry => bcrypt.compare(newPassword, entry.hash)));
-  return results.some(Boolean);
-};
-```
-
----
-
-### PERF-03
-
-**[SEVERITY: warning]**  
-**Location:** `adminController.ts` — `queryAuditCounts()` — 4 separate COUNT queries  
-**Issue:** `queryAuditCounts` fires 4 separate `auditLog.count()` calls (total, login events, security events, auth events) even though they can be done in one query.  
-**Fix:** Same conditional aggregation pattern as QC-12:
-
+**🟠 `leads.bank_assigned` is free-text instead of FK to `banks`**
+- **Location:** `leads.bank_assigned`, `leads.bank_code`
+- **Problem:** `bank_assigned` stores the bank name as free text, and `bank_code` was added later as a backfill. Neither has a foreign key to the `banks` table, so referential integrity is not enforced. A typo in bank name or a deleted bank creates orphan references.
+- **Fix:**
 ```sql
+-- Add FK from bank_code to banks.code
+ALTER TABLE leads ADD CONSTRAINT fk_leads_bank_code
+  FOREIGN KEY (bank_code) REFERENCES banks(code) ON DELETE SET NULL;
+
+CREATE INDEX idx_leads_bank_code ON leads (bank_code);
+```
+
+**🟡 `leads.bank_logo` duplicates data from `banks.logo`**
+- **Location:** `leads.bank_logo`
+- **Problem:** Bank logo URL is stored redundantly on every lead. If the bank updates their logo, all existing leads show the old one. This should be resolved via a JOIN to `banks`.
+- **Fix:**
+```sql
+ALTER TABLE leads DROP COLUMN bank_logo;
+-- Resolve via JOIN: SELECT b.logo FROM leads l JOIN banks b ON l.bank_code = b.code;
+```
+
+**🔵 Naming inconsistency in FK columns**
+- **Location:** Various tables
+- **Problem:** Some FK columns use `_id` suffix (`partner_id`, `lead_id`, `bank_id`, `user_id`, `document_id`) which is consistent. But `leads.bank_assigned` and `leads.preferred_bank` store names rather than IDs, breaking the convention. `lead_timeline.updated_by` stores a user ID but isn't named `updated_by_id`.
+- **Fix:** Rename `updated_by` → `updated_by_user_id` and add proper FK constraint.
+
+**🔵 `LocalLeadStatus` enum drift exists between Prisma schema and the manual SQL bootstrap**
+- **Location:** `backend/prisma/schema.prisma`, `backend/prisma/add_partner_data.sql`
+- **Problem:** The current Prisma schema includes `docs_pending` in `LocalLeadStatus`, but the manual SQL file that creates the enum omits it. That means a database created from the manual SQL path can drift from a database created via the current Prisma schema. The previous version of this review said the schema itself was missing `docs_pending`; that is no longer accurate.
+- **Fix:**
+```sql
+ALTER TYPE "LocalLeadStatus"
+  ADD VALUE IF NOT EXISTS 'docs_pending' AFTER 'contacted';
+```
+
+- **Follow-up:** Keep the intentional divergence from `LeadStatus` documented if `contacted` remains local-only.
+
+---
+
+### 6. OPERATIONAL RISKS
+
+**🟠 ON DELETE CASCADE on `lead_documents` → `leads` risks losing document audit trail**
+- **Location:** `lead_documents` FK to `leads`
+- **Problem:** If a lead is deleted, all associated documents (including uploaded file references) are silently cascade-deleted. For a fintech app, document records are part of the compliance trail. The R2 object storage files would become orphaned (storage leak), and there's no record that documents ever existed.
+- **Fix:**
+```sql
+-- Change to RESTRICT and implement soft delete on leads:
+ALTER TABLE lead_documents DROP CONSTRAINT lead_documents_lead_id_fkey;
+ALTER TABLE lead_documents ADD CONSTRAINT lead_documents_lead_id_fkey
+  FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT;
+
+-- Add soft delete column to leads:
+ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_leads_deleted_at ON leads (deleted_at) WHERE deleted_at IS NULL;
+```
+
+**🟠 `partner_data` ON DELETE CASCADE silently destroys client PII records**
+- **Location:** `partner_data` FK to `users`
+- **Problem:** If a partner user is deleted, all their `partner_data` records (which contain client PII: name, phone, DOB, PAN, address) are silently cascade-deleted. For a fintech app with compliance requirements, this client data should be retained for audit and regulatory purposes even if the partner account is removed. This is the same class of issue as `lead_documents` CASCADE.
+- **Fix:**
+```sql
+-- Change to RESTRICT and require soft delete on users for partner accounts:
+ALTER TABLE partner_data DROP CONSTRAINT partner_data_partner_id_fkey;
+ALTER TABLE partner_data ADD CONSTRAINT partner_data_partner_id_fkey
+  FOREIGN KEY (partner_id) REFERENCES users(id) ON DELETE RESTRICT;
+```
+
+**🟠 No soft delete on `leads` table**
+- **Location:** `leads`
+- **Problem:** Leads represent financial transactions with compliance requirements. Hard deletion means loss of audit trail, inability to recover from accidental deletion, and potential regulatory issues. The `lead_timeline` cascade delete compounds this — the entire history is wiped.
+- **Fix:**
+```sql
+ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN deleted_by TEXT;
+
+-- Partial index for "active" queries (most queries filter out deleted):
+CREATE INDEX idx_leads_active ON leads (partner_id, status, created_at DESC)
+  WHERE deleted_at IS NULL;
+```
+
+**🟡 Missing composite index for cursor-based pagination on `audit_logs`**
+- **Location:** `audit_logs`
+- **Problem:** Admin controller uses cursor-based pagination with `orderBy: [{createdAt: 'desc'}, {id: 'desc'}]`, but there's no composite index on `(created_at DESC, id DESC)`. The existing `created_at DESC` index doesn't cover the tie-breaking `id` column.
+- **Fix:**
+```sql
+CREATE INDEX idx_audit_logs_cursor ON audit_logs (created_at DESC, id DESC);
+```
+
+**🟡 `audit_logs` summary endpoint executes four separate count scans per request**
+- **Location:** Admin audit counts query path
+- **Problem:** The admin controller calculates total, login, security, and auth counts using four separate `COUNT(*)` queries over the same filtered dataset. As `audit_logs` grows, that multiplies I/O and becomes one of the first dashboard bottlenecks even if the underlying table is indexed correctly.
+- **Fix:**
+```sql
+-- Better served as one aggregate query instead of 4 Prisma counts
 SELECT
   COUNT(*) AS total,
-  COUNT(*) FILTER (WHERE event IN ('LOGIN_SUCCESS','LOGIN_FAILED','LOGOUT')) AS login_events,
-  COUNT(*) FILTER (WHERE event IN ('ACCOUNT_LOCKED','SUSPICIOUS_ACTIVITY')) AS security_events,
-  COUNT(*) FILTER (WHERE event IN ('REGISTER','PASSWORD_CHANGE','PASSWORD_RESET_REQUEST','PASSWORD_RESET_SUCCESS')) AS auth_events
+  COUNT(*) FILTER (WHERE event IN ('LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT')) AS login_events,
+  COUNT(*) FILTER (WHERE event IN ('ACCOUNT_LOCKED', 'SUSPICIOUS_ACTIVITY')) AS security_events,
+  COUNT(*) FILTER (WHERE event IN ('REGISTER', 'PASSWORD_CHANGE', 'PASSWORD_RESET_REQUEST', 'PASSWORD_RESET_SUCCESS')) AS auth_events
 FROM audit_logs
-WHERE <filters>
+WHERE /* same filters */;
 ```
 
----
-
-### PERF-04
-
-**[SEVERITY: warning]**  
-**Location:** `leadController.ts` — `getLeads()` — `include: { documents: true, timeline: true }` on list queries  
-**Issue:** The `getLeads` endpoint fetches every document AND every timeline entry for every lead in the result page (up to 20 leads × N documents × M timeline entries). A page of 20 leads each with 10 documents and 8 timeline entries = 360 rows fetched per list call.  
-**Why it matters:** This is a list endpoint — most consumers only need summary data. This is a classic over-fetch.  
-**Fix:** For list endpoints, omit `include` and use `select` with only the fields needed for list display:
-
-```typescript
-prisma.lead.findMany({
-  where, orderBy, skip, take: limit,
-  select: {
-    id: true, clientFullName: true, clientPhone: true,
-    loanType: true, loanAmount: true, status: true,
-    createdAt: true, partnerName: true, bankAssigned: true,
-    _count: { select: { documents: true } },   // just the count, not all documents
-  },
-})
-```
-
-Reserve full `include` for single-lead `getLeadById`.
-
----
-
-### PERF-05
-
-**[SEVERITY: warning]**  
-**Location:** `buildAuditExportFile()` — cursor pagination with `withOlderThanCursor`  
-**Issue:** The cursor pagination uses an OR condition:
-
-```typescript
-OR: [
-  { createdAt: { lt: cursor.createdAt } },
-  { AND: [{ createdAt: cursor.createdAt }, { id: { lt: cursor.id } }] },
-]
-```
-
-This `OR` on `(createdAt, id)` can cause PG to evaluate two index scans and union them. For tables with millions of audit rows, this degrades performance.  
-**Fix:** Use a composite index on `(createdAt DESC, id DESC)` and express the cursor as a keyset pagination condition. The current `@@index([createdAt(sort: Desc)])` partially helps — add `id` to make it composite (see Indexing section).
-
----
-
-### PERF-06
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `buildAuditExportFile()` — writes to OS temp dir per batch  
-**Issue:** Each 2000-row batch does an `fs.appendFile` — synchronous I/O in a loop. For a 50,000-row export, this means 25 `appendFile` calls.  
-**Fix:** Use a writable stream:
-
-```typescript
-const stream = fs.createWriteStream(filePath, { flags: 'a' });
-// write batches to stream.write(rows.join('\n') + '\n')
-await new Promise((resolve, reject) => stream.end(resolve));
-```
-
----
-
-## 7. Async Opportunities
-
----
-
-### AO-01
-
-**[SEVERITY: critical]**  
-**Location:** `src/utils/auditLogger.ts` — `logAuditEvent()` — called synchronously on every action  
-**Issue:** Audit logging is awaited inline on every request path — user **never needs to wait for audit confirmation**. Audit failure is already silently swallowed (`catch` just logs to console).  
-**Why it matters:** Every login, logout, lead create, and document upload is slowed down by 2 DB round trips for audit. Under any load, this doubles DB write pressure.  
-**Fix (recommended — BullMQ):** Queue audit events asynchronously:
-
-```typescript
-// utils/auditQueue.ts
-import Queue from 'bullmq';
-const auditQueue = new Queue('audit-logs', { connection: getRedisClient() });
-
-export const logAuditEvent = async (event, req, options) => {
-  // fire-and-forget — do NOT await
-  auditQueue.add('log', { event, options, ip: getClientIP(req), userAgent: req.headers['user-agent'] })
-    .catch(err => console.error('Audit queue error:', err));
-};
-```
-
-Create a BullMQ worker that processes audit events and writes them to the DB. This decouples response latency from audit write latency entirely.
-
-**Fix (minimal — setImmediate fire-and-forget):** If BullMQ is too large a change right now:
-
-```typescript
-export const logAuditEvent = (event, req, options) => {
-  // No await — schedule for after the current I/O cycle
-  setImmediate(() => {
-    writeAuditLog(event, req, options).catch(err => console.error('Audit log failed:', err));
-  });
-};
-```
-
-Note: `setImmediate` does not survive process crash — events can be lost. BullMQ with Redis is strongly preferred for compliance use cases.
-
----
-
-### AO-02
-
-**[SEVERITY: warning]**  
-**Location:** `authController.ts` — `registerPartner()` — two sequential `logAuditEvent` calls before response  
-**Issue:**
-
-```typescript
-await logAuditEvent('REGISTER', req, { ... });
-await logAuditEvent('CONSENT_GIVEN', req, { ... });
-// ... then res.status(201).json(...)
-```
-
-Two synchronous audit writes before the 201 response is sent to the partner. Adding ~60–100ms to registration latency.  
-**Fix:** After AO-01 is implemented (fire-and-forget audit), this is automatically fixed.
-
----
-
-### AO-03
-
-**[SEVERITY: warning]**  
-**Location:** `documentController.ts` — `logAuditEvent('DOCUMENT_UPLOADED', ...)` after `res.status(200).json()`  
-**Issue:** The audit log for document uploads is correctly called AFTER the response is sent — this is good fire-and-forget practice. **However**, it is `await`-ed, meaning any error propagates into an already-completed response cycle and can crash the route handler silently.  
-**Why it matters:** The `await` after `res.json()` means an exception in `logAuditEvent` throws in a context where the response is already committed — Node may emit an `unhandledPromiseRejection`.  
-**Fix:** Drop the `await` (make it genuinely fire-and-forget) and wrap in `.catch()`:
-
-```typescript
-logAuditEvent('DOCUMENT_UPLOADED', req, { ... })
-  .catch(err => console.error('Audit log failed for DOCUMENT_UPLOADED:', err));
-```
-
----
-
-### AO-04
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `createUser()` — audit log before response  
-**Issue:**
-
-```typescript
-res.status(201).json({ success: true, ... });
-await logAuditEvent('ADMIN_USER_CREATED', req, { ... }); // after response
-```
-
-This is correctly placed after the response. But like AO-03, the `await` after `res.json()` is still a pattern risk.  
-**Fix:** Same as AO-03 — drop `await`, add `.catch()`.
-
----
-
-### AO-05
-
-**[SEVERITY: suggestion]**  
-**Location:** `smsService.ts` (not fully reviewed, but implied by usage in OTP flow)  
-**Issue:** Any SMS/email notification triggered synchronously in a request handler forces the user to wait for a third-party HTTP call.  
-**Fix:** Queue SMS jobs via BullMQ. User gets immediate 200; worker sends SMS. Implement with exponential retry on failure.
-
----
-
-## 8. Caching
-
----
-
-### CACHE-01
-
-**[SEVERITY: warning]**  
-**Location:** `partnerController.ts` — `getPartners()`, `getPartnerById()`, `getCurrentPartnerProfile()` — no caching  
-**Issue:** The partner list and partner profile have zero caching despite being called on every admin dashboard load and every partner page load.  
-**Recommended strategy:**
-
-| Data | Cache Key | TTL | Invalidation Trigger |
-|------|-----------|-----|----------------------|
-| Partner list (paginated) | `partners:list:page:{n}:limit:{l}:filter:{hash}` | 30s | `updatePartner`, `updatePartnerStatus` |
-| Single partner profile | `partner:profile:{id}` | 60s | `updatePartner`, `updatePartnerStatus` |
-| Current partner profile | `partner:self:{userId}` | 60s | user updates own profile |
-| Lead count per partner | `partner:leadcount:{id}` | 60s | lead created/deleted for this partner |
-
----
-
-### CACHE-02
-
-**[SEVERITY: warning]**  
-**Location:** `adminController.ts` — `listUsers()` — no caching  
-**Issue:** `listUsers` (once paginated per QC-01) should be cached since it's read-heavy on admin dashboards and user records change infrequently.  
-**Recommended strategy:** `users:list:page:{n}` with 30s TTL, invalidated on user create/update/delete.
-
----
-
-### CACHE-03
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `getStats()` — 60s TTL is appropriate ✓  
-**Issue:** Already cached. TTL of 60 seconds is fine for a stats widget that tolerates slight staleness.  
-**Note:** The `cacheWrap` pattern used here is correct. No change needed.
-
----
-
-### CACHE-04
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `listBanks()` — 5-minute TTL ✓  
-**Issue:** Already cached. Bank data changes rarely. 5-min TTL appropriate.  
-**Note:** Cache invalidation on `updateBank` and `toggleBankStatus` via `cacheDelete('banks:all', ...)` is correctly implemented.
-
----
-
-### CACHE-05
-
-**[SEVERITY: suggestion]**  
-**Location:** `userService.ts` — OTP stored in Redis with `OTP_SECONDS = 300` TTL ✓  
-**Issue:** Correct implementation. Redis TTL handles OTP expiry automatically — no cron needed.  
-**Note:** The DB fallback (`otpHash`, `otpExpires` columns on `users`) is a good resilience pattern, but the DB columns will remain populated even when Redis is available since `generateOTP` only writes to Redis when Redis is available. Ensure `otpHash`/`otpExpires` are cleared on successful verification in the DB fallback path.
-
----
-
-### CACHE-06
-
-**[SEVERITY: suggestion]**  
-**Location:** `adminController.ts` — `getCachedAuditCounts()` — two-level cache (in-memory Map + Redis)  
-**Issue:** The in-memory Map cache is effectively a local L1 in front of Redis L2. This is a valid pattern, but note: in-memory state is not shared across multiple Node.js instances. This means on a multi-instance deployment, each instance maintains its own stale cache for up to 20 seconds.  
-**Fix:** Accept this behaviour (minor inconsistency in count numbers across instances is fine for a dashboard) OR rely solely on the Redis TTL and remove the in-memory Map to simplify the code.
-
----
-
-## 9. Indexing
-
----
-
-### IDX-01
-
-**[SEVERITY: critical]**  
-**Location:** `audit_logs` — missing composite index for `checkSuspiciousActivity`  
-**Issue:** `checkSuspiciousActivity` queries: `WHERE userId = ? AND event = 'LOGIN_SUCCESS' AND createdAt >= ?`. The current index `@@index([userId, createdAt(sort: Desc)])` does not include `event`, so PostgreSQL scans all audit rows for the user in the time range and then filters by event.  
-**Fix:**
-
-```prisma
-@@index([userId, event, createdAt(sort: Desc)])
-```
-
+- **Better fix at larger scale:** Maintain daily rollups in a summary table or materialized view and read dashboards from that instead of raw audit logs.
+
+**🟡 `otp_challenges` and `active_sessions` — no TTL cleanup mechanism**
+- **Location:** `otp_challenges`, `active_sessions`
+- **Problem:** Expired OTP challenges and stale sessions accumulate forever. Without a cleanup job or PostgreSQL `pg_cron` scheduled deletion, these tables grow unboundedly with dead rows.
+- **Fix:**
 ```sql
-CREATE INDEX audit_logs_user_event_created_at
-  ON audit_logs (user_id, event, created_at DESC);
+-- Scheduled cleanup (run via pg_cron or application cron):
+DELETE FROM otp_challenges WHERE otp_expires_at < NOW() - INTERVAL '1 hour';
+DELETE FROM active_sessions WHERE last_active < NOW() - INTERVAL '30 days';
+
+-- Partial index to make cleanup efficient:
+CREATE INDEX idx_otp_expired ON otp_challenges (otp_expires_at)
+  WHERE verified_at IS NULL;
+CREATE INDEX idx_sessions_stale ON active_sessions (last_active);
 ```
 
----
-
-### IDX-02
-
-**[SEVERITY: warning]**  
-**Location:** `leads` — missing index on `updatedAt` and `loanAmount` for sorting  
-**Issue:** `getLeads` allows sorting by `updatedAt` and `loanAmount` but there are no indexes on these columns. Any sort by these fields causes a seq scan + sort.  
-**Fix:**
-
-```prisma
-@@index([updatedAt(sort: Desc)])
-@@index([loanAmount(sort: Desc)])
-```
-
+**🟡 `document_upload_tokens` — no TTL cleanup**
+- **Location:** `document_upload_tokens`
+- **Problem:** Expired/used tokens remain in the table forever. With high document upload volume, this table grows with dead data.
+- **Fix:**
 ```sql
-CREATE INDEX leads_updated_at ON leads (updated_at DESC);
-CREATE INDEX leads_loan_amount ON leads (loan_amount DESC);
+DELETE FROM document_upload_tokens
+  WHERE expires_at < NOW() - INTERVAL '24 hours';
+
+CREATE INDEX idx_document_upload_tokens_expires_at
+  ON document_upload_tokens (expires_at);
 ```
 
----
-
-### IDX-03
-
-**[SEVERITY: warning]**  
-**Location:** `leads` — missing trigram indexes for search  
-**Issue:** Full-text search with `ILIKE '%term%'` on `client_full_name`, `client_phone`, `client_email` cannot use B-tree indexes. See QC-10.  
-**Fix:**
-
+**🟡 Document flows are missing a supporting index on `lead_documents(lead_id, type)`**
+- **Location:** `lead_documents`
+- **Problem:** Public token validation loads all documents for a lead ordered by `type`, and the upload flow repeatedly verifies `id + lead_id` ownership. The current index on `lead_id` is acceptable at small scale but is not the right shape for repeated document-list and sort operations.
+- **Fix:**
 ```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX leads_client_full_name_trgm ON leads USING GIN (client_full_name gin_trgm_ops);
-CREATE INDEX leads_client_phone_trgm     ON leads USING GIN (client_phone gin_trgm_ops);
-CREATE INDEX leads_client_email_trgm     ON leads USING GIN (client_email gin_trgm_ops);
+CREATE INDEX idx_lead_documents_lead_id_type
+  ON lead_documents (lead_id, type);
 ```
 
-Note: These cannot be expressed in Prisma schema — must be added as raw SQL in a migration.
-
----
-
-### IDX-04
-
-**[SEVERITY: warning]**  
-**Location:** `leads` — missing index on `loanType` alone  
-**Issue:** `getLeadStats` does `lead.groupBy({ by: ['loanType'] })`. The existing index `@@index([partnerId, status])` does not help with a full-table `groupBy loanType`. PG will do a sequential scan.  
-**Fix:**
-
-```prisma
-@@index([loanType])
-```
-
+**� `partner_data.phone` — no index for client deduplication lookups**
+- **Location:** `partner_data.phone`
+- **Problem:** Partner data contains client phone numbers used for deduplication and lookups. The table has indexes on `partner_id` and `partner_id + local_status`, but none on `phone`. As the table grows, any search or dedup check by client phone requires a sequential scan.
+- **Fix:**
 ```sql
-CREATE INDEX leads_loan_type ON leads (loan_type);
+CREATE INDEX idx_partner_data_phone ON partner_data (phone);
 ```
 
----
-
-### IDX-05
-
-**[SEVERITY: warning]**  
-**Location:** `audit_logs` — composite cursor index for export pagination  
-**Issue:** Export pagination uses `(createdAt DESC, id DESC)` for keyset pagination but the composite index is missing. Current index is only `@@index([createdAt(sort: Desc)])`.  
-**Fix:**
-
-```prisma
-@@index([createdAt(sort: Desc), id(sort: Desc)])
-```
-
+**🟡 `document_upload_tokens` — missing composite index for token validation flow**
+- **Location:** `document_upload_tokens.document_id`, `document_upload_tokens.used_at`
+- **Problem:** The token validation flow checks `WHERE document_id = ? AND used_at IS NULL`. The current index on `document_id` alone doesn't cover the `used_at` filter, forcing a recheck on every validation. At scale with high document upload volume, this adds unnecessary I/O.
+- **Fix:**
 ```sql
-CREATE INDEX audit_logs_created_at_id ON audit_logs (created_at DESC, id DESC);
+CREATE INDEX idx_upload_tokens_doc_unused
+  ON document_upload_tokens (document_id)
+  WHERE used_at IS NULL;
 ```
 
----
+**�🔵 Adding NOT NULL columns to large tables will lock**
+- **Location:** `audit_logs`, `leads`
+- **Problem:** The `safe_audit_migration.sql` correctly uses nullable columns with defaults. But future migrations adding NOT NULL columns to `audit_logs` (which grows unboundedly) will require a full table rewrite and exclusive lock. This can cause minutes of downtime on large tables.
+- **Fix:** Always add columns as nullable with a DEFAULT, then backfill, then add NOT NULL constraint using `ALTER TABLE ... ALTER COLUMN ... SET NOT NULL` (which does check scan but not rewrite in PG 12+).
 
-### IDX-06
-
-**[SEVERITY: suggestion]**  
-**Location:** `password_history` — redundant index  
-**Issue:** Both `@@index([userId])` and `@@index([userId, changedAt])` exist. Any query filtering by `userId` alone will use the composite index (since it leads with `userId`), making the single-column index redundant.  
-**Fix:** Remove `@@index([userId])` — the composite covers it:
-
-```prisma
-// Remove this:
-@@index([userId])
-// Keep this:
-@@index([userId, changedAt])
-```
-
-This saves one index from being maintained on every insert to `password_history`.
-
----
-
-### IDX-07
-
-**[SEVERITY: suggestion]**  
-**Location:** `audit_logs` — low-cardinality `@@index([severity])`  
-**Issue:** `severity` has 4 values (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`). A B-tree index on a column with 4 distinct values is typically **not used by the query planner** — PG decides a seq scan is cheaper when >5–10% of table rows match. This index adds write overhead for no read benefit.  
-**Fix:** Remove `@@index([severity])`. If filtering by severity is needed, add `severity` as a suffix to existing composite indexes (e.g., `@@index([userId, createdAt, severity])`).
-
----
-
-### IDX-08
-
-**[SEVERITY: suggestion]**  
-**Location:** `audit_logs` — `@@index([ip, createdAt(sort: Desc)])`  
-**Issue:** IP-based lookups are likely only used for specific security investigations (rare admin queries), not routine operations. This index adds write overhead for infrequent reads.  
-**Assessment:** Keep for security audit purposes, but document that it's an investigative index, not an operational one. Consider making it a partial index if most IPs are `NULL`:
-
+**🔵 No `pg_stat_statements` or query monitoring setup documented**
+- **Location:** Schema-wide
+- **Problem:** No evidence of `pg_stat_statements` extension being enabled. Without it, identifying slow queries and optimization opportunities requires external tooling.
+- **Fix:**
 ```sql
-CREATE INDEX audit_logs_ip_created_at ON audit_logs (ip, created_at DESC)
-  WHERE ip IS NOT NULL;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+-- Configure in postgresql.conf:
+-- shared_preload_libraries = 'pg_stat_statements'
+-- pg_stat_statements.track = all
 ```
 
 ---
 
-## 10. Prioritised Action List
+## WHAT LOOKS GOOD
 
-Order by impact-per-effort. Fix these in sequence:
-
-| Priority | ID | Action | Impact | Effort |
-|----------|-----|--------|--------|--------|
-| 🔴 **P0** | QC-01 | Paginate `listUsers` + add `select` to hide sensitive fields | Security + stability | Low |
-| 🔴 **P0** | QC-03 + AO-01 | Make `logAuditEvent` fire-and-forget (BullMQ queue) + remove `getLastChecksum` serial read | Removes 2 DB round trips from every request | Medium |
-| 🔴 **P0** | CFG-01 | Set explicit pool size, timeouts, and `statement_timeout` on `pg.Pool` | Prevents pool exhaustion under load | Low |
-| 🔴 **P0** | CFG-05 | Set `maxmemory-policy volatile-lru` on Redis | Prevents security token eviction | Low (infra config) |
-| 🟠 **P1** | IDX-03 | Add `pg_trgm` GIN indexes on `leads` for search | Makes search usable at scale | Low |
-| 🟠 **P1** | QC-04 | Wrap login writes in a single transaction | Data integrity | Low |
-| 🟠 **P1** | IDX-01 | Add composite `audit_logs(user_id, event, created_at DESC)` index | Speeds up suspicious-activity check on every login | Low |
-| 🟠 **P1** | PERF-04 | Remove `include: { documents, timeline }` from list endpoints | Reduces read amplification on hottest read path | Low |
-| 🟠 **P1** | QC-13 | Replace `checkSuspiciousActivity` audit query with `active_sessions` PK lookup | Removes 1 DB read from every login | Low |
-| 🟡 **P2** | IDX-02 | Add indexes on `leads.updated_at`, `leads.loan_amount` | Fixes sort performance | Low |
-| 🟡 **P2** | IDX-04 | Add index on `leads.loan_type` | Fixes `groupBy` in stats | Low |
-| 🟡 **P2** | QC-09 | Cache partner profile with 60s TTL | Removes 2 DB queries per partner page load | Low |
-| 🟡 **P2** | PERF-02 | Parallelise `isPasswordReused` bcrypt compares | Removes 1.5s blocking from password change | Low |
-| 🟡 **P2** | QC-06 | Eliminate post-transaction re-fetch in lead update handlers | Removes 1 query per lead write | Low |
-| 🟡 **P2** | QC-12 | Consolidate `getStats` 6 COUNTs into 1 raw SQL query | Reduces admin dashboard DB load by 5x | Low |
-| 🟡 **P2** | QC-14 | Persist audit export jobs in Redis instead of in-memory Map | Survives server restarts | Medium |
-| 🟢 **P3** | CFG-02 | Add `url = env("DATABASE_URL")` to Prisma datasource | Operational safety | Minutes |
-| 🟢 **P3** | CFG-04 | Add `connectTimeout` + `commandTimeout` to Redis client | Prevents hanging on Redis failures | Minutes |
-| 🟢 **P3** | IDX-06 | Remove redundant `@@index([userId])` from `password_history` | Reduces write overhead | Minutes |
-| 🟢 **P3** | IDX-07 | Remove `@@index([severity])` from `audit_logs` | Reduces write overhead | Minutes |
-| 🟢 **P3** | PERF-03 | Consolidate `queryAuditCounts` into 1 conditional aggregate SQL | Reduces audit panel queries | Low |
-| 🟢 **P3** | QC-11 | Replace loop `create` with `createMany` in `assignBank` | Minor performance | Minutes |
-| 🟢 **P3** | CFG-06 | Configure SSL on `pg.Pool` for production | Security compliance | Minutes |
+- **Field-level encryption** for PII (AES-256-GCM) on User and Lead models with the `enc:v1` prefix pattern — well-implemented
+- **Audit log immutability triggers** with proper compliance-oriented design (prevents UPDATE/DELETE)
+- **Audit checksum integrity** using SHA-256 — enables tamper detection
+- **Proper use of `DECIMAL(15,2)`** for all monetary fields (loan amounts, EMI, commission) — no float/real misuse
+- **Good index coverage** on the most critical query paths: `leads(partner_id, status)`, `audit_logs(event, created_at)`, `partner_data(partner_id, local_status)`
+- **Redis-backed caching already exists** for banks, dashboard stats, and audit counts — that materially helps the `5k` website-user target if Redis is enabled in production rather than treated as optional
 
 ---
 
-### Summary Scorecard
+## RECOMMENDED NEXT STEPS
 
-| Category | Grade | Key Issues |
-|----------|-------|-----------|
-| MVP Coverage | C+ | Strong foundation, but still missing follow-up reminders, canonical client/case linkage, lender eligibility rules, and customer tracking models. |
-| Schema Design | B | Solid base models and relations, but `PartnerData` and `Lead` overlap and the schema does not yet model the full PRD workflow cleanly. |
-| Connection Config | D | Critical: no pool size, no timeouts, no SSL enforcement. Fragile under load. |
-| Redis Config | C | No command timeout, no eviction policy documented, potential security risk. |
-| Query Correctness | C+ | `listUsers` unbounded + leaking secrets. Audit integrity race condition. Login non-transactional. |
-| Performance | C | Sync audit on hot path. Over-fetch on list endpoints. Missing trgm indexes for search. |
-| Caching | B | Banks, docs, stats — all correctly cached. Partners and user lists not cached. |
-| Indexing | B- | Core indexes present. Missing: trgm for search, composite for audit events, sort columns. Redundant indexes exist. |
-| Async Patterns | C | `logAuditEvent` is the biggest missed opportunity — synchronous on every request. |
+1. **[CRITICAL] Migrate all `TIMESTAMP(3)` to `TIMESTAMPTZ`** — This affects every table and is a ticking time bomb for a fintech app. Create a single migration that alters all timestamp columns. Test timezone handling end-to-end.
+
+2. **[CRITICAL] Decompose the `users` god table** — Split into `users` (auth), `partner_profiles`, `partner_kyc`, `partner_banking`, `partner_consents`. This is a large effort but prevents schema rot and improves query performance.
+
+3. **[CRITICAL] Implement partitioning on `audit_logs`** — Set up range partitioning by month on `created_at`. Use `pg_partman` for automated partition management. This must be done before the table grows past ~10M rows.
+
+4. **[HIGH] Fix `leads.partner_id` nullability mismatch** — Align the Prisma schema to `String` (non-optional) to match the database constraint and change `onDelete` to `Restrict`.
+
+5. **[HIGH] Add `updated_at` database triggers** — Don't rely solely on Prisma `@updatedAt`. Add PostgreSQL triggers for all tables with `updated_at` columns.
+
+6. **[HIGH] Add DB-enforced normalized uniqueness for auth/onboarding** — Make `users.email` case-insensitively unique and enforce normalized uniqueness on `users.phone`.
+
+7. **[HIGH] Add missing indexes for search and dashboard lists** — `leads.client_full_name` (trgm), `leads.client_email` (trgm), `users` search trigram indexes, `users(role, created_at DESC)`, `leads(partner_id, created_at DESC)`, `leads(partner_id, status, created_at DESC)`, `active_sessions(user_id, last_active DESC)`, `lead_documents(lead_id, type)`, `document_upload_tokens(expires_at)`, `banks.supported_loan_types` (GIN).
+
+8. **[HIGH] Implement soft delete on `leads`** — Add `deleted_at` column, change `lead_documents` FK from CASCADE to RESTRICT, add partial indexes.
+
+9. **[HIGH] Add RLS policies** on `leads`, `partner_data`, `lead_documents` for defense-in-depth tenant isolation.
+
+10. **[MEDIUM] Replace repeated audit dashboard counts with aggregate or rollup queries** — The current four-count approach will age badly even with indexes.
+
+11. **[MEDIUM] Add CHECK constraints** on rate/percentage columns and bounded numeric fields.
+
+12. **[MEDIUM] Establish TTL cleanup jobs** for `otp_challenges`, `active_sessions`, and `document_upload_tokens` — either via `pg_cron` or application scheduler.
+
+13. **[MEDIUM] Add FK from `leads.bank_code` to `banks.code`** and eventually drop the free-text `bank_assigned` column.
+
+14. **[MEDIUM] Validate the capacity target with load tests and query plans** — For `10k` dashboard users and `5k` website users, verify p95 latency on partner list, lead list, commission list, audit counts, and audit export endpoints with realistic row counts.
+
+15. **[LOW] Convert `file_size` to BIGINT, `years_in_operation`/`expected_leads` to INTEGER, `has_experience` to BOOLEAN, `total_disbursed` to DECIMAL, `BankCommissionRate.interestRate` to DECIMAL, and fix the `LocalLeadStatus` bootstrap drift.**
+
+16. **[HIGH] Change `partner_data` FK from CASCADE to RESTRICT** — Prevent silent destruction of client PII records when a partner account is deleted.
+
+17. **[LOW] Add missing indexes on `partner_data.phone` and `document_upload_tokens(document_id, used_at IS NULL)`** — Support deduplication lookups and token validation at scale.

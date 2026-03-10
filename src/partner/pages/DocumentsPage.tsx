@@ -101,23 +101,23 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
   const loanLabel = LOAN_TYPE_OPTIONS.find(l => l.code === selectedLoan)?.label ?? selectedLoan;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-slate-900/50">
         <div className="flex items-center gap-2">
-          <BookOpen size={18} className="text-blue-600" />
-          <span className="font-semibold text-slate-800">Required Documents Checker</span>
+          <BookOpen size={18} className="text-indigo-400" />
+          <span className="font-semibold text-slate-100">Required Documents Checker</span>
         </div>
         <div className="flex items-center gap-3">
           {/* Breadcrumb */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400">
-            <button onClick={() => setStep('loan')} className={`hover:text-slate-700 ${step === 'loan' ? 'text-slate-700 font-medium' : ''}`}>Loan Type</button>
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
+            <button onClick={() => setStep('loan')} className={`hover:text-slate-300 ${step === 'loan' ? 'text-slate-200 font-medium' : ''}`}>Loan Type</button>
             <ChevronRight size={12} />
-            <button onClick={() => step !== 'loan' && setStep('banks')} className={`hover:text-slate-700 ${step === 'banks' ? 'text-slate-700 font-medium' : ''} ${step === 'loan' ? 'opacity-40 pointer-events-none' : ''}`}>Banks</button>
+            <button onClick={() => step !== 'loan' && setStep('banks')} className={`hover:text-slate-300 ${step === 'banks' ? 'text-slate-200 font-medium' : ''} ${step === 'loan' ? 'opacity-40 pointer-events-none' : ''}`}>Banks</button>
             <ChevronRight size={12} />
-            <span className={step === 'docs' ? 'text-slate-700 font-medium' : 'opacity-40'}>Documents</span>
+            <span className={step === 'docs' ? 'text-slate-200 font-medium' : 'opacity-40'}>Documents</span>
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-md transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -127,14 +127,14 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
         {/* Step 1 - Pick a loan type */}
         {step === 'loan' && (
           <div>
-            <p className="text-sm text-slate-500 mb-4">Select a loan type to see which banks are available and what documents they require.</p>
+            <p className="text-sm text-slate-400 mb-4">Select a loan type to see which banks are available and what documents they require.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {LOAN_TYPE_OPTIONS.map(opt => (
                 <button
                   key={opt.code}
                   onClick={() => handleLoanSelect(opt.code)}
                   disabled={loading}
-                  className="text-left px-3 py-2.5 text-sm border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all disabled:opacity-50"
+                  className="text-left px-3 py-2.5 text-sm bg-slate-800/50 border border-white/10 rounded-lg text-slate-300 hover:border-indigo-500/50 hover:bg-indigo-500/10 hover:text-indigo-300 transition-all disabled:opacity-50"
                 >
                   {opt.label}
                 </button>
@@ -151,10 +151,10 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
         {/* Step 2 - Pick a bank */}
         {step === 'banks' && (
           <div>
-            <p className="text-sm text-slate-500 mb-1">
-              <span className="font-medium text-slate-700">{lenders.length}</span> banks/NBFCs offer <span className="font-medium text-blue-600">{loanLabel}</span>. Select one to view required documents.
+            <p className="text-sm text-slate-400 mb-1">
+              <span className="font-medium text-slate-200">{lenders.length}</span> banks/NBFCs offer <span className="font-medium text-indigo-400">{loanLabel}</span>. Select one to view required documents.
             </p>
-            {error && <p className="text-sm text-red-500 mb-3 flex items-center gap-1"><AlertCircle size={13} />{error}</p>}
+            {error && <p className="text-sm text-red-400 mb-3 flex items-center gap-1"><AlertCircle size={13} />{error}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
               {lenders.map(lender => {
                 const docsCount = lender.docs.filter(d => d.loanCode === selectedLoan).length;
@@ -163,17 +163,17 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
                   <button
                     key={lender.lenderCode}
                     onClick={() => handleLenderSelect(lender)}
-                    className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
+                    className="flex items-center justify-between p-3 bg-slate-800/50 border border-white/10 rounded-lg hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-left"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                        <Building2 size={15} className="text-slate-500" />
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-white/5 flex items-center justify-center">
+                        <Building2 size={15} className="text-slate-400" />
                       </div>
-                      <span className="font-medium text-slate-800 text-sm">{lender.lenderName}</span>
+                      <span className="font-medium text-slate-200 text-sm">{lender.lenderName}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full font-medium">{mandCount} req</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">{docsCount} total</span>
+                      <span className="px-1.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-full font-medium">{mandCount} req</span>
+                      <span className="px-1.5 py-0.5 bg-slate-700 text-slate-300 rounded-full">{docsCount} total</span>
                     </div>
                   </button>
                 );
@@ -188,11 +188,11 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">{loanLabel}</p>
-                <p className="font-semibold text-slate-800">{selectedLender.lenderName}</p>
+                <p className="font-semibold text-slate-100">{selectedLender.lenderName}</p>
               </div>
               <button
                 onClick={() => setStep('banks')}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
               >
                 <ChevronRight size={12} className="rotate-180" /> Back to banks
               </button>
@@ -205,12 +205,12 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
                 </p>
                 <div className="space-y-1.5">
                   {mandatory.map(doc => (
-                    <div key={doc.id} className="flex items-start gap-2.5 p-2.5 bg-red-50/60 border border-red-100 rounded-lg">
+                    <div key={doc.id} className="flex items-start gap-2.5 p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg">
                       <FileText size={14} className="text-red-400 mt-0.5 shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800">{doc.docName}</p>
+                        <p className="text-sm font-medium text-slate-200">{doc.docName}</p>
                         {doc.description && <p className="text-xs text-slate-400 mt-0.5">{doc.description}</p>}
-                        <p className="text-xs text-slate-400 mt-0.5">{doc.acceptedFormats.join(', ').toUpperCase()} · max {doc.maxSizeMB} MB</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{doc.acceptedFormats.join(', ').toUpperCase()} · max {doc.maxSizeMB} MB</p>
                       </div>
                     </div>
                   ))}
@@ -221,16 +221,16 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
             {optional.length > 0 && (
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <CheckCircle size={11} className="text-green-500" /> Optional ({optional.length})
+                  <CheckCircle size={11} className="text-emerald-500" /> Optional ({optional.length})
                 </p>
                 <div className="space-y-1.5">
                   {optional.map(doc => (
-                    <div key={doc.id} className="flex items-start gap-2.5 p-2.5 bg-slate-50 border border-slate-100 rounded-lg">
-                      <FileText size={14} className="text-slate-300 mt-0.5 shrink-0" />
+                    <div key={doc.id} className="flex items-start gap-2.5 p-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                      <FileText size={14} className="text-emerald-400 mt-0.5 shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-700">{doc.docName}</p>
+                        <p className="text-sm font-medium text-slate-200">{doc.docName}</p>
                         {doc.description && <p className="text-xs text-slate-400 mt-0.5">{doc.description}</p>}
-                        <p className="text-xs text-slate-400 mt-0.5">{doc.acceptedFormats.join(', ').toUpperCase()} · max {doc.maxSizeMB} MB</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{doc.acceptedFormats.join(', ').toUpperCase()} · max {doc.maxSizeMB} MB</p>
                       </div>
                     </div>
                   ))}
@@ -251,10 +251,10 @@ function CheckReqDocsPanel({ onClose }: { onClose: () => void }) {
 // -- Status / doc helpers ------------------------------------------------------
 
 const documentStatusConfig: Record<DocumentStatus, { icon: React.ReactNode; color: string; bg: string }> = {
-  pending:  { icon: <Clock size={14} />,       color: 'text-slate-500',  bg: 'bg-slate-100' },
-  uploaded: { icon: <FileText size={14} />,    color: 'text-blue-600',   bg: 'bg-blue-100' },
-  verified: { icon: <CheckCircle size={14} />, color: 'text-green-600',  bg: 'bg-green-100' },
-  rejected: { icon: <XCircle size={14} />,     color: 'text-red-600',    bg: 'bg-red-100' },
+  pending:  { icon: <Clock size={14} />,       color: 'text-slate-400',  bg: 'bg-slate-800/50 border border-slate-700' },
+  uploaded: { icon: <FileText size={14} />,    color: 'text-indigo-400',   bg: 'bg-indigo-500/10 border border-indigo-500/20' },
+  verified: { icon: <CheckCircle size={14} />, color: 'text-emerald-400',  bg: 'bg-emerald-500/10 border border-emerald-500/20' },
+  rejected: { icon: <XCircle size={14} />,     color: 'text-red-400',    bg: 'bg-red-500/10 border border-red-500/20' },
 };
 
 const getDocTypeLabel = (type: string) => {
@@ -409,15 +409,15 @@ export default function DocumentsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Documents</h1>
-          <p className="text-slate-500 mt-1">Manage and upload documents for your leads</p>
+          <h1 className="text-2xl font-bold text-slate-100">Documents</h1>
+          <p className="text-slate-400 mt-1">Manage and upload documents for your leads</p>
         </div>
         <button
           onClick={() => setShowReqChecker(v => !v)}
           className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl border transition-all shadow-sm ${
             showReqChecker
-              ? 'bg-blue-700 text-white border-blue-700'
-              : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700'
+              ? 'bg-indigo-700 text-white border-indigo-700'
+              : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 hover:border-indigo-700'
           }`}
         >
           <BookOpen size={16} />
@@ -429,11 +429,11 @@ export default function DocumentsPage() {
       {showReqChecker && <CheckReqDocsPanel onClose={() => setShowReqChecker(false)} />}
 
       {/* Guidelines banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-        <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
+      <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-4 flex gap-3">
+        <AlertTriangle className="text-amber-400 flex-shrink-0" size={20} />
         <div>
-          <p className="text-sm font-medium text-amber-800">Document Guidelines</p>
-          <p className="text-sm text-amber-700 mt-1">
+          <p className="text-sm font-medium text-amber-300">Document Guidelines</p>
+          <p className="text-sm text-amber-200/80 mt-1">
             Upload clear, legible copies. Accepted formats: PDF, JPG, PNG. Maximum file size: 5MB per document.
             Documents with unclear information may be rejected by the bank.
           </p>
@@ -441,7 +441,7 @@ export default function DocumentsPage() {
       </div>
 
       {/* Search */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-4">
         <div className="flex items-center gap-4">
           <div className="flex-1 relative">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -450,7 +450,7 @@ export default function DocumentsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by client name or lead ID..."
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         </div>
@@ -470,57 +470,57 @@ export default function DocumentsPage() {
             const rejectedCount = lead.documents.filter(d => d.status === 'rejected').length;
 
             return (
-              <div key={lead.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggleExpand(lead.id)}>
+              <div key={lead.id} className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
+                <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors" onClick={() => toggleExpand(lead.id)}>
                   <div className="flex items-center gap-4">
                     <button className="p-1">
                       {isExpanded ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
                     </button>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-slate-800">{lead.client.fullName}</h3>
-                        <span className="text-xs text-slate-400 font-mono">{lead.id}</span>
+                        <h3 className="font-semibold text-slate-200">{lead.client.fullName}</h3>
+                        <span className="text-xs text-slate-500 font-mono">{lead.id}</span>
                       </div>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-400">
                         {getLoanTypeLabel(lead.loanType)} • {lead.status === 'docs_pending' ? 'Documents Required' : 'Documents Submitted'}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="hidden md:flex items-center gap-4">
-                      {pendingCount > 0 && <span className="flex items-center gap-1.5 text-sm text-amber-600"><Clock size={14} />{pendingCount} pending</span>}
-                      {rejectedCount > 0 && <span className="flex items-center gap-1.5 text-sm text-red-600"><XCircle size={14} />{rejectedCount} rejected</span>}
+                      {pendingCount > 0 && <span className="flex items-center gap-1.5 text-sm text-amber-400"><Clock size={14} />{pendingCount} pending</span>}
+                      {rejectedCount > 0 && <span className="flex items-center gap-1.5 text-sm text-red-400"><XCircle size={14} />{rejectedCount} rejected</span>}
                     </div>
                     <div className="w-32">
                       <ProgressBar value={completionRate} showPercentage={false} size="sm" variant={completionRate === 100 ? 'success' : completionRate >= 50 ? 'default' : 'warning'} />
-                      <p className="text-xs text-slate-500 text-center mt-1">{completionRate}% complete</p>
+                      <p className="text-xs text-slate-400 text-center mt-1">{completionRate}% complete</p>
                     </div>
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-100">
-                    <div className="p-4 bg-slate-50">
+                  <div className="border-t border-white/10">
+                    <div className="p-4 bg-slate-800/20">
                       <div className="grid grid-cols-1 gap-3">
                         {lead.documents.map((doc) => {
                           const statusConfig = documentStatusConfig[doc.status];
                           const isUploading = uploadingDocId === doc.id;
                           const canUpload = doc.status === 'pending' || doc.status === 'rejected';
                           return (
-                            <div key={doc.id} className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200">
+                            <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-white/10">
                               <div className="flex items-center gap-4">
                                 <div className={`p-2 rounded-lg ${statusConfig.bg}`}>
                                   <FileText size={20} className={statusConfig.color} />
                                 </div>
                                 <div>
-                                  <h4 className="font-medium text-slate-800">{getDocTypeLabel(doc.type)}</h4>
+                                  <h4 className="font-medium text-slate-200">{getDocTypeLabel(doc.type)}</h4>
                                   {doc.fileName ? (
-                                    <p className="text-xs text-slate-500">{doc.fileName} • {doc.fileSize}{doc.uploadedAt && ` • Uploaded ${doc.uploadedAt}`}</p>
+                                    <p className="text-xs text-slate-400">{doc.fileName} • {doc.fileSize}{doc.uploadedAt && ` • Uploaded ${doc.uploadedAt}`}</p>
                                   ) : (
-                                    <p className="text-xs text-slate-400">Not uploaded</p>
+                                    <p className="text-xs text-slate-500">Not uploaded</p>
                                   )}
                                   {doc.rejectionReason && (
-                                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1"><Info size={12} />{doc.rejectionReason}</p>
+                                    <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><Info size={12} />{doc.rejectionReason}</p>
                                   )}
                                 </div>
                               </div>
@@ -542,13 +542,13 @@ export default function DocumentsPage() {
                                       <button
                                         onClick={(e) => { e.stopPropagation(); triggerFileInput(doc.id); }}
                                         disabled={isUploading}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-500 transition-colors disabled:opacity-50"
                                       >
                                         {isUploading ? <><Loader2 size={14} className="animate-spin" />Uploading...</> : <><Upload size={14} />Upload</>}
                                       </button>
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleSendUploadLink(doc.id); }}
-                                        className="p-1.5 text-violet-500 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors"
+                                        className="p-1.5 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 rounded-lg transition-colors"
                                         title="Send Upload Link to Customer"
                                       >
                                         <Share2 size={15} />
@@ -556,8 +556,8 @@ export default function DocumentsPage() {
                                     </>
                                   ) : (
                                     <>
-                                      <button onClick={(e) => { e.stopPropagation(); handleView(doc.id); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View document"><Eye size={16} /></button>
-                                      <button onClick={(e) => { e.stopPropagation(); handleDownload(doc.id); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Download"><Download size={16} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); handleView(doc.id); }} className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors" title="View document"><Eye size={16} /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); handleDownload(doc.id); }} className="p-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg transition-colors" title="Download"><Download size={16} /></button>
                                     </>
                                   )}
                                 </div>
@@ -567,17 +567,17 @@ export default function DocumentsPage() {
                         })}
                       </div>
                       {lead.documents.some(d => d.status === 'pending') && (
-                        <div className="mt-4 flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="mt-4 flex items-center justify-between p-4 bg-indigo-500/5 rounded-lg border border-indigo-500/10">
                           <div className="flex items-center gap-2">
-                            <Info size={16} className="text-blue-600" />
-                            <span className="text-sm text-blue-800">{lead.documents.filter(d => d.status === 'pending').length} document(s) pending upload</span>
+                            <Info size={16} className="text-indigo-400" />
+                            <span className="text-sm text-indigo-300">{lead.documents.filter(d => d.status === 'pending').length} document(s) pending upload</span>
                           </div>
                           <button
                             onClick={() => {
                               const firstPending = lead.documents.find(d => d.status === 'pending');
                               if (firstPending) handleSendUploadLink(firstPending.id);
                             }}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition-colors shadow-sm"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-500 transition-colors shadow-sm"
                           >
                             <Share2 size={15} />
                             Send Upload Link
@@ -592,7 +592,7 @@ export default function DocumentsPage() {
           })}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200">
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
           <EmptyState
             icon={<FileText size={32} />}
             title="No documents found"
@@ -604,43 +604,43 @@ export default function DocumentsPage() {
 
       {/* Upload Link Modal */}
       {uploadLinkModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-xl shadow-[0_0_40px_rgba(0,0,0,0.3)] w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
-                  <Link2 className="w-5 h-5 text-violet-600" />
+                <div className="w-10 h-10 bg-violet-500/10 rounded-lg flex items-center justify-center border border-violet-500/20">
+                  <Link2 className="w-5 h-5 text-violet-400" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Upload Link Generated</h2>
-                  <p className="text-sm text-gray-500">{uploadLinkModal.docType}</p>
+                  <h2 className="text-lg font-semibold text-slate-100">Upload Link Generated</h2>
+                  <p className="text-sm text-slate-400">{uploadLinkModal.docType}</p>
                 </div>
               </div>
               <button
                 onClick={() => setUploadLinkModal(null)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg transition-colors"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                <p className="text-sm text-gray-900">{uploadLinkModal.customerName}</p>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Customer</label>
+                <p className="text-sm text-slate-100">{uploadLinkModal.customerName}</p>
                 {uploadLinkModal.customerEmail && (
-                  <p className="text-xs text-gray-500">{uploadLinkModal.customerEmail}</p>
+                  <p className="text-xs text-slate-400">{uploadLinkModal.customerEmail}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Link</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Upload Link</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
                     value={uploadLinkModal.url}
-                    className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-mono truncate"
+                    className="flex-1 px-3 py-2 text-sm bg-slate-800 border border-white/10 rounded-lg text-slate-300 font-mono truncate focus:outline-none focus:ring-2 focus:ring-violet-500"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
                   <button
@@ -649,10 +649,10 @@ export default function DocumentsPage() {
                       setLinkCopied(true);
                       setTimeout(() => setLinkCopied(false), 2000);
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors border ${
                       linkCopied
-                        ? 'bg-green-100 text-green-700 border border-green-200'
-                        : 'bg-violet-600 text-white hover:bg-violet-700'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : 'bg-violet-600 border-violet-500 text-white hover:bg-violet-500'
                     }`}
                   >
                     {linkCopied ? (
@@ -664,19 +664,19 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-xs text-amber-800">
-                  <Clock className="w-3.5 h-3.5 inline -mt-0.5" /> This link expires on{' '}
-                  <strong>{new Date(uploadLinkModal.expiresAt).toLocaleString()}</strong>
+              <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
+                <p className="text-xs text-amber-200/80">
+                  <Clock className="w-3.5 h-3.5 inline text-amber-400 -mt-0.5" /> This link expires on{' '}
+                  <strong className="text-amber-300">{new Date(uploadLinkModal.expiresAt).toLocaleString()}</strong>
                   {' '}and allows the customer to upload all pending documents.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-white/10 bg-slate-800/50">
               <button
                 onClick={() => setUploadLinkModal(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-slate-100 hover:bg-white/5 rounded-lg transition-colors border border-transparent hover:border-white/10"
               >
                 Close
               </button>

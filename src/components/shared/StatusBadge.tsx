@@ -9,7 +9,7 @@ const adminStatusConfig: Record<string, StatusBadgeConfig> = {
   pending: { label: 'Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   approved: { label: 'Approved', className: 'bg-green-50 text-green-700 border-green-200' },
   rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200' },
-  under_review: { label: 'Under Review', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  under_review: { label: 'In Review', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   suspended: { label: 'Suspended', className: 'bg-gray-100 text-gray-700 border-gray-300' },
   draft: { label: 'Draft', className: 'bg-gray-100 text-gray-500 border-gray-200' },
   submitted: { label: 'Submitted', className: 'bg-gray-100 text-gray-700 border-gray-300' },
@@ -100,10 +100,14 @@ export default function StatusBadge<TStatus extends string>({
   const resolvedConfig = resolvedConfigMap[status] || { label: fallbackLabel, className: resolvedDefaultClassName };
   const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs';
 
+  // Extract the main color name (e.g. 'amber' from 'text-amber-700') to use for the dot
+  const dotColorClass = resolvedConfig.className.match(/text-([a-z]+)-\d+/)?.[1] || 'slate';
+
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-full ${resolvedWithBorder ? 'border' : ''} ${resolvedConfig.className} ${sizeClasses} ${className}`}
+      className={`inline-flex items-center gap-1.5 font-medium rounded-full ${resolvedWithBorder ? 'border' : ''} ${resolvedConfig.className} ${sizeClasses} ${className}`}
     >
+      <span className={`w-1.5 h-1.5 rounded-full bg-${dotColorClass}-500 flex-shrink-0`} aria-hidden="true" />
       {resolvedConfig.label}
     </span>
   );
