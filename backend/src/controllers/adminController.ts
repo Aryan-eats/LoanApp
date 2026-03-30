@@ -109,6 +109,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
         role,
         isActive: true,
         isEmailVerified: true,
+        encryptionVersion: 1,
       },
     });
 

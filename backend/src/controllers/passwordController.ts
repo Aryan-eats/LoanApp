@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import prisma from '../config/prisma.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
@@ -8,6 +9,13 @@ import {
   isPasswordReused,
   addToPasswordHistory,
 } from '../services/userService.js';
+
+const timingSafeCompare = (a: string, b: string): boolean => {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+};
 
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -78,12 +86,11 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const user = await prisma.user.findFirst({
       where: {
         email: email.toLowerCase(),
-        resetPasswordToken: hashedToken,
         resetPasswordExpires: { gt: new Date() },
       },
     });
 
-    if (!user) {
+    if (!user || !user.resetPasswordToken || !timingSafeCompare(user.resetPasswordToken, hashedToken)) {
       res.status(400).json({
         success: false,
         message: 'Invalid or expired reset code',

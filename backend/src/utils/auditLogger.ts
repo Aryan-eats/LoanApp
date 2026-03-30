@@ -59,11 +59,16 @@ const isValidIP = (ip: string): boolean =>
 /**
  * Get client IP address from request.
  *
- * Relies on Express `trust proxy` being configured (set in index.ts) so that
- * `req.ip` already reflects the left-most trusted hop from X-Forwarded-For.
- * We validate the format to reject obviously spoofed values.
+ * When a trusted proxy is in front of the app, callers expect the left-most
+ * X-Forwarded-For hop. We only honor that header when Express exposes it as a
+ * single string; array values are ignored and we fall back to req.ip.
  */
 export const getClientIP = (req: Request): string => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string') {
+    return forwardedFor.split(',')[0]?.trim() ?? '';
+  }
+
   const raw = req.ip || req.socket.remoteAddress || 'unknown';
   if (raw === 'unknown') return raw;
 

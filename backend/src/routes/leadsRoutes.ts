@@ -5,6 +5,8 @@ import prisma from '../config/prisma.js';
 import { matchLeadOffers } from '../services/bankMatchingService.js';
 import { validateUUID } from '../middleware/validateUUID.js';
 import { handleValidationErrors } from '../middleware/validators.js';
+import { getNextGpsifsLeadId } from '../utils/leadId.js';
+import { Prisma } from '@prisma/client';
 
 // --------------------------------
 // Public lead payload validators
@@ -108,28 +110,51 @@ router.post('/', ...validatePublicLead, async (req: Request, res: Response): Pro
       return;
     }
 
-    const lead = await prisma.lead.create({
-      data: {
-        clientFullName: fullName,
-        clientPhone: phone,
-        clientEmail: email || 'not-provided@website.lead',
-        clientCity: city || null,
-        clientEmployment: employmentType || null,
-        loanType,
-        loanAmount: parsedLoanAmount,
-        status: 'submitted',
-        partnerId: systemPartnerId,
-        partnerName: 'Website Direct',
-        timeline: {
-          create: {
+    let lead: Awaited<ReturnType<typeof prisma.lead.create>> | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nextLeadId = await getNextGpsifsLeadId(prisma);
+
+      try {
+        lead = await prisma.lead.create({
+          data: {
+            id: nextLeadId,
+            clientFullName: fullName,
+            clientPhone: phone,
+            clientEmail: email || null,
+            clientCity: city || null,
+            clientEmployment: employmentType || null,
+            loanType,
+            loanAmount: parsedLoanAmount,
             status: 'submitted',
-            timestamp: new Date(),
-            updatedBy: 'Website',
-            note: 'Lead submitted via website form',
+            partnerId: systemPartnerId,
+            partnerName: 'Website Direct',
+            encryptionVersion: 1,
+            timeline: {
+              create: {
+                status: 'submitted',
+                timestamp: new Date(),
+                updatedBy: 'Website',
+                note: 'Lead submitted via website form',
+              },
+            },
           },
-        },
-      },
-    });
+        });
+        break;
+      } catch (error) {
+        const isUniqueIdCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          attempt < 4;
+
+        if (!isUniqueIdCollision) {
+          throw error;
+        }
+      }
+    }
+
+    if (!lead) {
+      throw new Error('Failed to allocate a new lead ID');
+    }
 
     res.status(201).json({
       success: true,

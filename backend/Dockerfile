@@ -21,6 +21,7 @@ RUN npx prisma generate
 COPY tsconfig.json ./
 COPY src/config ./src/config/
 COPY src/controllers ./src/controllers/
+COPY src/data ./src/data/
 COPY src/middleware ./src/middleware/
 COPY src/routes ./src/routes/
 COPY src/services ./src/services/

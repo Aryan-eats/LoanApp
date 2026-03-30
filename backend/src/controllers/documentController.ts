@@ -575,7 +575,7 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
         },
         customer: {
           name: docRecord.lead.clientFullName,
-          email: docRecord.lead.clientEmail,
+          email: docRecord.lead.clientEmail ?? null,
         },
       },
     });

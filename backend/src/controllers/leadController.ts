@@ -7,6 +7,71 @@ import { cacheWrap, cacheDelete } from '../utils/cache.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
 import { getRequiredDocTypes } from '../data/loanDocsMap.js';
 import { formatLeadResponse } from '../utils/leadHelpers.js';
+import { getNextGpsifsLeadId } from '../utils/leadId.js';
+import { canViewLeadPII, grantAccess } from '../services/consent.js';
+
+type LeadWithRelations = Prisma.LeadGetPayload<{ include: { documents: true; timeline: true } }>;
+
+const redactLeadPII = <T extends {
+  clientFullName: string;
+  clientPhone: string;
+  clientEmail: string | null;
+  clientDateOfBirth: string | null;
+  clientPanNumber: string | null;
+  clientAadhaar: string | null;
+}>(lead: T): T => ({
+  ...lead,
+  clientFullName: '[REDACTED]',
+  clientPhone: '[REDACTED]',
+  clientEmail: null,
+  clientDateOfBirth: null,
+  clientPanNumber: null,
+  clientAadhaar: null,
+});
+
+const normalizeOptionalString = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+
+const matchesLeadSearch = (
+  lead: Pick<LeadWithRelations, 'clientFullName' | 'clientPhone' | 'clientEmail'>,
+  rawSearch: string
+): boolean => {
+  const search = rawSearch.trim().toLowerCase();
+  if (!search) return true;
+
+  return [lead.clientFullName, lead.clientPhone, lead.clientEmail ?? ''].some((value) =>
+    value.toLowerCase().includes(search)
+  );
+};
+
+const isVaultReadFailure = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /vault|transit\/decrypt|decrypt failed|key .* not found|ciphertext/i.test(message);
+};
+
+const getAdminLeadsFallback = async (
+  baseWhere: Record<string, unknown>,
+  sortField: string,
+  sortOrder: 'asc' | 'desc',
+  skip: number,
+  limit: number
+): Promise<{ leads: LeadWithRelations[]; total: number }> => {
+  const [leads, total] = await Promise.all([
+    basePrisma.lead.findMany({
+      where: baseWhere,
+      orderBy: { [sortField]: sortOrder },
+      skip,
+      take: limit,
+      include: { documents: true, timeline: true },
+    }),
+    basePrisma.lead.count({ where: baseWhere }),
+  ]);
+
+  return {
+    leads: leads.map((lead) => redactLeadPII(lead as LeadWithRelations)),
+    total,
+  };
+};
 
 /**
  * @desc    Create a new lead
@@ -24,6 +89,8 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       fullName, phone, email, dateOfBirth, panNumber,
       employmentType, monthlyIncome, companyName,
       workExperience, city, pincode, loanType, loanAmount, tenure,
+      gender, designation, state, currentAddress, residenceType,
+      loanCategory, loanPurpose, preferredBank,
     } = req.body;
 
     const firstName = req.user.firstName ?? '';
@@ -31,10 +98,10 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
     const combinedName = `${firstName} ${lastName}`.trim();
     const partnerName = combinedName || req.user.email || 'Unknown';
 
-    if (!fullName || !phone || !email || !loanType || !loanAmount) {
+    if (!fullName || !phone || !loanType || !loanAmount) {
       res.status(400).json({
         success: false,
-        message: 'Please provide fullName, phone, email, loanType, and loanAmount',
+        message: 'Please provide fullName, phone, loanType, and loanAmount',
       });
       return;
     }
@@ -62,37 +129,145 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const lead = await prisma.lead.create({
-      data: {
-        clientFullName: fullName,
-        clientPhone: phone,
-        clientEmail: email,
-        clientDateOfBirth: dateOfBirth || null,
-        clientPanNumber: panNumber || null,
-        clientAadhaar: req.body.aadhaarNumber || null,
-        clientEmployment: employmentType || null,
-        clientIncome: monthlyIncome ?? null,
-        clientCompany: companyName || null,
-        clientExperience: workExperience ?? null,
-        clientCity: city || null,
-        clientPincode: pincode || null,
-        loanType,
-        loanAmount,
-        tenure: tenure ?? null,
-        partnerId: req.user.id,
-        partnerName,
-        status: 'submitted',
-        timeline: {
-          create: {
-            status: 'submitted',
-            timestamp: new Date(),
-            updatedBy: 'System',
-            note: 'Lead submitted',
-          },
+    if (req.user.role === 'partner') {
+      const partnerOrgId = req.partnerOrgId;
+      if (!partnerOrgId) {
+        res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+        return;
+      }
+
+      const storedClient = await prisma.partnerData.create({
+        data: {
+          partnerId: req.user.id,
+          partnerOrgId,
+          fullName,
+          phone,
+          email: normalizeOptionalString(email),
+          dateOfBirth: normalizeOptionalString(dateOfBirth),
+          gender: normalizeOptionalString(gender),
+          panNumber: normalizeOptionalString(panNumber),
+          employmentType: normalizeOptionalString(employmentType) as LeadWithRelations['clientEmployment'],
+          monthlyIncome:
+            monthlyIncome === null || monthlyIncome === undefined || monthlyIncome === ''
+              ? null
+              : Number(monthlyIncome),
+          companyName: normalizeOptionalString(companyName),
+          designation: normalizeOptionalString(designation),
+          workExperience:
+            workExperience === null || workExperience === undefined || workExperience === ''
+              ? null
+              : String(workExperience),
+          city: normalizeOptionalString(city),
+          pincode: normalizeOptionalString(pincode),
+          state: normalizeOptionalString(state),
+          currentAddress: normalizeOptionalString(currentAddress),
+          residenceType: normalizeOptionalString(residenceType),
+          loanCategory: normalizeOptionalString(loanCategory),
+          loanType,
+          loanAmount: parsedLoanAmount,
+          tenure:
+            tenure === null || tenure === undefined || tenure === '' ? null : Number(tenure),
+          loanPurpose: normalizeOptionalString(loanPurpose),
+          preferredBank: normalizeOptionalString(preferredBank),
+          localStatus: 'new',
+          encryptionVersion: 1,
         },
-      },
-      include: { documents: true, timeline: true },
-    });
+      });
+
+      const lead = await grantAccess({
+        partnerDataId: storedClient.id,
+        partnerId: req.user.id,
+        partnerOrgId,
+        submittedBy: req.user.id,
+      });
+
+      if (!lead) {
+        throw new Error('Failed to submit lead');
+      }
+
+      await logAuditEvent('LEAD_CREATED', req, {
+        userId: req.user.id,
+        entityId: lead.id,
+        entityType: 'lead',
+        metadata: {
+          loanType: lead.loanType,
+          loanAmount: Number(lead.loanAmount),
+          sourcePartnerDataId: storedClient.id,
+          submissionPath: 'partner_direct',
+        },
+      });
+
+      await cacheDelete(`lead:stats:${req.user.id}`, 'lead:stats:all');
+
+      res.status(201).json({
+        success: true,
+        message: 'Lead created successfully',
+        data: { lead: formatLeadResponse(lead) },
+      });
+      return;
+    }
+
+    let lead: LeadWithRelations | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nextLeadId = await getNextGpsifsLeadId(prisma);
+
+      try {
+        lead = await prisma.lead.create({
+          data: {
+            id: nextLeadId,
+            clientFullName: fullName,
+            clientPhone: phone,
+            clientEmail: email || null,
+            clientDateOfBirth: dateOfBirth || null,
+            clientPanNumber: panNumber || null,
+            clientAadhaar: req.body.aadhaarNumber || null,
+            clientEmployment: employmentType || null,
+            clientIncome:
+              monthlyIncome === null || monthlyIncome === undefined || monthlyIncome === ''
+                ? null
+                : Number(monthlyIncome),
+            clientCompany: companyName || null,
+            clientExperience:
+              workExperience === null || workExperience === undefined || workExperience === ''
+                ? null
+                : Number(workExperience),
+            clientCity: city || null,
+            clientPincode: pincode || null,
+            loanType,
+            loanAmount: parsedLoanAmount,
+            tenure: tenure ?? null,
+            partnerId: req.user.id,
+            partnerName,
+            preferredBank: normalizeOptionalString(preferredBank),
+            status: 'submitted',
+            encryptionVersion: 1,
+            timeline: {
+              create: {
+                status: 'submitted',
+                timestamp: new Date(),
+                updatedBy: 'System',
+                note: 'Lead submitted',
+              },
+            },
+          },
+          include: { documents: true, timeline: true },
+        });
+        break;
+      } catch (error) {
+        const isUniqueIdCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          attempt < 4;
+
+        if (!isUniqueIdCollision) {
+          throw error;
+        }
+      }
+    }
+
+    if (!lead) {
+      throw new Error('Failed to allocate a new lead ID');
+    }
 
     await logAuditEvent('LEAD_CREATED', req, {
       userId: req.user.id,
@@ -126,19 +301,11 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const where: Record<string, unknown> = {};
-    if (req.user.role === 'partner') where.partnerId = req.user.id;
-    if (req.query.status) where.status = req.query.status;
-    if (req.query.loanType) where.loanType = req.query.loanType;
-
-    if (req.query.search) {
-      const search = req.query.search as string;
-      where.OR = [
-        { clientFullName: { contains: search, mode: 'insensitive' } },
-        { clientPhone: { contains: search, mode: 'insensitive' } },
-        { clientEmail: { contains: search, mode: 'insensitive' } },
-      ];
-    }
+    const baseWhere: Record<string, unknown> = {};
+    if (req.user.role === 'partner') baseWhere.partnerId = req.user.id;
+    if (req.query.status) baseWhere.status = req.query.status;
+    if (req.query.loanType) baseWhere.loanType = req.query.loanType;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -150,16 +317,63 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
       : 'createdAt';
     const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const [leads, total] = await Promise.all([
-      prisma.lead.findMany({
-        where,
-        orderBy: { [sortField]: sortOrder },
+    let leads: LeadWithRelations[];
+    let total: number;
+
+    try {
+      if (search) {
+        const allLeads = await prisma.lead.findMany({
+          where: baseWhere,
+          orderBy: { [sortField]: sortOrder },
+          include: { documents: true, timeline: true },
+        });
+
+        const filteredLeads = allLeads.filter((lead) => matchesLeadSearch(lead, search));
+        total = filteredLeads.length;
+        leads = filteredLeads.slice(skip, skip + limit);
+      } else {
+        [leads, total] = await Promise.all([
+          prisma.lead.findMany({
+            where: baseWhere,
+            orderBy: { [sortField]: sortOrder },
+            skip,
+            take: limit,
+            include: { documents: true, timeline: true },
+          }),
+          prisma.lead.count({ where: baseWhere }),
+        ]);
+      }
+    } catch (error) {
+      if (req.user.role === 'partner' || !isVaultReadFailure(error)) {
+        throw error;
+      }
+
+      if (search) {
+        res.status(503).json({
+          success: false,
+          message: 'Lead search is unavailable until Vault decryption is restored',
+        });
+        return;
+      }
+
+      console.warn('Get leads fallback: Vault decryption unavailable, returning redacted admin list');
+      ({ leads, total } = await getAdminLeadsFallback(
+        baseWhere,
+        sortField,
+        sortOrder,
         skip,
-        take: limit,
-        include: { documents: true, timeline: true },
-      }),
-      prisma.lead.count({ where }),
-    ]);
+        limit
+      ));
+    }
+
+    const leadsForResponse = req.user.role === 'partner'
+      ? leads
+      : await Promise.all(
+          leads.map(async (lead) => {
+            const canView = await canViewLeadPII(lead.id, req.user!.role);
+            return canView ? lead : redactLeadPII(lead);
+          })
+        );
 
     const requestedLimit = Number.parseInt(req.query.limit as string, 10);
     const isLargeFetch = (Number.isFinite(requestedLimit) && requestedLimit >= 100) || req.query.export === 'true';
@@ -187,7 +401,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       success: true,
       data: {
-        leads: leads.map(formatLeadResponse),
+        leads: leadsForResponse.map(formatLeadResponse),
         pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       },
     });
@@ -223,6 +437,17 @@ export const getLeadById = async (req: Request, res: Response): Promise<void> =>
     if (req.user.role === 'partner' && lead.partnerId !== req.user.id) {
       res.status(403).json({ success: false, message: 'Not authorized to access this lead' });
       return;
+    }
+
+    if (req.user.role !== 'partner') {
+      const canView = await canViewLeadPII(lead.id, req.user.role);
+      if (!canView) {
+        res.status(403).json({
+          success: false,
+          message: 'Consent grant is required before viewing this lead PII',
+        });
+        return;
+      }
     }
 
     res.status(200).json({

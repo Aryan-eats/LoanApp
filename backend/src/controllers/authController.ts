@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import type { User } from '@prisma/client';
+import { Prisma, type User } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../utils/cookieConfig.js';
 import {
@@ -27,6 +27,12 @@ import {
 } from '../services/userService.js';
 import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from '../services/authService.js';
 import { consumeVerificationToken } from '../services/otpChallengeService.js';
+
+const isMissingTableError = (error: unknown, tableName: string): boolean =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  error.code === 'P2021' &&
+  typeof error.meta?.table === 'string' &&
+  error.meta.table.includes(tableName);
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -61,6 +67,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         lastName,
         phone,
         isEmailVerified: true,
+        encryptionVersion: 1,
       },
     });
 
@@ -214,6 +221,7 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
         consentPrivacyPolicy,
         kycStatus: 'pending',
         onboardingStatus: 'pending',
+        encryptionVersion: 1,
       },
     });
 
@@ -371,7 +379,17 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const fingerprint = generateDeviceFingerprint(req);
-    const isSuspicious = await checkSuspiciousActivity(user.id, fingerprint);
+    let isSuspicious = false;
+    try {
+      isSuspicious = await checkSuspiciousActivity(user.id, fingerprint);
+    } catch (error) {
+      if (!isMissingTableError(error, 'audit_logs')) {
+        throw error;
+      }
+
+      console.warn('login suspicious-activity check skipped: audit_logs table is missing');
+    }
+
     if (isSuspicious) {
       await logAuditEvent('SUSPICIOUS_ACTIVITY', req, {
         userId: user.id,
@@ -387,8 +405,36 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // crash cannot leave the user in a partially-authenticated state
     // (e.g. attempts reset but no refresh token stored, or token stored but
     // no active session record).
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginAttempts: 0,
+            lockUntil: null,
+            lastLogin: new Date(),
+            refreshToken: hashToken(refreshToken),
+            refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+          },
+        });
+
+        await addSession(
+          user.id,
+          {
+            deviceFingerprint: fingerprint,
+            userAgent: req.headers['user-agent'] || '',
+            ip: getClientIP(req),
+          },
+          tx
+        );
+      });
+    } catch (error) {
+      if (!isMissingTableError(error, 'active_sessions')) {
+        throw error;
+      }
+
+      console.warn('login session tracking skipped: active_sessions table is missing');
+      await prisma.user.update({
         where: { id: user.id },
         data: {
           failedLoginAttempts: 0,
@@ -398,17 +444,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
         },
       });
-
-      await addSession(
-        user.id,
-        {
-          deviceFingerprint: fingerprint,
-          userAgent: req.headers['user-agent'] || '',
-          ip: getClientIP(req),
-        },
-        tx
-      );
-    });
+    }
 
     // Audit is fire-and-forget — user must not wait for it
     logAuditEvent('LOGIN_SUCCESS', req, {

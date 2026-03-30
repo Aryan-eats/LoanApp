@@ -16,17 +16,25 @@ export interface CreateLeadData {
   phone: string;
   email: string;
   dateOfBirth?: string;
+  gender?: string;
   panNumber?: string;
+  aadhaarNumber?: string;
   employmentType?: string;
   monthlyIncome?: number;
   companyName?: string;
+  designation?: string;
   workExperience?: number;
+  currentAddress?: string;
   city?: string;
+  state?: string;
   pincode?: string;
+  residenceType?: string;
   // Loan details
+  loanCategory?: string;
   loanType: string;
   loanAmount: number;
   tenure?: number;
+  loanPurpose?: string;
   // Customer preference
   preferredBank?: string;
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
 import { validateUUID } from '../middleware/validateUUID.js';
 import { cacheControl } from '../middleware/cacheControl.js';
+import { resolvePartnerOrg } from '../middleware/rlsContext.js';
 import {
   createLead,
   getLeads,
@@ -16,8 +17,12 @@ import {
   createStoredClient,
   updateStoredClientStatus,
   updateStoredClientNotes,
+  updateStoredClientAssignedBank,
+  updateStoredClientPreferredBank,
   deleteStoredClient,
   bulkCreateStoredClients,
+  saveStoredClientDocuments,
+  submitStoredClientToGPS,
 } from '../controllers/partnerDataController.js';
 
 const router = Router();
@@ -25,6 +30,7 @@ const router = Router();
 // All partner routes require authentication and partner role
 router.use(protect);
 router.use(authorize('partner'));
+router.use(resolvePartnerOrg);
 router.use(validateUUID);
 
 /**
@@ -40,7 +46,7 @@ router.get('/leads/stats', getLeadStats);
 // Lead CRUD operations
 router.route('/leads')
   .get(getLeads)      // GET /api/partner/leads - Get all leads for this partner
-  .post(createLead);  // POST /api/partner/leads - Create a new lead
+  .post(createLead);  // POST /api/partner/leads - Submit a lead via consent-backed handoff
 
 router.route('/leads/:id')
   .get(getLeadById)   // GET /api/partner/leads/:id - Get single lead
@@ -62,6 +68,10 @@ router.route('/stored-clients')
 
 router.patch('/stored-clients/:id/status', updateStoredClientStatus);
 router.patch('/stored-clients/:id/notes',  updateStoredClientNotes);
+router.patch('/stored-clients/:id/assigned-bank', updateStoredClientAssignedBank);
+router.patch('/stored-clients/:id/preferred-bank', updateStoredClientPreferredBank);
+router.put('/stored-clients/:id/documents', saveStoredClientDocuments);
+router.post('/stored-clients/:id/submit', submitStoredClientToGPS);
 router.delete('/stored-clients/:id',       deleteStoredClient);
 
 /**
@@ -74,8 +84,8 @@ router.get('/dashboard', async (req, res) => {
 });
 
 /**
- * Bank listing for partners (active banks only)
- * Reuses the admin listBanks controller which returns cached bank data.
+ * Bank listing for partners (all configured banks/NBFCs)
+ * Reuses cached query output for dropdown-backed bank selection.
  */
 router.get('/banks', cacheControl(15), async (_req, res) => {
   // Inline handler rather than importing the full admin controller
@@ -85,7 +95,6 @@ router.get('/banks', cacheControl(15), async (_req, res) => {
     const banks = await cacheWrap(
       'banks:all',
       () => basePrisma.bank.findMany({
-        where: { status: 'active' },
         include: { commissionRates: true },
         orderBy: { name: 'asc' },
       }),

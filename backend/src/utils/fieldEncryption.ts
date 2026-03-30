@@ -1,102 +1,13 @@
-import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
+import {
+  decryptAsGPSIndia,
+  decryptField,
+  encryptField,
+  encryptForGPSIndia,
+  isVaultCiphertext,
+} from '../services/vault.js';
 
-const ENCRYPTION_PREFIX = 'enc:v1';
-const ENCRYPTION_KEY_ENV = 'FIELD_ENCRYPTION_KEY';
-
-const getEncryptionKey = (): Buffer => {
-  const raw = process.env[ENCRYPTION_KEY_ENV];
-  if (!raw) {
-    throw new Error(`${ENCRYPTION_KEY_ENV} is not set`);
-  }
-
-  const key = Buffer.from(raw, 'base64');
-  if (key.length !== 32) {
-    throw new Error(`${ENCRYPTION_KEY_ENV} must be a 32-byte base64 string`);
-  }
-
-  return key;
-};
-
-const isEncrypted = (value: string): boolean => value.startsWith(`${ENCRYPTION_PREFIX}:`);
-
-const generateIv = (): Buffer => crypto.randomBytes(12);
-
-const decodeBase64Strict = (value: string, label: string): Buffer => {
-  if (!value) {
-    throw new Error(`Invalid encrypted payload ${label}`);
-  }
-
-  const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-  if (!base64Pattern.test(value)) {
-    throw new Error(`Invalid encrypted payload ${label}`);
-  }
-
-  const decoded = Buffer.from(value, 'base64');
-  if (decoded.length === 0 || decoded.toString('base64') !== value) {
-    throw new Error(`Invalid encrypted payload ${label}`);
-  }
-
-  return decoded;
-};
-
-export const encryptString = (value: string | null | undefined): string | null | undefined => {
-  if (value === null || value === undefined) return value;
-  if (value === '') return value;
-  if (isEncrypted(value)) return value;
-
-  const key = getEncryptionKey();
-  const iv = generateIv();
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  return [
-    ENCRYPTION_PREFIX,
-    iv.toString('base64'),
-    tag.toString('base64'),
-    ciphertext.toString('base64'),
-  ].join(':');
-};
-
-export const decryptString = (value: string | null | undefined): string | null | undefined => {
-  if (value === null || value === undefined) return value;
-  if (value === '') return value;
-  if (!isEncrypted(value)) return value;
-
-  const key = getEncryptionKey();
-  const parts = value.split(':');
-  // Format: enc:v1:iv:tag:ciphertext (5 parts after split)
-  if (parts.length !== 5) {
-    throw new Error('Invalid encrypted payload format');
-  }
-
-  const iv = decodeBase64Strict(parts[2], 'iv');
-  const tag = decodeBase64Strict(parts[3], 'tag');
-  const ciphertext = decodeBase64Strict(parts[4], 'ciphertext');
-
-  if (iv.length !== 12) {
-    throw new Error('Invalid encrypted payload iv');
-  }
-
-  if (tag.length !== 16) {
-    throw new Error('Invalid encrypted payload tag');
-  }
-
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-
-  let plaintext: Buffer;
-  try {
-    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  } catch {
-    return null;
-  }
-
-  return plaintext.toString('utf8');
-};
-
-const ENCRYPTED_FIELDS: Record<string, string[]> = {
+export const ENCRYPTED_FIELDS: Record<string, string[]> = {
   User: [
     'aadhaarNumber',
     'panNumber',
@@ -108,7 +19,46 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
     'resetPasswordToken',
     'refreshToken',
   ],
-  Lead: ['clientAadhaar', 'clientPanNumber', 'clientDateOfBirth'],
+  Lead: [
+    'clientFullName',
+    'clientPhone',
+    'clientEmail',
+    'clientAadhaar',
+    'clientPanNumber',
+    'clientDateOfBirth',
+  ],
+  PartnerData: ['fullName', 'phone', 'email', 'panNumber', 'dateOfBirth'],
+};
+
+const VERSIONED_MODELS = new Set(['User', 'Lead', 'PartnerData']);
+const modelRelationMap = Object.fromEntries(
+  Prisma.dmmf.datamodel.models.map((model) => [
+    model.name,
+    Object.fromEntries(
+      model.fields
+        .filter((field) => field.kind === 'object')
+        .map((field) => [field.name, field.type])
+    ),
+  ])
+) as Record<string, Record<string, string>>;
+
+type BridgeCleanupPlan = {
+  stripPartnerOrgId?: boolean;
+  relations?: Record<string, BridgeCleanupPlan>;
+};
+
+/**
+ * These fields store one-way SHA-256 digests, not reversible secrets or raw
+ * PII. They must remain stable so equality checks keep working without Vault.
+ */
+const AUTH_HASH_FIELDS = new Set(['otpHash', 'resetPasswordToken', 'refreshToken']);
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
+
+const shouldBypassWriteEncryption = (field: string, value: string): boolean =>
+  AUTH_HASH_FIELDS.has(field) && SHA256_HEX_RE.test(value);
+
+const throwUnsupportedFilter = (model: string, field: string, operator: string): never => {
+  throw new Error(`Unsupported ${operator} filter on encrypted field "${model}.${field}".`);
 };
 
 const throwOnUnsupportedSubstringFilters = (
@@ -118,7 +68,7 @@ const throwOnUnsupportedSubstringFilters = (
   location: 'filter' | 'not'
 ) => {
   const unsupported = ['contains', 'startsWith', 'endsWith'].find(
-    (op) => filter[op] !== undefined && filter[op] !== null
+    (operator) => filter[operator] !== undefined && filter[operator] !== null
   );
 
   if (unsupported) {
@@ -128,23 +78,187 @@ const throwOnUnsupportedSubstringFilters = (
   }
 };
 
-const shouldHandleModel = (model?: string): model is keyof typeof ENCRYPTED_FIELDS =>
-  !!model && Object.prototype.hasOwnProperty.call(ENCRYPTED_FIELDS, model);
+const markEncryptionVersion = (model: string, data: Record<string, unknown>) => {
+  if (VERSIONED_MODELS.has(model)) {
+    data.encryptionVersion = 1;
+  }
+};
 
-const encryptFields = (model: string, data: Record<string, unknown> | undefined | null) => {
+const ensurePartnerOrgId = (partnerOrgId: string | null): string => {
+  if (!partnerOrgId) {
+    throw new Error('partnerOrgId is required to encrypt or decrypt PartnerData fields');
+  }
+
+  return partnerOrgId;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const hasEncryptedFieldSelection = (model: string, selection: Record<string, unknown>): boolean => {
+  const fields = ENCRYPTED_FIELDS[model];
+  return !!fields?.some((field) => selection[field] === true);
+};
+
+const attachRelationPlan = (
+  plan: BridgeCleanupPlan,
+  relationName: string,
+  relationPlan: BridgeCleanupPlan | null
+) => {
+  if (!relationPlan) return;
+  if (!plan.relations) {
+    plan.relations = {};
+  }
+  plan.relations[relationName] = relationPlan;
+};
+
+const finalizePlan = (plan: BridgeCleanupPlan): BridgeCleanupPlan | null =>
+  plan.stripPartnerOrgId || (plan.relations && Object.keys(plan.relations).length > 0) ? plan : null;
+
+const buildCleanupPlan = (
+  model: string,
+  selectionArgs: Record<string, unknown> | undefined | null
+): BridgeCleanupPlan | null => {
+  if (!selectionArgs) return null;
+
+  const plan: BridgeCleanupPlan = {};
+  const select = isPlainObject(selectionArgs.select) ? selectionArgs.select : null;
+  const include = isPlainObject(selectionArgs.include) ? selectionArgs.include : null;
+
+  if (model === 'PartnerData' && select && hasEncryptedFieldSelection(model, select)) {
+    if (select.partnerOrgId === undefined) {
+      select.partnerOrgId = true;
+      plan.stripPartnerOrgId = true;
+    }
+  }
+
+  for (const container of [select, include]) {
+    if (!container) continue;
+
+    for (const [fieldName, value] of Object.entries(container)) {
+      const relatedModel = modelRelationMap[model]?.[fieldName];
+      if (!relatedModel || value === true || !isPlainObject(value)) {
+        continue;
+      }
+
+      attachRelationPlan(plan, fieldName, buildCleanupPlan(relatedModel, value));
+    }
+  }
+
+  return finalizePlan(plan);
+};
+
+const handleAuthHashWhere = (
+  model: string,
+  field: string,
+  value: Record<string, unknown> | string | null
+) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+
+  throwOnUnsupportedSubstringFilters(model, field, value, 'filter');
+
+  if (value.not && typeof value.not === 'object' && !Array.isArray(value.not)) {
+    throwOnUnsupportedSubstringFilters(model, field, value.not as Record<string, unknown>, 'not');
+  }
+};
+
+const handleEncryptedPiiWhere = (
+  model: string,
+  field: string,
+  value: Record<string, unknown> | string
+) => {
+  if (typeof value === 'string') {
+    throwUnsupportedFilter(model, field, 'equals');
+  }
+
+  const filter = value as Record<string, unknown>;
+
+  throwOnUnsupportedSubstringFilters(model, field, filter, 'filter');
+
+  if (typeof filter.equals === 'string') {
+    throwUnsupportedFilter(model, field, 'equals');
+  }
+
+  if (Array.isArray(filter.in) && filter.in.some((entry: unknown) => typeof entry === 'string')) {
+    throwUnsupportedFilter(model, field, 'in');
+  }
+
+  if (
+    Array.isArray(filter.notIn) && filter.notIn.some((entry: unknown) => typeof entry === 'string')
+  ) {
+    throwUnsupportedFilter(model, field, 'notIn');
+  }
+
+  if (typeof filter.not === 'string') {
+    throwUnsupportedFilter(model, field, 'not');
+  }
+
+  if (filter.not && typeof filter.not === 'object' && !Array.isArray(filter.not)) {
+    const notFilter = filter.not as Record<string, unknown>;
+    throwOnUnsupportedSubstringFilters(model, field, notFilter, 'not');
+
+    if (typeof notFilter.equals === 'string') {
+      throwUnsupportedFilter(model, field, 'not');
+    }
+
+    if (Array.isArray(notFilter.in) && notFilter.in.some((entry: unknown) => typeof entry === 'string')) {
+      throwUnsupportedFilter(model, field, 'not');
+    }
+
+    if (
+      Array.isArray(notFilter.notIn)
+      && notFilter.notIn.some((entry: unknown) => typeof entry === 'string')
+    ) {
+      throwUnsupportedFilter(model, field, 'not');
+    }
+  }
+};
+
+export const encryptFieldsWithVault = async (
+  model: string,
+  data: Record<string, unknown> | undefined | null
+) => {
   if (!data) return;
+
   const fields = ENCRYPTED_FIELDS[model];
   if (!fields) return;
 
-  fields.forEach((field) => {
-    if (typeof data[field] === 'string') {
-      data[field] = encryptString(data[field] as string) as string;
+  markEncryptionVersion(model, data);
+
+  const partnerOrgId =
+    model === 'PartnerData' && typeof data.partnerOrgId === 'string' ? data.partnerOrgId : null;
+
+  if (model === 'PartnerData') {
+    const hasPartnerEncryptedFields = fields.some((field) => typeof data[field] === 'string');
+    if (hasPartnerEncryptedFields) {
+      ensurePartnerOrgId(partnerOrgId);
     }
-  });
+  }
+
+  for (const field of fields) {
+    if (typeof data[field] !== 'string') {
+      continue;
+    }
+
+    const current = data[field] as string;
+    if (shouldBypassWriteEncryption(field, current) || isVaultCiphertext(current)) {
+      continue;
+    }
+
+    if (model === 'PartnerData') {
+      data[field] = await encryptField(ensurePartnerOrgId(partnerOrgId), current);
+      continue;
+    }
+
+    data[field] = await encryptForGPSIndia(current);
+  }
 };
 
 export const encryptWhere = (model: string, where: Record<string, unknown> | undefined | null) => {
   if (!where) return;
+
   const fields = ENCRYPTED_FIELDS[model];
   if (!fields) return;
 
@@ -165,118 +279,104 @@ export const encryptWhere = (model: string, where: Record<string, unknown> | und
       continue;
     }
 
-    if (typeof value === 'string') {
-      where[key] = encryptString(value) as string;
+    if (value === null || value === undefined) {
       continue;
     }
 
-    if (value && typeof value === 'object') {
-      const filter = value as Record<string, unknown>;
-      throwOnUnsupportedSubstringFilters(model, key, filter, 'filter');
+    if (AUTH_HASH_FIELDS.has(key)) {
+      handleAuthHashWhere(model, key, value as Record<string, unknown> | string | null);
+      continue;
+    }
 
-      if (typeof filter.equals === 'string') {
-        filter.equals = encryptString(filter.equals) as string;
-      }
-      if (Array.isArray(filter.in)) {
-        filter.in = filter.in.map((item) =>
-          typeof item === 'string' ? encryptString(item) : item
-        );
-      }
-      if (Array.isArray(filter.notIn)) {
-        filter.notIn = filter.notIn.map((item) =>
-          typeof item === 'string' ? encryptString(item) : item
-        );
-      }
-      if (typeof filter.not === 'string') {
-        filter.not = encryptString(filter.not) as string;
-      } else if (filter.not && typeof filter.not === 'object') {
-        const notFilter = filter.not as Record<string, unknown>;
-        throwOnUnsupportedSubstringFilters(model, key, notFilter, 'not');
+    if (typeof value === 'string') {
+      handleEncryptedPiiWhere(model, key, value);
+      continue;
+    }
 
-        if (typeof notFilter.equals === 'string') {
-          notFilter.equals = encryptString(notFilter.equals) as string;
-        }
-      }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      handleEncryptedPiiWhere(model, key, value as Record<string, unknown>);
     }
   }
 };
 
-const decryptRecord = (model: string, record: Record<string, unknown> | null) => {
+const decryptRecordWithBridge = async (model: string, record: Record<string, unknown> | null) => {
   if (!record) return;
+
   const fields = ENCRYPTED_FIELDS[model];
   if (!fields) return;
 
-  fields.forEach((field) => {
-    if (typeof record[field] === 'string') {
-      record[field] = decryptString(record[field] as string) as string;
-    }
-  });
-};
+  const partnerOrgId =
+    model === 'PartnerData' && typeof record.partnerOrgId === 'string'
+      ? record.partnerOrgId
+      : null;
 
-const decryptResult = (model: string, result: unknown) => {
-  if (!result) return;
-  if (Array.isArray(result)) {
-    result.forEach((entry) => decryptRecord(model, entry as Record<string, unknown>));
-  } else if (typeof result === 'object') {
-    decryptRecord(model, result as Record<string, unknown>);
+  for (const field of fields) {
+    if (typeof record[field] !== 'string') {
+      continue;
+    }
+
+    const value = record[field] as string;
+    if (!isVaultCiphertext(value)) {
+      continue;
+    }
+
+    if (model === 'PartnerData') {
+      record[field] = await decryptField(ensurePartnerOrgId(partnerOrgId), value);
+      continue;
+    }
+
+    record[field] = await decryptAsGPSIndia(value);
   }
 };
 
-export const fieldEncryptionExtension = Prisma.defineExtension({
-  name: 'fieldEncryption',
-  query: {
-    $allModels: {
-      async $allOperations({ model, operation, args, query }) {
-        if (!shouldHandleModel(model)) {
-          return query(args);
-        }
+const decryptObjectGraphWithBridge = async (
+  model: string,
+  result: Record<string, unknown>,
+  plan: BridgeCleanupPlan | null
+) => {
+  await decryptRecordWithBridge(model, result);
 
-        const m = model;
-        // Cast args to a generic record to access properties safely
-        const a = args as Record<string, unknown>;
+  const relations = modelRelationMap[model] ?? {};
+  for (const [fieldName, relatedModel] of Object.entries(relations)) {
+    const value = result[fieldName];
+    if (!value) {
+      continue;
+    }
 
-        if (a.where && typeof a.where === 'object') {
-          encryptWhere(m, a.where as Record<string, unknown>);
-        }
+    await decryptResultWithBridge(
+      relatedModel,
+      value,
+      plan?.relations?.[fieldName] ?? null
+    );
+  }
 
-        if (a.data && typeof a.data === 'object') {
-          if (Array.isArray(a.data)) {
-            (a.data as Record<string, unknown>[]).forEach((entry) =>
-              encryptFields(m, entry)
-            );
-          } else {
-            encryptFields(m, a.data as Record<string, unknown>);
-          }
-        }
+  if (model === 'PartnerData' && plan?.stripPartnerOrgId) {
+    delete result.partnerOrgId;
+  }
+};
 
-        if (a.create && typeof a.create === 'object') {
-          encryptFields(m, a.create as Record<string, unknown>);
-        }
+export const prepareReadArgsForBridge = (
+  model: string,
+  args: Record<string, unknown> | undefined | null
+): BridgeCleanupPlan | null => buildCleanupPlan(model, args);
 
-        if (a.update && typeof a.update === 'object') {
-          encryptFields(m, a.update as Record<string, unknown>);
-        }
+export const decryptResultWithBridge = async (
+  model: string,
+  result: unknown,
+  plan: BridgeCleanupPlan | null = null
+) => {
+  if (!result) return;
 
-        const result = await query(args);
+  if (Array.isArray(result)) {
+    for (const entry of result) {
+      if (isPlainObject(entry)) {
+        await decryptObjectGraphWithBridge(model, entry, plan);
+      }
+    }
+    return;
+  }
 
-        const actionsWithResults = new Set([
-          'findUnique',
-          'findUniqueOrThrow',
-          'findFirst',
-          'findFirstOrThrow',
-          'findMany',
-          'create',
-          'update',
-          'upsert',
-          'delete',
-        ]);
-
-        if (actionsWithResults.has(operation)) {
-          decryptResult(m, result);
-        }
-
-        return result;
-      },
-    },
-  },
-});
+  if (isPlainObject(result)) {
+    await decryptObjectGraphWithBridge(model, result, plan);
+  }
+};

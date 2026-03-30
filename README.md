@@ -235,6 +235,8 @@ Frontend: `http://localhost`
 
 API: `http://localhost:5000`
 
+Set `DATABASE_URL_DOCKER` in the root `.env` when the backend container should connect to an existing host Postgres instance instead of the compose `db` service. The Docker backend commands run `prisma migrate deploy` before starting the API so auth routes do not come up against an unmigrated schema.
+
 ### Manual Setup
 
 Prerequisites:

@@ -9,8 +9,6 @@
 import { create } from 'zustand';
 import type { LocalLead, LocalLeadStatus } from '../partner/types/partner-dashboard';
 import * as partnerDataApi from '../api/partnerDataApi';
-import * as leadsApi from '../api/leadsApi';
-import type { CreateLeadData } from '../api/leadsApi';
 
 export type { LocalLead, LocalLeadStatus };
 
@@ -51,6 +49,7 @@ interface LocalLeadsState {
   leads: LocalLead[];
   isLoading: boolean;
   hasFetched: boolean;
+  error: string | null;
 }
 
 interface LocalLeadsActions {
@@ -66,9 +65,9 @@ interface LocalLeadsActions {
   deleteLead: (id: string) => void;
   /**
    * Submit a stored client to admin as a formal Lead.
-   * On success the stored client is deleted from PartnerData.
+   * The stored client remains as the consent/audit source row.
    */
-  submitToAdmin: (id: string) => Promise<import('../partner/types/partner-dashboard').Lead | null>;
+  submitToAdmin: (id: string) => Promise<{ leadId: string } | null>;
 }
 
 type LocalLeadsStore = LocalLeadsState & LocalLeadsActions;
@@ -79,11 +78,12 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
   leads: [],
   isLoading: false,
   hasFetched: false,
+  error: null,
 
   fetchLeads: async () => {
     // Don't refetch if we already have data (unless called explicitly)
     if (get().isLoading) return;
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
 
     try {
       // 1. Migrate any leftover localStorage data first
@@ -133,10 +133,21 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
       // 2. Fetch from backend
       const res = await partnerDataApi.getStoredClients();
       if (res.success && res.data) {
-        set({ leads: res.data, hasFetched: true });
+        set({ leads: res.data, hasFetched: true, error: null });
+      } else {
+        set({
+          leads: [],
+          hasFetched: true,
+          error: res.message || 'Failed to fetch stored clients',
+        });
       }
     } catch (err) {
       console.error('fetchLeads (stored clients) error:', err);
+      set({
+        leads: [],
+        hasFetched: true,
+        error: err instanceof Error ? err.message : 'Failed to fetch stored clients',
+      });
     } finally {
       set({ isLoading: false });
     }
@@ -233,29 +244,17 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
     const lead = get().leads.find((l) => l.id === id);
     if (!lead) return null;
 
-    const payload: CreateLeadData = {
-      fullName: lead.fullName,
-      phone: lead.phone,
-      email: lead.email || 'not-provided@placeholder.com',
-      dateOfBirth: lead.dateOfBirth,
-      panNumber: lead.panNumber,
-      employmentType: lead.employmentType,
-      monthlyIncome: lead.monthlyIncome,
-      companyName: lead.companyName,
-      city: lead.city,
-      pincode: lead.pincode,
-      loanType: lead.loanType,
-      loanAmount: lead.loanAmount,
-      tenure: lead.tenure,
-    };
-
     try {
-      const response = await leadsApi.createLead(payload, true);
+      const response = await partnerDataApi.submitStoredClientToGPS(id);
       if (response.success && response.data) {
-        // Delete from stored clients table now that it lives as a lead
-        await partnerDataApi.deleteStoredClient(id);
-        set((state) => ({ leads: state.leads.filter((l) => l.id !== id) }));
-        return response.data.lead;
+        set((state) => ({
+          leads: state.leads.map((entry) =>
+            entry.id === id
+              ? { ...entry, localStatus: 'processing', updatedAt: new Date().toISOString() }
+              : entry
+          ),
+        }));
+        return response.data;
       }
       return null;
     } catch {

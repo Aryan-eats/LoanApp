@@ -208,15 +208,25 @@ export function useAddClientForm() {
       const lead = await createLead({
         fullName: formData.fullName,
         phone: formData.phone,
-        email: formData.email || 'not-provided@placeholder.com',
-        city: formData.city,
-        pincode: formData.pincode,
+        email: formData.email,
+        dateOfBirth: formData.dateOfBirth,
+        gender: formData.gender,
+        panNumber: formData.panNumber,
         employmentType: formData.employmentType,
         monthlyIncome: formData.monthlyIncome ? Number(formData.monthlyIncome) : undefined,
         companyName: formData.companyName,
+        designation: formData.designation,
+        workExperience: formData.workExperience ? Number(formData.workExperience) : undefined,
+        currentAddress: formData.currentAddress,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        residenceType: formData.residenceType,
+        loanCategory: formData.loanCategory,
         loanType: formData.loanType || formData.loanCategory || 'personal_loan',
         loanAmount: Number(formData.loanAmount),
         tenure: formData.tenure ? Number(formData.tenure) : undefined,
+        loanPurpose: formData.loanPurpose,
       }, true);
 
       if (lead) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDebounce } from '../../hooks';
 import {
+  AlertCircle,
   Search,
   Send,
   Trash2,
@@ -42,6 +43,9 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
 
   const {
     leads: localLeads,
+    isLoading,
+    hasFetched,
+    error,
     fetchLeads: fetchStoredClients,
     updateStatus: updateLocalStatus,
     updateNotes: updateLocalNotes,
@@ -98,7 +102,24 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
         </div>
       </div>
 
-      {filteredLeads.length > 0 || localLeads.length > 0 ? (
+      {isLoading && !hasFetched ? (
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
+          <EmptyState
+            icon={<Loader2 size={32} className="animate-spin" />}
+            title="Loading stored clients"
+            description="Fetching your saved client records."
+          />
+        </div>
+      ) : error ? (
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-red-500/20">
+          <EmptyState
+            icon={<AlertCircle size={32} />}
+            title="Could not load stored clients"
+            description={error}
+            action={{ label: 'Retry', onClick: () => fetchStoredClients() }}
+          />
+        </div>
+      ) : filteredLeads.length > 0 || localLeads.length > 0 ? (
         localLeads.length === 0 ? (
           <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10">
             <EmptyState

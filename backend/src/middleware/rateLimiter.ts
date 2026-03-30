@@ -1,8 +1,26 @@
-﻿import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
+import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
+const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+const isLocalDevRequest = (req: Request): boolean => {
+  if (!isDev) return false;
+
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const forwardedIp = typeof forwardedFor === 'string'
+    ? forwardedFor.split(',')[0]?.trim()
+    : Array.isArray(forwardedFor)
+      ? forwardedFor[0]?.trim()
+      : null;
+
+  const ip = forwardedIp || req.ip || req.socket.remoteAddress || '';
+  const hostname = req.hostname?.toLowerCase() || '';
+
+  return LOOPBACK_IPS.has(ip) || hostname === 'localhost';
+};
 
 /**
  * Build a RedisStore for express-rate-limit when Redis is available.
@@ -51,6 +69,7 @@ export const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  skip: isLocalDevRequest,
   store: buildStore('login'),
 });
 

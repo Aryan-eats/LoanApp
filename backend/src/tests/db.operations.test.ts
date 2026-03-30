@@ -8,10 +8,6 @@ const uniqueEmail = (prefix: string): string =>
 const hashEmail = (email: string): string =>
   crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
 
-if (!process.env.FIELD_ENCRYPTION_KEY) {
-  process.env.FIELD_ENCRYPTION_KEY = Buffer.alloc(32, 5).toString('base64');
-}
-
 const isSafeDatabaseTarget = (): boolean => {
   const dbUrl = process.env.DATABASE_URL ?? '';
   const urlLooksLocal =
@@ -227,6 +223,7 @@ describeDb('PostgreSQL DB operations', () => {
     expect(fetched?.gstNumber).toBe(gst);
     expect(fetched?.ifscCode).toBe(ifsc);
     expect(fetched?.upiId).toBe(upi);
+    expect(fetched?.encryptionVersion).toBe(1);
 
     const storedUsers = await prisma.$queryRaw<
       {
@@ -250,7 +247,7 @@ describeDb('PostgreSQL DB operations', () => {
     expect(storedUsers[0]?.gstNumber).not.toBe(gst);
     expect(storedUsers[0]?.ifscCode).not.toBe(ifsc);
     expect(storedUsers[0]?.upiId).not.toBe(upi);
-    expect(storedUsers[0]?.aadhaarNumber?.startsWith('enc:v1:')).toBe(true);
+    expect(storedUsers[0]?.aadhaarNumber?.startsWith('vault:v1:')).toBe(true);
 
     const lead = await prisma.lead.create({
       data: {
@@ -269,18 +266,37 @@ describeDb('PostgreSQL DB operations', () => {
     });
 
     const fetchedLead = await prisma.lead.findUnique({ where: { id: lead.id } });
+    expect(fetchedLead?.clientFullName).toBe('Customer Two');
+    expect(fetchedLead?.clientPhone).toBe('8888888888');
+    expect(fetchedLead?.clientEmail).toBe('customer2@example.com');
     expect(fetchedLead?.clientDateOfBirth).toBe('1990-01-01');
     expect(fetchedLead?.clientPanNumber).toBe(pan);
     expect(fetchedLead?.clientAadhaar).toBe(aadhaar);
+    expect(fetchedLead?.encryptionVersion).toBe(1);
 
     const storedLeads = await prisma.$queryRaw<
-      { clientDateOfBirth: string | null; clientPanNumber: string | null; clientAadhaar: string | null }[]
-    >`SELECT client_date_of_birth as "clientDateOfBirth", client_pan_number as "clientPanNumber", client_aadhaar as "clientAadhaar"
+      {
+        clientFullName: string | null;
+        clientPhone: string | null;
+        clientEmail: string | null;
+        clientDateOfBirth: string | null;
+        clientPanNumber: string | null;
+        clientAadhaar: string | null;
+      }[]
+    >`SELECT client_full_name as "clientFullName",
+             client_phone as "clientPhone",
+             client_email as "clientEmail",
+             client_date_of_birth as "clientDateOfBirth",
+             client_pan_number as "clientPanNumber",
+             client_aadhaar as "clientAadhaar"
       FROM leads WHERE id = ${lead.id}`;
 
+    expect(storedLeads[0]?.clientFullName).not.toBe('Customer Two');
+    expect(storedLeads[0]?.clientPhone).not.toBe('8888888888');
+    expect(storedLeads[0]?.clientEmail).not.toBe('customer2@example.com');
     expect(storedLeads[0]?.clientDateOfBirth).not.toBe('1990-01-01');
     expect(storedLeads[0]?.clientPanNumber).not.toBe(pan);
     expect(storedLeads[0]?.clientAadhaar).not.toBe(aadhaar);
-    expect(storedLeads[0]?.clientPanNumber?.startsWith('enc:v1:')).toBe(true);
+    expect(storedLeads[0]?.clientPanNumber?.startsWith('vault:v1:')).toBe(true);
   });
 });

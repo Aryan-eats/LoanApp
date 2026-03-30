@@ -42,6 +42,10 @@ interface ApiResponse<T> {
   data?: T;
 }
 
+export interface SubmitStoredClientResponse {
+  leadId: string;
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────────
 
 /** Fetch all stored clients for the current partner */
@@ -71,6 +75,16 @@ export async function updateStoredClientNotes(id: string, notes: string): Promis
 /** Delete a stored client */
 export async function deleteStoredClient(id: string): Promise<ApiResponse<void>> {
   const { data } = await apiClient.delete<ApiResponse<void>>(`/partner/stored-clients/${id}`);
+  return data;
+}
+
+/** Submit a stored client to GPS India through the consent handoff */
+export async function submitStoredClientToGPS(
+  id: string
+): Promise<ApiResponse<SubmitStoredClientResponse>> {
+  const { data } = await apiClient.post<ApiResponse<SubmitStoredClientResponse>>(
+    `/partner/stored-clients/${id}/submit`
+  );
   return data;
 }
 

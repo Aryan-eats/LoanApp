@@ -1,8 +1,16 @@
-import 'dotenv/config';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
-import { fieldEncryptionExtension } from '../utils/fieldEncryption.js';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { envConfig } from './env.js';
+import {
+  ENCRYPTED_FIELDS,
+  decryptResultWithBridge,
+  encryptFieldsWithVault,
+  encryptWhere,
+  prepareReadArgsForBridge,
+} from '../utils/fieldEncryption.js';
+
+void envConfig;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
@@ -40,12 +48,83 @@ const createPool = (): Pool =>
 const pool = globalForPrisma.pool ?? createPool();
 const adapter = globalForPrisma.adapter ?? new PrismaPg(pool);
 
+const shouldHandleModel = (model?: string): model is keyof typeof ENCRYPTED_FIELDS =>
+  !!model && Object.prototype.hasOwnProperty.call(ENCRYPTED_FIELDS, model);
+
+const actionsWithResults = new Set([
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'create',
+  'createManyAndReturn',
+  'update',
+  'updateManyAndReturn',
+  'upsert',
+  'delete',
+]);
+
+const encryptionBridgeExtension = Prisma.defineExtension({
+  name: 'fieldEncryption',
+  query: {
+    $allModels: {
+      /**
+       * Vault-native field encryption:
+       * - Writes encrypt covered PII with Vault transit keys and mark rows at
+       *   encryptionVersion = 1.
+       * - Reads decrypt vault:v1 payloads back to plaintext at the Prisma
+       *   boundary so controller/service code works with normal strings.
+       * - Auth hash fields remain plain SHA-256 digests so equality checks keep
+       *   working without deterministic encryption.
+       */
+      async $allOperations({ model, operation, args, query }) {
+        const m = model as string;
+        const a = args as Record<string, unknown>;
+
+        if (shouldHandleModel(m)) {
+          if (a.where && typeof a.where === 'object') {
+            encryptWhere(m, a.where as Record<string, unknown>);
+          }
+
+          if (a.data && typeof a.data === 'object') {
+            if (Array.isArray(a.data)) {
+              for (const entry of a.data as Record<string, unknown>[]) {
+                await encryptFieldsWithVault(m, entry);
+              }
+            } else {
+              await encryptFieldsWithVault(m, a.data as Record<string, unknown>);
+            }
+          }
+
+          if (a.create && typeof a.create === 'object') {
+            await encryptFieldsWithVault(m, a.create as Record<string, unknown>);
+          }
+
+          if (a.update && typeof a.update === 'object') {
+            await encryptFieldsWithVault(m, a.update as Record<string, unknown>);
+          }
+        }
+
+        const cleanupPlan = actionsWithResults.has(operation) ? prepareReadArgsForBridge(m, a) : null;
+        const result = await query(args);
+
+        if (actionsWithResults.has(operation)) {
+          await decryptResultWithBridge(m, result, cleanupPlan);
+        }
+
+        return result;
+      },
+    },
+  },
+});
+
 function createPrismaClient() {
   const base = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
-  return base.$extends(fieldEncryptionExtension);
+  return base.$extends(encryptionBridgeExtension);
 }
 
 /**
