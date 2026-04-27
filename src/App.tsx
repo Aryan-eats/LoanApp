@@ -51,6 +51,7 @@ const PartnerDocumentsPage = lazy(() => import('./partner/pages/DocumentsPage'))
 const PartnerCommissionsPage = lazy(() => import('./partner/pages/CommissionsPage'));
 const BankOffersPage = lazy(() => import('./partner/pages/BankOffersPage'));
 const BankLoanTypesPage = lazy(() => import('./partner/pages/BankLoanTypesPage'));
+const CustomerDetailPage = lazy(() => import('./partner/pages/CustomerDetailPage'));
 const ProfilePage = lazy(() => import('./partner/pages/ProfilePage'));
 const SupportPage = lazy(() => import('./partner/pages/SupportPage'));
 
@@ -122,6 +123,7 @@ const AnimatedRoutes = () => {
           <Route path="commissions" element={<PartnerCommissionsPage />} />
           <Route path="bank-offers" element={<BankOffersPage />} />
           <Route path="bank-offers/:bankId" element={<BankLoanTypesPage />} />
+          <Route path="customers/:customerId" element={<CustomerDetailPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="support" element={<SupportPage />} />
         </Route>

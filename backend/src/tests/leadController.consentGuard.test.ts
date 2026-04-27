@@ -29,10 +29,6 @@ vi.mock('../utils/auditLogger.js', () => ({
   logAuditEvent: vi.fn(),
 }));
 
-vi.mock('../utils/leadHelpers.js', () => ({
-  formatLeadResponse: vi.fn((lead) => lead),
-}));
-
 import { getLeadById, getLeads } from '../controllers/leadController.js';
 
 const createResponse = () => {
@@ -113,11 +109,11 @@ describe('leadController consent guard', () => {
 
     const payload = res.json.mock.calls[0][0];
     expect(payload.data.leads).toHaveLength(2);
-    expect(payload.data.leads[0].clientFullName).toBe('Alice');
-    expect(payload.data.leads[1].clientFullName).toBe('[REDACTED]');
-    expect(payload.data.leads[1].clientPhone).toBe('[REDACTED]');
-    expect(payload.data.leads[1].clientEmail).toBeNull();
-    expect(payload.data.leads[1].clientPanNumber).toBeNull();
+    expect(payload.data.leads[0].client.fullName).toBe('Alice');
+    expect(payload.data.leads[1].client.fullName).toBe('[REDACTED]');
+    expect(payload.data.leads[1].client.phone).toBe('[REDACTED]');
+    expect(payload.data.leads[1].client.email).toBe('');
+    expect(payload.data.leads[1].client.panNumber).toBeUndefined();
   });
 
   it('filters lead search results in memory when searching encrypted fields', async () => {

@@ -8,7 +8,7 @@
  */
 
 import multer from 'multer';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 
 export const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3 MB
 
@@ -180,18 +180,24 @@ export const validateMagicBytes = (req: Request, res: Response, next: NextFuncti
  * Single-file upload middleware.
  * Field name expected: "document"
  */
-export const uploadSingle = multer({
+const singleUploadMiddleware = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter,
 }).single('document');
+export const uploadSingle: RequestHandler = (req, res, next) => {
+  singleUploadMiddleware(req, res, next);
+};
 
 /**
  * Multi-file upload middleware (up to 5 at once).
  * Field name expected: "documents"
  */
-export const uploadMultiple = multer({
+const multipleUploadMiddleware = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter,
 }).array('documents', 5);
+export const uploadMultiple: RequestHandler = (req, res, next) => {
+  multipleUploadMiddleware(req, res, next);
+};

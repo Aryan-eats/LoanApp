@@ -1,11 +1,54 @@
 import type { Lead, LeadDocument, LeadTimeline } from '@prisma/client';
+import {
+  computeLeadScore,
+  deriveCustomerIdentity,
+  deriveLeadSource,
+  scoreBandForLeadScore,
+  summarizeConsentGrants,
+  type ConsentGrantLike,
+} from './crmHelpers.js';
 
 type LeadWithRelations = Lead & {
   documents: LeadDocument[];
   timeline: LeadTimeline[];
+  consentGrants?: ConsentGrantLike[] | null;
+};
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 export const formatLeadResponse = (lead: LeadWithRelations) => {
+  const customerIdentity = deriveCustomerIdentity({
+    id: lead.id,
+    partnerId: lead.partnerId,
+    sourcePartnerDataId: lead.sourcePartnerDataId,
+    phone: lead.clientPhone,
+    email: lead.clientEmail,
+    panNumber: lead.clientPanNumber,
+  });
+
+  const consentSummary = summarizeConsentGrants(lead.consentGrants ?? null);
+  const leadScore = computeLeadScore({
+    id: lead.id,
+    partnerId: lead.partnerId,
+    sourcePartnerDataId: lead.sourcePartnerDataId,
+    phone: lead.clientPhone,
+    email: lead.clientEmail,
+    panNumber: lead.clientPanNumber,
+    employmentType: lead.clientEmployment ?? null,
+    monthlyIncome: lead.clientIncome ?? null,
+    companyName: lead.clientCompany ?? null,
+    city: lead.clientCity ?? null,
+    pincode: lead.clientPincode ?? null,
+    documentsCount: lead.documents?.length ?? 0,
+    consentGrants: lead.consentGrants ?? null,
+  });
+  const scoreBand = scoreBandForLeadScore(leadScore);
+  const leadSource = deriveLeadSource(lead.sourcePartnerDataId);
+
   const eligibilityResult =
     lead.isEligible !== null ||
     lead.maxLoanAmount !== null ||
@@ -34,23 +77,36 @@ export const formatLeadResponse = (lead: LeadWithRelations) => {
         }
       : undefined;
 
+  const customerName = lead.clientFullName || 'Unknown';
+  const customerPhone = lead.clientPhone || '';
+  const customerEmail = lead.clientEmail || '';
+
   return {
     id: lead.id,
+    customerId: customerIdentity.customerId,
+    customerKey: customerIdentity.customerKey,
+    leadSource,
+    leadScore,
+    scoreBand,
+    consentSummary,
     client: {
-      id: lead.id,
-      fullName: lead.clientFullName || 'Unknown',
-      phone: lead.clientPhone || '',
-      email: lead.clientEmail || '',
+      id: customerIdentity.customerId,
+      fullName: customerName,
+      phone: customerPhone,
+      email: customerEmail,
       dateOfBirth: lead.clientDateOfBirth || undefined,
       panNumber: lead.clientPanNumber || undefined,
       aadhaarNumber: lead.clientAadhaar || undefined,
       employmentType: lead.clientEmployment || undefined,
-      monthlyIncome: lead.clientIncome ? Number(lead.clientIncome) : undefined,
+      monthlyIncome: toOptionalNumber(lead.clientIncome),
       companyName: lead.clientCompany || undefined,
-      workExperience: lead.clientExperience || undefined,
+      workExperience: toOptionalNumber(lead.clientExperience),
       city: lead.clientCity || undefined,
       pincode: lead.clientPincode || undefined,
     },
+    customerName,
+    customerPhone,
+    customerEmail,
     loanType: lead.loanType,
     loanAmount: Number(lead.loanAmount),
     tenure: lead.tenure || undefined,
@@ -91,3 +147,5 @@ export const formatLeadResponse = (lead: LeadWithRelations) => {
     updatedAt: lead.updatedAt?.toISOString().split('T')[0] || '',
   };
 };
+
+export { computeLeadScore, deriveCustomerIdentity, deriveLeadSource, scoreBandForLeadScore, summarizeConsentGrants };

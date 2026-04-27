@@ -10,6 +10,8 @@ describe('SMS Service - MSG91 REST API', () => {
     fetchMock.mockClear();
     process.env.MSG91_AUTH_KEY = 'test-auth-key';
     process.env.MSG91_TEMPLATE_ID = 'test-template-id';
+    delete process.env.MOCK_VERIFICATION_ENABLED;
+    delete process.env.MOCK_PHONE_OTP;
   });
 
   // ----------------------------------------------------------------
@@ -95,12 +97,40 @@ describe('SMS Service - MSG91 REST API', () => {
       expect(result.message).toContain('configuration missing');
     });
 
+    it('should return mock success without calling MSG91 when mock verification is enabled', async () => {
+      process.env.MOCK_VERIFICATION_ENABLED = 'true';
+      process.env.MOCK_PHONE_OTP = '123456';
+
+      const result = await sendOTP('9876543210');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'OTP sent successfully',
+        requestId: 'mock-msg91-request',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('should return failure when fetch throws error', async () => {
       fetchMock.mockRejectedValueOnce(new Error('Network error'));
 
       const result = await sendOTP('9876543210');
       
       expect(result.success).toBe(false);
+    });
+
+    it('should return mock verification success without calling MSG91 when enabled', async () => {
+      process.env.MOCK_VERIFICATION_ENABLED = 'true';
+      process.env.MOCK_PHONE_OTP = '123456';
+
+      const result = await verifyOTP('9876543210', '123456');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'OTP verified successfully',
+        type: 'success',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('should return failure for invalid phone number', async () => {
@@ -214,6 +244,20 @@ describe('SMS Service - MSG91 REST API', () => {
         expect.stringContaining('https://control.msg91.com/api/v5/otp/retry'),
         expect.objectContaining({ method: 'GET' })
       );
+    });
+
+    it('should return mock resend success without calling MSG91 when enabled', async () => {
+      process.env.MOCK_VERIFICATION_ENABLED = 'true';
+      process.env.MOCK_PHONE_OTP = '123456';
+
+      const result = await resendOTP('9876543210', 'text');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'OTP resent successfully',
+        requestId: 'mock-msg91-request',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('should support voice retry type', async () => {

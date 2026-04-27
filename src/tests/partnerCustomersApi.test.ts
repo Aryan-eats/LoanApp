@@ -1,0 +1,25 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import apiClient from '../api/apiClient';
+import { getCustomerDetail } from '../api/partnerCustomersApi';
+
+vi.mock('../api/apiClient', () => ({
+  default: {
+    get: vi.fn(),
+  },
+}));
+
+describe('partnerCustomersApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetches customer detail from the partner customer endpoint', async () => {
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: { success: true, data: { customer: { customerId: 'C-123' }, activity: [] } },
+    });
+
+    await getCustomerDetail('C-123');
+
+    expect(apiClient.get).toHaveBeenCalledWith('/partner/customers/C-123');
+  });
+});

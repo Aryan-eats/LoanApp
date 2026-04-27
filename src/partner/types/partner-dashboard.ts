@@ -27,6 +27,43 @@ import type {
 // LoanType references the canonical registry - supports all 80+ loan products
 export type LoanType = LoanProductCode;
 
+export type LeadSource =
+  | 'partner'
+  | 'stored_client'
+  | 'website'
+  | 'referral'
+  | 'manual'
+  | 'import'
+  | 'admin'
+  | 'system'
+  | string;
+
+export type CustomerScoreBand = 'low' | 'medium' | 'high' | 'unknown' | string;
+
+export interface CustomerConsentSummary {
+  dataShare: boolean;
+  contact: boolean;
+  terms: boolean;
+  privacyPolicy?: boolean;
+  recordedAt?: string;
+  recordedBy?: string;
+  summary?: string;
+}
+
+export interface CustomerActivityItem {
+  id: string;
+  type: string;
+  title?: string;
+  description?: string;
+  timestamp: string;
+  customerId?: string;
+  customerKey?: string;
+  leadId?: string;
+  source?: LeadSource;
+  actorName?: string;
+  metadata?: Record<string, unknown>;
+}
+
 // Partner-specific lead status (includes draft state)
 export type LeadStatus = 'draft' | 'submitted' | 'docs_pending' | 'docs_uploaded' | 'docs_collected' | 'bank_processing' | 'bank_logged' | 'approved' | 'disbursed' | 'rejected';
 
@@ -39,6 +76,13 @@ export interface LocalLead {
   createdAt: string;
   updatedAt: string;
   localStatus: LocalLeadStatus;
+  customerId?: string;
+  customerKey?: string;
+  leadSource?: LeadSource;
+  leadScore?: number;
+  scoreBand?: CustomerScoreBand;
+  consentSummary?: CustomerConsentSummary;
+  activityItems?: CustomerActivityItem[];
   notes?: string;
   // Client info
   fullName: string;
@@ -107,11 +151,25 @@ export interface Client {
   workExperience?: number;
   city: string;
   pincode: string;
+  customerId?: string;
+  customerKey?: string;
+  leadSource?: LeadSource;
+  leadScore?: number;
+  scoreBand?: CustomerScoreBand;
+  consentSummary?: CustomerConsentSummary;
+  activityItems?: CustomerActivityItem[];
 }
 
 export interface Lead {
   id: string;
   client: Client;
+  customerId?: string;
+  customerKey?: string;
+  leadSource?: LeadSource;
+  leadScore?: number;
+  scoreBand?: CustomerScoreBand;
+  consentSummary?: CustomerConsentSummary;
+  activityItems?: CustomerActivityItem[];
   loanType: LoanType;
   loanAmount: number;
   tenure: number;
@@ -277,6 +335,8 @@ export interface DashboardStats {
 export interface LeadFunnel {
   totalLeads: number;
   submitted: number;
+  docsCollected?: number;
+  bankProcessing?: number;
   approved: number;
   disbursed: number;
 }

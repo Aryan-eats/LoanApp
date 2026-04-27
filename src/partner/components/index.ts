@@ -5,3 +5,5 @@ export { default as LeadFunnel } from './LeadFunnel';
 export { default as EmptyState } from './EmptyState';
 export { default as Tooltip } from './Tooltip';
 export { default as ProgressBar } from './ProgressBar';
+export { default as CustomerContextPills } from './CustomerContextPills';
+export { default as RecentActivityFeed } from './RecentActivityFeed';

@@ -3,6 +3,10 @@ import crypto from 'crypto';
 import type { User } from '@prisma/client';
 import prisma, { type ExtendedTransactionClient } from '../config/prisma.js';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import {
+  matchesMockOtp,
+  type VerificationChannel,
+} from './mockVerificationService.js';
 
 const PASSWORD_HISTORY_LIMIT = 5;
 const SESSION_LIMIT = 10;
@@ -130,7 +134,8 @@ export const generateOTP = async (userId: string): Promise<string> => {
  */
 export const verifyUserOTP = async (
   userId: string,
-  otp: string
+  otp: string,
+  channel?: VerificationChannel
 ): Promise<VerifyUserOtpResult> => {
   const hashedOtp = hashOtp(otp);
 
@@ -139,7 +144,9 @@ export const verifyUserOTP = async (
       const redis = await getRedisClient();
       const stored = await redis.get(`${USER_OTP_PREFIX}${userId}`);
       if (!stored) return { status: 'invalid' };
-      if (stored !== hashedOtp) return { status: 'invalid' };
+      if (stored !== hashedOtp && !(channel && matchesMockOtp(channel, otp))) {
+        return { status: 'invalid' };
+      }
       await redis.del(`${USER_OTP_PREFIX}${userId}`);
       return { status: 'verified' };
     } catch (error) {
@@ -149,6 +156,19 @@ export const verifyUserOTP = async (
   }
 
   return { status: 'use_db' };
+};
+
+export const clearUserOTP = async (userId: string): Promise<void> => {
+  if (!isRedisAvailable()) {
+    return;
+  }
+
+  try {
+    const redis = await getRedisClient();
+    await redis.del(`${USER_OTP_PREFIX}${userId}`);
+  } catch (error) {
+    console.error('User OTP Redis DEL error:', error);
+  }
 };
 
 export const isPasswordReused = async (

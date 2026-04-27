@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Lead, LocalLead } from '../types/partner-dashboard';
 import { Users, FileText, FolderOpen, Send, CheckCircle, IndianRupee } from 'lucide-react';
+import { usePartnerTheme } from './PartnerThemeProvider';
 
 interface ActivePipelineWidgetProps {
   leads: Lead[];
@@ -8,6 +9,7 @@ interface ActivePipelineWidgetProps {
 }
 
 export default function ActivePipelineWidget({ leads, localLeads }: ActivePipelineWidgetProps) {
+  const { isDark } = usePartnerTheme();
   const pipeline = useMemo(() => {
     // Stage counts
     const activeLocal = localLeads.filter(l => !['rejected', 'closed'].includes(l.localStatus));
@@ -46,31 +48,42 @@ export default function ActivePipelineWidget({ leads, localLeads }: ActivePipeli
   }, [leads, localLeads]);
 
   return (
-    <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-5">
+    <div
+      className={`backdrop-blur-sm rounded-xl p-5 transition-colors ${
+        isDark
+          ? 'bg-slate-900/50 border border-white/10'
+          : 'bg-white/90 border border-slate-200 shadow-[0_18px_45px_rgba(148,163,184,0.12)]'
+      }`}
+    >
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h3 className="text-lg font-semibold text-slate-100">Active Pipeline</h3>
-          <p className="text-sm text-slate-400">Track cases across all stages</p>
+          <h3 className={`text-lg font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Active Pipeline</h3>
+          <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Track cases across all stages</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Total Active Clients</p>
+          <p className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total Active Clients</p>
           <p className="text-2xl font-bold text-indigo-400">{pipeline.totalActive}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {pipeline.stages.map((stage, idx) => (
-          <div key={idx} className={`relative p-4 rounded-xl border ${stage.color} bg-opacity-50 hover:bg-opacity-100 transition-colors flex flex-col justify-between h-28`}>
+          <div
+            key={idx}
+            className={`relative p-4 rounded-xl border ${stage.color} ${
+              isDark ? 'bg-opacity-50 hover:bg-opacity-100' : 'bg-opacity-100'
+            } transition-colors flex flex-col justify-between h-28`}
+          >
             <div className="flex justify-between items-start">
-              <div className="p-2 bg-white/10 rounded-lg shadow-sm">
+              <div className={`p-2 rounded-lg shadow-sm ${isDark ? 'bg-white/10' : 'bg-white/80'}`}>
                 {stage.icon}
               </div>
-              <span className="text-2xl font-bold leading-none text-white">{stage.count}</span>
+              <span className={`text-2xl font-bold leading-none ${isDark ? 'text-white' : 'text-slate-900'}`}>{stage.count}</span>
             </div>
             <p className="mt-3 text-sm font-medium leading-tight">{stage.label}</p>
             
             {idx < pipeline.stages.length - 1 && (
-              <div className="hidden xl:block absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-slate-600">
+              <div className={`hidden xl:block absolute -right-3 top-1/2 -translate-y-1/2 z-10 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
               </div>
             )}

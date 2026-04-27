@@ -34,7 +34,7 @@ const StepBasicIdentity: React.FC<StepBasicIdentityProps> = ({
     onSuccess: (data: { verificationToken?: string }) => {
       updateFormData({
         otpVerified: true,
-        phoneVerificationToken: data.verificationToken || 'verified',
+        phoneVerificationToken: data.verificationToken,
       });
       setIsVerifying(false);
       setErrors((prev) => ({ ...prev, mobileNumber: '' }));

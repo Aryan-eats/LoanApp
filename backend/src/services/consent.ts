@@ -218,7 +218,7 @@ export const grantAccess = async (params: GrantAccessInput) => {
 
   return prisma.lead.findUnique({
     where: { id: leadId },
-    include: { documents: true, timeline: true },
+    include: { documents: true, timeline: true, consentGrants: true },
   });
 };
 

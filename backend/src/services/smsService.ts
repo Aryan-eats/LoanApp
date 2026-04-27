@@ -3,6 +3,12 @@
  * Handles OTP operations via MSG91 REST APIs (no widget dependency)
  */
 
+import {
+  getMockOtp,
+  isMockVerificationEnabled,
+  matchesMockOtp,
+} from './mockVerificationService.js';
+
 // --------------------------------
 // Types
 // --------------------------------
@@ -99,6 +105,21 @@ async function safeFetch(
  * POST https://control.msg91.com/api/v5/otp
  */
 export const sendOTP = async (mobile: string): Promise<OTPResult> => {
+  if (isMockVerificationEnabled()) {
+    if (!getMockOtp('phone')) {
+      return {
+        success: false,
+        message: 'Mock phone OTP not configured',
+      };
+    }
+
+    return {
+      success: true,
+      message: 'OTP sent successfully',
+      requestId: 'mock-msg91-request',
+    };
+  }
+
   const authKey = getAuthKey();
   const templateId = getTemplateId();
 
@@ -163,6 +184,27 @@ export const sendOTP = async (mobile: string): Promise<OTPResult> => {
  * GET https://control.msg91.com/api/v5/otp/verify
  */
 export const verifyOTP = async (mobile: string, otp: string): Promise<VerifyResult> => {
+  if (isMockVerificationEnabled()) {
+    if (!getMockOtp('phone')) {
+      return {
+        success: false,
+        message: 'Mock phone OTP not configured',
+      };
+    }
+
+    return matchesMockOtp('phone', otp)
+      ? {
+          success: true,
+          message: 'OTP verified successfully',
+          type: 'success',
+        }
+      : {
+          success: false,
+          message: 'Invalid OTP',
+          type: 'error',
+        };
+  }
+
   const authKey = getAuthKey();
 
   if (!authKey) {
@@ -227,6 +269,21 @@ export const resendOTP = async (
   mobile: string,
   retryType: 'text' | 'voice' = 'text'
 ): Promise<OTPResult> => {
+  if (isMockVerificationEnabled()) {
+    if (!getMockOtp('phone')) {
+      return {
+        success: false,
+        message: 'Mock phone OTP not configured',
+      };
+    }
+
+    return {
+      success: true,
+      message: 'OTP resent successfully',
+      requestId: 'mock-msg91-request',
+    };
+  }
+
   const authKey = getAuthKey();
 
   if (!authKey) {

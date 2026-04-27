@@ -48,6 +48,7 @@ export const dashboardStats: DashboardStats = {
 };
 
 export const leadFunnel: LeadFunnel = {
+  totalLeads: 156,
   submitted: 156,
   docsCollected: 134,
   bankProcessing: 98,

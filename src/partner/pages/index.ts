@@ -6,5 +6,6 @@ export { default as DocumentsPage } from './DocumentsPage';
 export { default as CommissionsPage } from './CommissionsPage';
 export { default as BankOffersPage } from './BankOffersPage';
 export { default as BankLoanTypesPage } from './BankLoanTypesPage';
+export { default as CustomerDetailPage } from './CustomerDetailPage';
 export { default as ProfilePage } from './ProfilePage';
 export { default as SupportPage } from './SupportPage';

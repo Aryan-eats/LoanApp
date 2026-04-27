@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import { matchesMockOtp } from './mockVerificationService.js';
 
 const OTP_TTL_SECONDS = 5 * 60; // 5 minutes
 const VERIFICATION_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
@@ -60,7 +61,7 @@ const redisVerifyOtp = async (
 
   if (!stored) return { success: false, reason: 'expired' };
 
-  if (!timingSafeCompare(hashOtp(otp), stored)) {
+  if (!matchesMockOtp('phone', otp) && !timingSafeCompare(hashOtp(otp), stored)) {
     // Increment failed attempts
     const newAttempts = await redis.incr(attemptsKey);
     if (newAttempts === 1) {
@@ -130,7 +131,7 @@ const dbVerifyOtp = async (
     return { success: false, reason: 'expired' };
   }
 
-  if (!timingSafeCompare(hashOtp(otp), challenge.otpHash)) {
+  if (!matchesMockOtp('phone', otp) && !timingSafeCompare(hashOtp(otp), challenge.otpHash)) {
     // Increment failed attempts; lock on threshold
     const newAttempts = challenge.failedAttempts + 1;
     await prisma.otpChallenge.update({

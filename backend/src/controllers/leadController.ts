@@ -10,7 +10,15 @@ import { formatLeadResponse } from '../utils/leadHelpers.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
 import { canViewLeadPII, grantAccess } from '../services/consent.js';
 
-type LeadWithRelations = Prisma.LeadGetPayload<{ include: { documents: true; timeline: true } }>;
+type LeadWithRelations = Prisma.LeadGetPayload<{
+  include: { documents: true; timeline: true; consentGrants: true };
+}>;
+
+const leadInclude = {
+  documents: true,
+  timeline: true,
+  consentGrants: true,
+} as const;
 
 const redactLeadPII = <T extends {
   clientFullName: string;
@@ -33,15 +41,46 @@ const normalizeOptionalString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 
 const matchesLeadSearch = (
-  lead: Pick<LeadWithRelations, 'clientFullName' | 'clientPhone' | 'clientEmail'>,
+  lead: ReturnType<typeof formatLeadResponse>,
   rawSearch: string
 ): boolean => {
   const search = rawSearch.trim().toLowerCase();
   if (!search) return true;
 
-  return [lead.clientFullName, lead.clientPhone, lead.clientEmail ?? ''].some((value) =>
-    value.toLowerCase().includes(search)
-  );
+  return [
+    lead.customerId,
+    lead.customerKey,
+    lead.customerName ?? '',
+    lead.customerPhone ?? '',
+    lead.customerEmail ?? '',
+    lead.client.fullName,
+    lead.client.phone,
+    lead.client.email,
+    lead.client.panNumber ?? '',
+  ].some((value) => value.toLowerCase().includes(search));
+};
+
+const matchesLeadFilters = (
+  lead: ReturnType<typeof formatLeadResponse>,
+  params: {
+    source?: string;
+    scoreBand?: string;
+    search?: string;
+  }
+): boolean => {
+  if (params.source && params.source !== 'all' && lead.leadSource !== params.source) {
+    return false;
+  }
+
+  if (params.scoreBand && lead.scoreBand !== params.scoreBand) {
+    return false;
+  }
+
+  if (params.search && !matchesLeadSearch(lead, params.search)) {
+    return false;
+  }
+
+  return true;
 };
 
 const isVaultReadFailure = (error: unknown): boolean => {
@@ -62,7 +101,7 @@ const getAdminLeadsFallback = async (
       orderBy: { [sortField]: sortOrder },
       skip,
       take: limit,
-      include: { documents: true, timeline: true },
+      include: leadInclude,
     }),
     basePrisma.lead.count({ where: baseWhere }),
   ]);
@@ -250,7 +289,7 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
               },
             },
           },
-          include: { documents: true, timeline: true },
+          include: leadInclude,
         });
         break;
       } catch (error) {
@@ -305,7 +344,14 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     if (req.user.role === 'partner') baseWhere.partnerId = req.user.id;
     if (req.query.status) baseWhere.status = req.query.status;
     if (req.query.loanType) baseWhere.loanType = req.query.loanType;
-    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const search =
+      typeof req.query.customerSearch === 'string'
+        ? req.query.customerSearch.trim()
+        : typeof req.query.search === 'string'
+          ? req.query.search.trim()
+          : '';
+    const source = typeof req.query.source === 'string' ? req.query.source.trim() : '';
+    const scoreBand = typeof req.query.scoreBand === 'string' ? req.query.scoreBand.trim() : '';
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
@@ -321,14 +367,16 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     let total: number;
 
     try {
-      if (search) {
+      if (search || source || scoreBand) {
         const allLeads = await prisma.lead.findMany({
           where: baseWhere,
           orderBy: { [sortField]: sortOrder },
-          include: { documents: true, timeline: true },
+          include: leadInclude,
         });
 
-        const filteredLeads = allLeads.filter((lead) => matchesLeadSearch(lead, search));
+        const filteredLeads = allLeads.filter((lead) =>
+          matchesLeadFilters(formatLeadResponse(lead), { source, scoreBand, search })
+        );
         total = filteredLeads.length;
         leads = filteredLeads.slice(skip, skip + limit);
       } else {
@@ -338,7 +386,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
             orderBy: { [sortField]: sortOrder },
             skip,
             take: limit,
-            include: { documents: true, timeline: true },
+            include: leadInclude,
           }),
           prisma.lead.count({ where: baseWhere }),
         ]);
@@ -348,7 +396,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
         throw error;
       }
 
-      if (search) {
+      if (search || source || scoreBand) {
         res.status(503).json({
           success: false,
           message: 'Lead search is unavailable until Vault decryption is restored',
@@ -390,7 +438,9 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
           filters: {
             status: req.query.status ?? null,
             loanType: req.query.loanType ?? null,
-            search: req.query.search ? '[present]' : null,
+            search: search ? '[present]' : null,
+            source: source || null,
+            scoreBand: scoreBand || null,
             sortBy: sortField,
             sortOrder,
           },
@@ -426,7 +476,7 @@ export const getLeadById = async (req: Request, res: Response): Promise<void> =>
     const leadId = req.params.id as string;
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { documents: true, timeline: true },
+      include: leadInclude,
     });
 
     if (!lead) {
@@ -519,7 +569,7 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
 
     const updatedLead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { documents: true, timeline: true },
+      include: leadInclude,
     });
 
     if (!updatedLead) {
@@ -821,7 +871,7 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
 
     const updatedLead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { documents: true, timeline: true },
+      include: leadInclude,
     });
 
     await logAuditEvent('LEAD_STATUS_CHANGED', req, {
@@ -928,7 +978,7 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
 
     const updatedLead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { documents: true, timeline: true },
+      include: leadInclude,
     });
 
     await logAuditEvent('LEAD_ASSIGNED', req, {

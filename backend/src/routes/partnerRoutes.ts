@@ -23,6 +23,8 @@ import {
   bulkCreateStoredClients,
   saveStoredClientDocuments,
   submitStoredClientToGPS,
+  getPartnerCustomerById,
+  getPartnerCustomerActivity,
 } from '../controllers/partnerDataController.js';
 
 const router = Router();
@@ -61,6 +63,9 @@ router.patch('/leads/:id/status', updateLeadStatus);
  */
 // Bulk create (must be before /:id routes)
 router.post('/stored-clients/bulk', bulkCreateStoredClients);
+
+router.get('/customers/:id', getPartnerCustomerById);
+router.get('/customers/:id/activity', getPartnerCustomerActivity);
 
 router.route('/stored-clients')
   .get(getStoredClients)       // GET  /api/partner/stored-clients

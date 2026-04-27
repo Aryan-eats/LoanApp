@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useLeadsStore } from '../../stores/leadsStore';
 import { useAuthStore } from '../../stores/authStore';
+import { usePartnerTheme } from './PartnerThemeProvider';
 
 interface NavItem {
   id: string;
@@ -32,6 +33,7 @@ export default function PartnerSidebar() {
   const { leads, fetchLeads } = useLeadsStore();
   const { logout } = useAuthStore();
   const navigate = useNavigate();
+  const { isDark } = usePartnerTheme();
 
   // Fetch leads on mount to get the count
   useEffect(() => {
@@ -69,12 +71,16 @@ export default function PartnerSidebar() {
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 h-screen bg-slate-950/50 backdrop-blur-xl border-r border-white/10 transition-all duration-300 ${
+      className={`fixed left-0 top-0 z-40 h-screen backdrop-blur-xl transition-all duration-300 ${
+        isDark
+          ? 'bg-slate-950/50 border-r border-white/10'
+          : 'bg-white/80 border-r border-slate-200/80 shadow-[10px_0_35px_rgba(148,163,184,0.12)]'
+      } ${
         isCollapsed ? 'w-20' : 'w-64'
       }`}
     >
       {/* Logo Section */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
+      <div className={`h-16 flex items-center justify-between px-4 ${isDark ? 'border-b border-white/10' : 'border-b border-slate-200/80'}`}>
         {!isCollapsed && (
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="GrowthPath" className="h-18 w-auto" />
@@ -87,7 +93,9 @@ export default function PartnerSidebar() {
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-lg hover:bg-white/5 text-slate-400 transition-colors"
+          className={`p-1.5 rounded-lg transition-colors ${
+            isDark ? 'hover:bg-white/5 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+          }`}
         >
           {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
@@ -101,13 +109,23 @@ export default function PartnerSidebar() {
             to={item.path}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative ${
               isActive(item.path)
-                ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                ? isDark
+                  ? 'bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20'
+                  : 'bg-indigo-50 text-indigo-700 font-medium border border-indigo-200'
+                : isDark
+                  ? 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
           >
             <span
               className={`flex-shrink-0 ${
-                isActive(item.path) ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-300'
+                isActive(item.path)
+                  ? isDark
+                    ? 'text-indigo-400'
+                    : 'text-indigo-700'
+                  : isDark
+                    ? 'text-slate-400 group-hover:text-slate-300'
+                    : 'text-slate-500 group-hover:text-slate-700'
               }`}
             >
               {item.icon}
@@ -123,13 +141,21 @@ export default function PartnerSidebar() {
               </>
             )}
             {isCollapsed && item.badge && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-xs font-medium rounded-full flex items-center justify-center border-2 border-slate-900">
+              <span
+                className={`absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-xs font-medium rounded-full flex items-center justify-center border-2 ${
+                  isDark ? 'border-slate-900' : 'border-white'
+                }`}
+              >
                 {item.badge}
               </span>
             )}
             {/* Tooltip for collapsed state */}
             {isCollapsed && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-sm rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+              <div
+                className={`absolute left-full ml-2 px-2 py-1 text-sm rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 ${
+                  isDark ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'
+                }`}
+              >
                 {item.label}
               </div>
             )}
@@ -138,10 +164,18 @@ export default function PartnerSidebar() {
       </nav>
 
       {/* Logout Section */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-white/10 bg-slate-950/50 backdrop-blur-xl">
+      <div
+        className={`absolute bottom-0 left-0 right-0 p-3 backdrop-blur-xl ${
+          isDark
+            ? 'border-t border-white/10 bg-slate-950/50'
+            : 'border-t border-slate-200/80 bg-white/70'
+        }`}
+      >
         <button
           onClick={handleLogout}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full ${
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 transition-all w-full ${
+            isDark ? 'text-slate-400' : 'text-slate-600'
+          } ${
             isCollapsed ? 'justify-center' : ''
           }`}
         >

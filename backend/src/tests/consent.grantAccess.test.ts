@@ -144,7 +144,7 @@ describe('consent.grantAccess', () => {
     });
     expect(prismaMock.lead.findUnique).toHaveBeenCalledWith({
       where: { id: 'GPSIFS000123' },
-      include: { documents: true, timeline: true },
+      include: { documents: true, timeline: true, consentGrants: true },
     });
     expect(result).toEqual({
       id: 'GPSIFS000123',

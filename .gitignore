@@ -42,6 +42,7 @@ docker-compose.override.yml
 # Internal docs
 production/
 docs/
+.worktrees/
 
 # Test coverage
 coverage/

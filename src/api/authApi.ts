@@ -253,14 +253,18 @@ export const sendOTPApi = async (mobile: string): Promise<ApiResponse<{ requestI
   return response.data;
 };
 
+export interface VerifyOTPPayload {
+  mobile: string;
+  otp: string;
+}
+
 /**
  * Verify OTP via MSG91 REST API
  */
 export const verifyOTPApi = async (
-  mobile: string,
-  otp: string
+  params: VerifyOTPPayload
 ): Promise<ApiResponse<{ verificationToken?: string }>> => {
-  const response = await apiClient.post('/auth/otp/verify', { mobile, otp });
+  const response = await apiClient.post('/auth/otp/verify', params);
   return response.data;
 };
 

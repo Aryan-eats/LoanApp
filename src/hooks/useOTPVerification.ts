@@ -55,15 +55,22 @@ export const useOTPVerification = (
     setLoading(true);
     setError(null);
     try {
-      const result = await verifyOTPApi(mobile, otp);
+      const result = await verifyOTPApi({
+        mobile: mobile.trim(),
+        otp: otp.trim(),
+      });
       setLoading(false);
-      
-      if (result.success) {
-        onSuccess?.(result.data || {});
+
+      const verificationToken = result.data?.verificationToken;
+
+      if (result.success && verificationToken) {
+        onSuccess?.({ verificationToken });
         return true;
       }
-      
-      const errorMsg = result.message || 'Invalid OTP';
+
+      const errorMsg = result.success
+        ? 'Verification token missing from OTP verification response'
+        : (result.message || 'Invalid OTP');
       setError(errorMsg);
       onError?.(errorMsg);
       return false;

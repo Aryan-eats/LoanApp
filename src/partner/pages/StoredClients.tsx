@@ -14,10 +14,12 @@ import {
 import LocalLeadStatusManager from '../components/LocalLeadStatusManager';
 import LocalLeadDetailsModal from '../components/LocalLeadDetailsModal';
 import EmptyState from '../components/EmptyState';
+import CustomerContextPills from '../components/CustomerContextPills';
 import { useLocalLeadsStore } from '../../stores/localLeadsStore';
 import { useLeadsStore } from '../../stores/leadsStore';
 import type { LocalLead } from '../types/partner-dashboard';
 import { buildLoanTypeLabels } from '../../data/loanProducts';
+import { resolveConsentSummary, resolveCustomerId, resolveCustomerKey, resolveLeadScore, resolveLeadSource, resolveScoreBand } from '../utils/customerCrm';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
 
@@ -149,6 +151,16 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
                       <td className="px-5 py-4">
                         <p className="font-medium text-slate-200">{lead.fullName}</p>
                         <p className="text-xs text-slate-400">{lead.phone}</p>
+                        <CustomerContextPills
+                          className="mt-2"
+                          customerId={resolveCustomerId(lead)}
+                          customerKey={resolveCustomerKey(lead)}
+                          leadSource={resolveLeadSource(lead)}
+                          leadScore={resolveLeadScore(lead)}
+                          scoreBand={resolveScoreBand(lead)}
+                          consentSummary={resolveConsentSummary(lead)}
+                          compact
+                        />
                       </td>
                       <td className="px-5 py-4">
                         <p className="text-sm text-slate-300">{loanTypeLabels[lead.loanType] ?? lead.loanType}</p>

@@ -13,6 +13,7 @@ import {
 } from '../services/authService.js';
 import {
   generateOTP,
+  clearUserOTP,
   verifyUserOTP,
 } from '../services/userService.js';
 import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../services/smsService.js';
@@ -20,10 +21,13 @@ import {
   createOtpChallenge,
   verifyOtpChallenge,
 } from '../services/otpChallengeService.js';
+import { sendVerificationCode } from '../services/emailVerificationService.js';
+import { matchesMockOtp } from '../services/mockVerificationService.js';
 
 export const sendOTP = async (req: Request, res: Response): Promise<void> => {
   try {
     const { phone, email } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase() : undefined;
 
     if (!phone && !email) {
       res.status(400).json({
@@ -35,7 +39,7 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
 
     const user = phone
       ? await prisma.user.findFirst({ where: { phone } })
-      : await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+      : await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
     let otp: string;
     if (user) {
@@ -66,6 +70,22 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
         });
         return;
       }
+    } else if (normalizedEmail) {
+      const emailResult = await sendVerificationCode(normalizedEmail, otp);
+      if (!emailResult.success) {
+        await logAuditEvent('OTP_SEND_FAILED', req, {
+          userId: user?.id,
+          email: user?.email,
+          success: false,
+          failureReason: emailResult.message || 'Email delivery failed',
+          metadata: { method: 'email', onboarding: !user },
+        });
+        res.status(500).json({
+          success: false,
+          message: emailResult.message || 'Failed to send OTP',
+        });
+        return;
+      }
     }
 
     await logAuditEvent('OTP_SENT', req, {
@@ -91,6 +111,8 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
 export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
   try {
     const { phone, email, otp } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase() : undefined;
+    const channel = phone ? 'phone' : 'email';
 
     if ((!phone && !email) || !otp) {
       res.status(400).json({
@@ -102,13 +124,15 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
 
     const user = phone
       ? await prisma.user.findFirst({ where: { phone } })
-      : await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+      : await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
     // -- Registered-user OTP verification -------------------
     if (user) {
-      const otpVerification = await verifyUserOTP(user.id, otp);
+      const otpVerification = await verifyUserOTP(user.id, otp, channel);
 
       if (otpVerification.status === 'verified') {
+        await clearUserOTP(user.id);
+
         const updatedUser = await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -143,7 +167,7 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
         }
 
         const hashedOtp = hashToken(otp);
-        if (hashedOtp !== user.otpHash) {
+        if (hashedOtp !== user.otpHash && !matchesMockOtp(channel, otp)) {
           res.status(400).json({
             success: false,
             message: 'Invalid verification code',

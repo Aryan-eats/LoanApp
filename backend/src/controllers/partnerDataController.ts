@@ -3,6 +3,23 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma.js';
 import { grantAccess } from '../services/consent.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
+import { formatLeadResponse } from '../utils/leadHelpers.js';
+import {
+  computeLeadScore,
+  deriveCustomerIdentity,
+  matchesCustomerIdentity,
+  scoreBandForLeadScore,
+  summarizeConsentGrants,
+  type ConsentGrantLike,
+} from '../utils/crmHelpers.js';
+
+type StoredClientWithRelations = Prisma.PartnerDataGetPayload<{
+  include: { documents: true; consentGrants: true };
+}>;
+
+type LeadWithRelations = Prisma.LeadGetPayload<{
+  include: { documents: true; timeline: true; consentGrants: true };
+}>;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -33,6 +50,7 @@ function formatEntry(e: {
   tenure: number | null;
   loanPurpose: string | null;
   preferredBank: string | null;
+  consentGrants?: ConsentGrantLike[] | null;
   documents?: Array<{
     id: string;
     type: string;
@@ -54,14 +72,46 @@ function formatEntry(e: {
   createdAt: Date;
   updatedAt: Date;
 }) {
+  const customerIdentity = deriveCustomerIdentity({
+    id: e.id,
+    partnerId: e.partnerId,
+    phone: e.phone,
+    email: e.email,
+    panNumber: e.panNumber,
+  });
+  const consentSummary = summarizeConsentGrants(e.consentGrants ?? null);
+  const leadScore = computeLeadScore({
+    id: e.id,
+    partnerId: e.partnerId,
+    phone: e.phone,
+    email: e.email,
+    panNumber: e.panNumber,
+    employmentType: e.employmentType,
+    monthlyIncome: e.monthlyIncome,
+    companyName: e.companyName,
+    city: e.city,
+    pincode: e.pincode,
+    documentsCount: e.documents?.length ?? 0,
+    consentGrants: e.consentGrants ?? null,
+  });
+
   return {
     id: e.id,
     partnerId: e.partnerId,
+    customerId: customerIdentity.customerId,
+    customerKey: customerIdentity.customerKey,
+    leadSource: 'manual',
+    leadScore,
+    scoreBand: scoreBandForLeadScore(leadScore),
+    consentSummary,
     localStatus: e.localStatus,
     notes: e.notes ?? undefined,
     fullName: e.fullName,
+    customerName: e.fullName,
     phone: e.phone,
+    customerPhone: e.phone,
     email: e.email ?? undefined,
+    customerEmail: e.email ?? undefined,
     dateOfBirth: e.dateOfBirth ?? undefined,
     gender: e.gender ?? undefined,
     panNumber: e.panNumber ?? undefined,
@@ -113,6 +163,267 @@ function isMissingPartnerDataDocumentsTableError(error: unknown): boolean {
   );
 }
 
+const storedClientInclude = {
+  documents: {
+    orderBy: [{ sortOrder: 'asc' as const }, { displayName: 'asc' as const }],
+  },
+  consentGrants: true,
+};
+
+const leadInclude = {
+  documents: true,
+  timeline: true,
+  consentGrants: true,
+} as const;
+
+const toStoredClientIdentity = (entry: StoredClientWithRelations) => ({
+  id: entry.id,
+  partnerId: entry.partnerId,
+  phone: entry.phone,
+  email: entry.email,
+  panNumber: entry.panNumber,
+  fullName: entry.fullName,
+});
+
+const toLeadIdentity = (lead: LeadWithRelations) => ({
+  id: lead.id,
+  partnerId: lead.partnerId,
+  sourcePartnerDataId: lead.sourcePartnerDataId,
+  phone: lead.clientPhone,
+  email: lead.clientEmail,
+  panNumber: lead.clientPanNumber,
+  fullName: lead.clientFullName,
+});
+
+type CustomerActivityItem = {
+  id: string;
+  type: string;
+  title: string;
+  description?: string;
+  timestamp: string;
+  customerId: string;
+  customerKey: string;
+  leadId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+const buildCustomerActivity = (
+  storedClient: StoredClientWithRelations | null,
+  leads: LeadWithRelations[],
+  customerId: string,
+  customerKey: string
+): CustomerActivityItem[] => {
+  const items: CustomerActivityItem[] = [];
+
+  if (storedClient) {
+    items.push({
+      id: `stored-client-created:${storedClient.id}`,
+      type: 'stored_client_created',
+      title: 'Stored client created',
+      description: storedClient.notes ? storedClient.notes : storedClient.fullName,
+      timestamp: storedClient.createdAt.toISOString(),
+      customerId,
+      customerKey,
+    });
+
+    if (storedClient.updatedAt.getTime() !== storedClient.createdAt.getTime()) {
+      items.push({
+        id: `stored-client-updated:${storedClient.id}`,
+        type: 'stored_client_updated',
+        title: 'Stored client updated',
+        timestamp: storedClient.updatedAt.toISOString(),
+        customerId,
+        customerKey,
+      });
+    }
+
+    for (const grant of storedClient.consentGrants ?? []) {
+      const grantTimestamp = grant.revokedAt ?? grant.grantedAt ?? storedClient.createdAt;
+      items.push({
+        id: `stored-client-consent:${grant.id}`,
+        type: grant.revokedAt ? 'consent_revoked' : 'consent_granted',
+        title: grant.revokedAt ? 'Consent revoked' : 'Consent granted',
+        description: grant.grantedTo,
+        timestamp: (grantTimestamp instanceof Date ? grantTimestamp : new Date(grantTimestamp)).toISOString(),
+        customerId,
+        customerKey,
+        metadata: {
+          partnerDataId: storedClient.id,
+          grantedTo: grant.grantedTo,
+        },
+      });
+    }
+  }
+
+  for (const lead of leads) {
+    items.push({
+      id: `lead-created:${lead.id}`,
+      type: 'lead_created',
+      title: 'Lead submitted',
+      description: `${lead.loanType} - ${Number(lead.loanAmount)}`,
+      timestamp: lead.createdAt.toISOString(),
+      customerId,
+      customerKey,
+      leadId: lead.id,
+      metadata: {
+        leadSource: lead.sourcePartnerDataId ? 'stored_client' : 'manual',
+      },
+    });
+
+    for (const event of lead.timeline ?? []) {
+      items.push({
+        id: `lead-timeline:${event.id}`,
+        type: 'lead_timeline',
+        title: `Lead status: ${event.status}`,
+        description: event.note ?? undefined,
+        timestamp: event.timestamp.toISOString(),
+        customerId,
+        customerKey,
+        leadId: lead.id,
+        metadata: {
+          status: event.status,
+          updatedBy: event.updatedBy,
+        },
+      });
+    }
+
+    for (const grant of lead.consentGrants ?? []) {
+      const grantTimestamp = grant.revokedAt ?? grant.grantedAt ?? lead.createdAt;
+      items.push({
+        id: `lead-consent:${grant.id}`,
+        type: grant.revokedAt ? 'consent_revoked' : 'consent_granted',
+        title: grant.revokedAt ? 'Consent revoked' : 'Consent granted',
+        description: grant.grantedTo,
+        timestamp: (grantTimestamp instanceof Date ? grantTimestamp : new Date(grantTimestamp)).toISOString(),
+        customerId,
+        customerKey,
+        leadId: lead.id,
+        metadata: {
+          partnerDataId: grant.partnerDataId ?? undefined,
+          grantedTo: grant.grantedTo,
+        },
+      });
+    }
+  }
+
+  return items.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+};
+
+const resolveCustomerContext = async (partnerId: string, requestedId: string) => {
+  const [storedClients, leads] = await Promise.all([
+    prisma.partnerData.findMany({
+      where: { partnerId },
+      orderBy: { createdAt: 'desc' },
+      include: storedClientInclude,
+    }) as Promise<StoredClientWithRelations[]>,
+    prisma.lead.findMany({
+      where: { partnerId },
+      orderBy: { createdAt: 'desc' },
+      include: leadInclude,
+    }) as Promise<LeadWithRelations[]>,
+  ]);
+
+  const requestedStoredClient = storedClients.find((entry) => entry.id === requestedId) ?? null;
+  const requestedLead = leads.find((entry) => entry.id === requestedId) ?? null;
+
+  let storedClient = requestedStoredClient;
+  if (!storedClient && requestedLead?.sourcePartnerDataId) {
+    storedClient =
+      storedClients.find((entry) => entry.id === requestedLead.sourcePartnerDataId) ?? null;
+  }
+  if (!storedClient && requestedLead) {
+    storedClient =
+      storedClients.find((entry) =>
+        matchesCustomerIdentity(toStoredClientIdentity(entry), toLeadIdentity(requestedLead))
+      ) ?? null;
+  }
+
+  const referenceLead = requestedLead ?? null;
+  const referenceStoredClient = storedClient;
+
+  if (!referenceStoredClient && !referenceLead) {
+    return null;
+  }
+
+  const relatedLeads = leads.filter((lead) => {
+    if (referenceStoredClient) {
+      return (
+        lead.sourcePartnerDataId === referenceStoredClient.id ||
+        matchesCustomerIdentity(toLeadIdentity(lead), toStoredClientIdentity(referenceStoredClient))
+      );
+    }
+
+    if (referenceLead) {
+      return (
+        lead.id === referenceLead.id ||
+        (referenceLead.sourcePartnerDataId && lead.sourcePartnerDataId === referenceLead.sourcePartnerDataId) ||
+        matchesCustomerIdentity(toLeadIdentity(lead), toLeadIdentity(referenceLead))
+      );
+    }
+
+    return false;
+  });
+
+  const primaryLead = referenceLead ?? relatedLeads[0] ?? null;
+  const customerIdentity = deriveCustomerIdentity({
+    id: referenceStoredClient?.id ?? primaryLead?.id ?? requestedId,
+    partnerId,
+    sourcePartnerDataId: referenceStoredClient?.id ?? primaryLead?.sourcePartnerDataId ?? null,
+    phone: referenceStoredClient?.phone ?? primaryLead?.clientPhone ?? null,
+    email: referenceStoredClient?.email ?? primaryLead?.clientEmail ?? null,
+    panNumber: referenceStoredClient?.panNumber ?? primaryLead?.clientPanNumber ?? null,
+  });
+  const leadScore = referenceStoredClient
+    ? computeLeadScore({
+        id: referenceStoredClient.id,
+        partnerId: referenceStoredClient.partnerId,
+        phone: referenceStoredClient.phone,
+        email: referenceStoredClient.email,
+        panNumber: referenceStoredClient.panNumber,
+        employmentType: referenceStoredClient.employmentType,
+        monthlyIncome: referenceStoredClient.monthlyIncome,
+        companyName: referenceStoredClient.companyName,
+        city: referenceStoredClient.city,
+        pincode: referenceStoredClient.pincode,
+        documentsCount: referenceStoredClient.documents?.length ?? 0,
+        consentGrants: referenceStoredClient.consentGrants ?? null,
+      })
+    : computeLeadScore({
+        id: primaryLead?.id ?? requestedId,
+        partnerId,
+        sourcePartnerDataId: primaryLead?.sourcePartnerDataId ?? null,
+        phone: primaryLead?.clientPhone ?? null,
+        email: primaryLead?.clientEmail ?? null,
+        panNumber: primaryLead?.clientPanNumber ?? null,
+        employmentType: primaryLead?.clientEmployment ?? null,
+        monthlyIncome: primaryLead?.clientIncome ?? null,
+        companyName: primaryLead?.clientCompany ?? null,
+        city: primaryLead?.clientCity ?? null,
+        pincode: primaryLead?.clientPincode ?? null,
+        documentsCount: primaryLead?.documents?.length ?? 0,
+        consentGrants: primaryLead?.consentGrants ?? null,
+      });
+  const consentSummary = summarizeConsentGrants([
+    ...(referenceStoredClient?.consentGrants ?? []),
+    ...relatedLeads.flatMap((lead) => lead.consentGrants ?? []),
+  ]);
+
+  return {
+    storedClient: referenceStoredClient,
+    leads: relatedLeads,
+    primaryLead,
+    customerId: customerIdentity.customerId,
+    customerKey: customerIdentity.customerKey,
+    leadSource: relatedLeads.some((lead) => lead.sourcePartnerDataId) ? 'stored_client' : 'manual',
+    leadScore,
+    scoreBand: scoreBandForLeadScore(leadScore),
+    consentSummary,
+    activity: buildCustomerActivity(referenceStoredClient, relatedLeads, customerIdentity.customerId, customerIdentity.customerKey),
+  };
+};
+
 // ─── Controllers ────────────────────────────────────────────────────────────
 
 /**
@@ -129,11 +440,7 @@ export const getStoredClients = async (req: Request, res: Response): Promise<voi
       entries = await prisma.partnerData.findMany({
         where: { partnerId },
         orderBy: { createdAt: 'desc' },
-        include: {
-          documents: {
-            orderBy: [{ sortOrder: 'asc' }, { displayName: 'asc' }],
-          },
-        },
+        include: storedClientInclude,
       });
     } catch (error) {
       if (!isMissingPartnerDataDocumentsTableError(error)) {
@@ -144,6 +451,7 @@ export const getStoredClients = async (req: Request, res: Response): Promise<voi
       entries = await prisma.partnerData.findMany({
         where: { partnerId },
         orderBy: { createdAt: 'desc' },
+        include: { consentGrants: true },
       });
     }
 
@@ -397,6 +705,7 @@ export const saveStoredClientDocuments = async (req: Request, res: Response): Pr
         documents: {
           orderBy: [{ sortOrder: 'asc' }, { displayName: 'asc' }],
         },
+        consentGrants: true,
       },
     });
 
@@ -476,6 +785,76 @@ export const submitStoredClientToGPS = async (req: Request, res: Response): Prom
       return;
     }
     res.status(500).json({ success: false, message: 'Failed to submit stored client' });
+  }
+};
+
+/**
+ * GET /api/partner/customers/:id
+ * Returns a merged customer view combining one stored client and all related submitted leads.
+ */
+export const getPartnerCustomerById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user!.id;
+    const requestedId = req.params.id as string;
+    const context = await resolveCustomerContext(partnerId, requestedId);
+
+    if (!context) {
+      res.status(404).json({ success: false, message: 'Customer not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        customer: {
+          customerId: context.customerId,
+          customerKey: context.customerKey,
+          fullName: context.storedClient?.fullName ?? context.primaryLead?.clientFullName ?? '',
+          phone: context.storedClient?.phone ?? context.primaryLead?.clientPhone ?? '',
+          email: context.storedClient?.email ?? context.primaryLead?.clientEmail ?? '',
+          leadSource: context.leadSource,
+          leadScore: context.leadScore,
+          scoreBand: context.scoreBand,
+          consentSummary: context.consentSummary,
+          activity: context.activity,
+        },
+        storedClient: context.storedClient ? formatEntry(context.storedClient) : null,
+        relatedLeads: context.leads.map((lead) => formatLeadResponse(lead)),
+        activity: context.activity,
+      },
+    });
+  } catch (err) {
+    console.error('getPartnerCustomerById error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch customer detail' });
+  }
+};
+
+/**
+ * GET /api/partner/customers/:id/activity
+ * Returns the activity feed for a merged customer view.
+ */
+export const getPartnerCustomerActivity = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user!.id;
+    const requestedId = req.params.id as string;
+    const context = await resolveCustomerContext(partnerId, requestedId);
+
+    if (!context) {
+      res.status(404).json({ success: false, message: 'Customer not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        customerId: context.customerId,
+        customerKey: context.customerKey,
+        activity: context.activity,
+      },
+    });
+  } catch (err) {
+    console.error('getPartnerCustomerActivity error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch customer activity' });
   }
 };
 
@@ -579,3 +958,5 @@ export const bulkCreateStoredClients = async (req: Request, res: Response): Prom
     res.status(500).json({ success: false, message: 'Bulk create failed' });
   }
 };
+
+
