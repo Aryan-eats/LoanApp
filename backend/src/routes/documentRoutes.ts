@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Document routes – upload, list, download, and delete user documents.
  *
  * All routes are protected (require authentication).
@@ -46,6 +46,8 @@ const handleMulterErrors = (req: Request, res: Response, next: NextFunction) => 
 
 // -- Public route (no auth required) ------------------------------------------
 // Customer validates a token (GET) or uploads a file via a magic token link (POST)
+router.get('/upload-via-token', validateUploadToken);
+router.post('/upload-via-token', handleMulterErrors, validateMagicBytes, uploadViaToken);
 router.get('/upload-via-token/:token', validateUploadToken);
 router.post('/upload-via-token/:token', handleMulterErrors, validateMagicBytes, uploadViaToken);
 

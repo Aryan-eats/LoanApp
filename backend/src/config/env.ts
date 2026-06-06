@@ -1,40 +1,49 @@
-import 'dotenv/config';
+/**
+ * Environment bootstrap.
+ *
+ * This module is imported by prisma.ts (and potentially other config modules)
+ * to guarantee that dotenv is loaded before any database/redis connections are
+ * initialised. Node ESM evaluates imports before the calling module's body, so
+ * index.ts's own `dotenv.config()` call runs too late for prisma.ts.
+ *
+ * Import side-effect:  import { envConfig } from './env.js';
+ */
 
-const getRequiredEnv = (name: string): string => {
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const require_ = (name: string): string => {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+    throw new Error(
+      `Missing required environment variable: ${name}. ` +
+        'Check your .env file or deployment configuration.'
+    );
   }
   return value;
 };
 
-const optionalEnv = (name: string): string | undefined => {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-};
+export const envConfig = {
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  PORT: parseInt(process.env.PORT || '5000', 10),
 
-const nodeEnv = process.env.NODE_ENV?.trim() || 'development';
-const vaultRoleId = optionalEnv('VAULT_ROLE_ID');
-const vaultSecretId = optionalEnv('VAULT_SECRET_ID');
-const vaultToken = optionalEnv('VAULT_TOKEN');
+  // Database
+  DATABASE_URL: require_('DATABASE_URL'),
 
-// The current Vault client authenticates with X-Vault-Token. Until AppRole
-// login is implemented in services/vault.ts, startup validation must require
-// the token path that the runtime actually uses.
-if (!vaultToken) {
-  throw new Error('Missing required environment variable: VAULT_TOKEN');
-}
+  // JWT
+  JWT_SECRET: require_('JWT_SECRET'),
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ?? '',
+  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+  JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
 
-export const envConfig = Object.freeze({
-  NODE_ENV: nodeEnv,
-  VAULT_ADDR: getRequiredEnv('VAULT_ADDR'),
-  VAULT_TOKEN: vaultToken,
-  VAULT_TRANSIT_PATH: getRequiredEnv('VAULT_TRANSIT_PATH'),
-  // GPS India internal transit key for submitted-lead PII. Never share/namespace this under partners.
-  VAULT_GPS_INDIA_KEY: getRequiredEnv('VAULT_GPS_INDIA_KEY'),
-  VAULT_NAMESPACE: optionalEnv('VAULT_NAMESPACE'),
-  VAULT_ROLE_ID: vaultRoleId,
-  VAULT_SECRET_ID: vaultSecretId,
-});
+  // Redis (optional in dev)
+  REDIS_URL: process.env.REDIS_URL ?? '',
 
-export type EnvConfig = typeof envConfig;
+  // Encryption (AES-256-GCM)
+  FIELD_ENCRYPTION_KEY: require_('FIELD_ENCRYPTION_KEY'),
+
+  // CORS
+  FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || 'http://localhost:5173',
+} as const;

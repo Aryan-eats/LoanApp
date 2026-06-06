@@ -27,10 +27,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     didCheck.current = true;
 
     const validateAuth = async () => {
-      // Re-check auth if persisted state says authenticated but in-memory token is missing.
-      if (!isAuthenticated || !getAccessToken()) {
-        await checkAuth();
-      }
+      // Always verify auth with the server on protected route initialization
+      await checkAuth();
       setIsChecking(false);
     };
 

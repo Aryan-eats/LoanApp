@@ -39,7 +39,6 @@ export default function BankOffersPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     getPartnerBanks()
       .then((res) => {
         if (active && res.success && res.data?.banks) {

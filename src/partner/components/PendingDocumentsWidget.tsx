@@ -20,7 +20,7 @@ export default function PendingDocumentsWidget({ leads }: PendingDocumentsWidget
         // Find missing docs from lead.documents
         const uploadedTypes = l.documents.map(d => d.type);
         const requiredTypes = ['pan_card', 'aadhaar_front', 'bank_statement']; // simple heuristic for presentation
-        const missing = requiredTypes.find(t => !uploadedTypes.includes(t as any)) || 'Required Document';
+        const missing = requiredTypes.find(t => !uploadedTypes.includes(t)) || 'Required Document';
         const formattedMissing = missing.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
         
         list.push({

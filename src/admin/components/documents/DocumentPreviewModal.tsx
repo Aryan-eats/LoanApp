@@ -33,7 +33,7 @@ export default function DocumentPreviewModal({
 
   const handlePrint = () => {
     if (doc.url) {
-      const win = window.open(doc.url, '_blank');
+      const win = window.open(doc.url, '_blank', 'noopener,noreferrer');
       win?.addEventListener('load', () => win.print());
     }
   };

@@ -4,8 +4,8 @@ import {
   decryptField,
   encryptField,
   encryptForGPSIndia,
-  isVaultCiphertext,
-} from '../services/vault.js';
+  isEncryptedCiphertext,
+} from '../services/encryption.js';
 
 export const ENCRYPTED_FIELDS: Record<string, string[]> = {
   User: [
@@ -216,7 +216,7 @@ const handleEncryptedPiiWhere = (
   }
 };
 
-export const encryptFieldsWithVault = async (
+export const encryptFields = async (
   model: string,
   data: Record<string, unknown> | undefined | null
 ) => {
@@ -243,7 +243,7 @@ export const encryptFieldsWithVault = async (
     }
 
     const current = data[field] as string;
-    if (shouldBypassWriteEncryption(field, current) || isVaultCiphertext(current)) {
+    if (shouldBypassWriteEncryption(field, current) || isEncryptedCiphertext(current)) {
       continue;
     }
 
@@ -316,7 +316,7 @@ const decryptRecordWithBridge = async (model: string, record: Record<string, unk
     }
 
     const value = record[field] as string;
-    if (!isVaultCiphertext(value)) {
+    if (!isEncryptedCiphertext(value)) {
       continue;
     }
 

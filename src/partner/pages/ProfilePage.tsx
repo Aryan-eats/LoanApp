@@ -58,12 +58,7 @@ export default function ProfilePage() {
   const partnerProfile = partnerInfo?.profile ?? null;
   const isLoading = profileLoading && !partnerProfile;
 
-  // Sync editData when profile loads, but only if user is not currently editing
-  useEffect(() => {
-    if (partnerProfile && !isEditing) {
-      setEditData(partnerProfile);
-    }
-  }, [partnerProfile, isEditing]);
+
   
   const totalLeads = leads.length;
   const approvedLeads = leads.filter(l => l.status === 'approved' || l.status === 'disbursed').length;
@@ -240,7 +235,12 @@ export default function ProfilePage() {
                 <h3 className="font-semibold text-slate-100">Personal Information</h3>
               </div>
               <button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() => {
+                  if (!isEditing && partnerProfile) {
+                    setEditData(partnerProfile);
+                  }
+                  setIsEditing(!isEditing);
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors border border-transparent hover:border-indigo-500/20"
               >
                 <Edit2 size={14} />

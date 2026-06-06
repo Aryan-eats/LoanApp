@@ -1,4 +1,5 @@
-// Barrel re-export — keeps existing import paths working.
-// For data-only imports (no MUI icons), use './loanProductsData' directly.
+/* eslint-disable react-refresh/only-export-components */
+// Barrel re-export - keeps existing import paths working.
+
 export * from './loanProductsData';
 export { getLoanIconComponent, getLoanIcon, buildLoanTypeOptions, buildGroupedLoanTypeOptions } from './loanProductIcons';

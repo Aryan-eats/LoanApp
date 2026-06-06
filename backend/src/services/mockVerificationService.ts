@@ -1,45 +1,33 @@
-import crypto from 'crypto';
+/**
+ * Mock verification service.
+ *
+ * Allows dev/test environments to bypass real SMS/email OTP delivery by
+ * matching against MOCK_PHONE_OTP / MOCK_EMAIL_OTP env vars when
+ * MOCK_VERIFICATION_ENABLED=true.
+ *
+ * Usage:
+ *   import { matchesMockOtp } from './mockVerificationService.js';
+ *   if (matchesMockOtp('phone', submittedOtp)) { ... }
+ */
 
 export type VerificationChannel = 'phone' | 'email';
 
-const ENV_BY_CHANNEL: Record<VerificationChannel, string> = {
-  phone: 'MOCK_PHONE_OTP',
-  email: 'MOCK_EMAIL_OTP',
-};
-
-const isSixDigitOtp = (value: string): boolean => /^\d{6}$/.test(value);
-
-const timingSafeCompare = (a: string, b: string): boolean => {
-  const bufferA = Buffer.from(a, 'utf8');
-  const bufferB = Buffer.from(b, 'utf8');
-
-  if (bufferA.length !== bufferB.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(bufferA, bufferB);
-};
-
 export const isMockVerificationEnabled = (): boolean =>
-  process.env.MOCK_VERIFICATION_ENABLED === 'true';
+  process.env.NODE_ENV !== 'production' && process.env.MOCK_VERIFICATION_ENABLED === 'true';
 
-export const getMockOtp = (channel: VerificationChannel): string | null => {
-  const configured = process.env[ENV_BY_CHANNEL[channel]]?.trim() ?? '';
-  return isSixDigitOtp(configured) ? configured : null;
-};
+export const getMockOtp = (channel: VerificationChannel): string | undefined =>
+  channel === 'phone' ? process.env.MOCK_PHONE_OTP : process.env.MOCK_EMAIL_OTP;
 
-export const matchesMockOtp = (
-  channel: VerificationChannel,
-  candidate: string
-): boolean => {
-  if (!isMockVerificationEnabled()) {
-    return false;
-  }
+/**
+ * Returns true when mock-mode is active and the submitted OTP matches the
+ * configured mock value for the given channel.
+ *
+ * Never returns true in production regardless of env vars.
+ */
+export const matchesMockOtp = (channel: VerificationChannel, otp: string): boolean => {
+  if (!isMockVerificationEnabled()) return false;
 
-  const configured = getMockOtp(channel);
-  if (!configured || !isSixDigitOtp(candidate)) {
-    return false;
-  }
+  const expected = getMockOtp(channel);
 
-  return timingSafeCompare(configured, candidate);
+  return !!expected && otp.trim() === expected.trim();
 };

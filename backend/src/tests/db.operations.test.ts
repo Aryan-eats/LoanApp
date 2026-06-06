@@ -247,7 +247,7 @@ describeDb('PostgreSQL DB operations', () => {
     expect(storedUsers[0]?.gstNumber).not.toBe(gst);
     expect(storedUsers[0]?.ifscCode).not.toBe(ifsc);
     expect(storedUsers[0]?.upiId).not.toBe(upi);
-    expect(storedUsers[0]?.aadhaarNumber?.startsWith('vault:v1:')).toBe(true);
+    expect(storedUsers[0]?.aadhaarNumber?.startsWith('enc:v1:')).toBe(true);
 
     const lead = await prisma.lead.create({
       data: {
@@ -297,6 +297,6 @@ describeDb('PostgreSQL DB operations', () => {
     expect(storedLeads[0]?.clientDateOfBirth).not.toBe('1990-01-01');
     expect(storedLeads[0]?.clientPanNumber).not.toBe(pan);
     expect(storedLeads[0]?.clientAadhaar).not.toBe(aadhaar);
-    expect(storedLeads[0]?.clientPanNumber?.startsWith('vault:v1:')).toBe(true);
+    expect(storedLeads[0]?.clientPanNumber?.startsWith('enc:v1:')).toBe(true);
   });
 });

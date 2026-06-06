@@ -4,31 +4,31 @@ const encode = (value: string): string => Buffer.from(value, 'utf8').toString('b
 
 const { encryptForGPSIndia, decryptAsGPSIndia, encryptField, decryptField } = vi.hoisted(() => ({
   encryptForGPSIndia: vi.fn(
-    async (value: string) => `vault:v1:gps:${Buffer.from(value, 'utf8').toString('base64')}`
+    async (value: string) => `enc:v1:${Buffer.from(value, 'utf8').toString('base64')}`
   ),
   decryptAsGPSIndia: vi.fn(async (value: string) =>
     Buffer.from(value.split(':').at(-1) ?? '', 'base64').toString('utf8')
   ),
   encryptField: vi.fn(
-    async (partnerOrgId: string, value: string) =>
-      `vault:v1:partner:${partnerOrgId}:${Buffer.from(value, 'utf8').toString('base64')}`
+    async (_partnerOrgId: string, value: string) =>
+      `enc:v1:${Buffer.from(value, 'utf8').toString('base64')}`
   ),
   decryptField: vi.fn(async (_partnerOrgId: string, value: string) =>
     Buffer.from(value.split(':').at(-1) ?? '', 'base64').toString('utf8')
   ),
 }));
 
-vi.mock('../services/vault.js', () => ({
+vi.mock('../services/encryption.js', () => ({
   encryptForGPSIndia,
   decryptAsGPSIndia,
   encryptField,
   decryptField,
-  isVaultCiphertext: (value: string) => value.startsWith('vault:v1:'),
+  isEncryptedCiphertext: (value: string) => value.startsWith('enc:v1:'),
 }));
 
 import {
   decryptResultWithBridge,
-  encryptFieldsWithVault,
+  encryptFields,
   encryptWhere,
 } from '../utils/fieldEncryption.js';
 
@@ -37,13 +37,13 @@ describe('field encryption guardrails', () => {
     vi.clearAllMocks();
   });
 
-  it('does not double-encrypt existing vault payloads', async () => {
-    const existingCiphertext = `vault:v1:gps:${encode('ABCDE1234F')}`;
+  it('does not double-encrypt existing encrypted payloads', async () => {
+    const existingCiphertext = `enc:v1:${encode('ABCDE1234F')}`;
     const data: Record<string, unknown> = {
       clientPanNumber: existingCiphertext,
     };
 
-    await encryptFieldsWithVault('Lead', data);
+    await encryptFields('Lead', data);
 
     expect(data.clientPanNumber).toBe(existingCiphertext);
     expect(encryptForGPSIndia).not.toHaveBeenCalled();
@@ -51,7 +51,7 @@ describe('field encryption guardrails', () => {
 
   it('rejects partner-scoped encryption without a partnerOrgId', async () => {
     await expect(
-      encryptFieldsWithVault('PartnerData', {
+      encryptFields('PartnerData', {
         fullName: 'Jane Doe',
       })
     ).rejects.toThrow('partnerOrgId is required to encrypt or decrypt PartnerData fields');
@@ -68,14 +68,14 @@ describe('field encryption guardrails', () => {
   it('throws when decrypting PartnerData without partner context', async () => {
     await expect(
       decryptResultWithBridge('PartnerData', {
-        fullName: `vault:v1:partner:org-1:${encode('Jane Doe')}`,
+        fullName: `enc:v1:${encode('Jane Doe')}`,
       })
     ).rejects.toThrow('partnerOrgId is required to encrypt or decrypt PartnerData fields');
   });
 
-  it('decrypts vault-encrypted auth hashes back to stable plaintext', async () => {
+  it('decrypts encrypted auth hashes back to stable plaintext', async () => {
     const user = {
-      refreshToken: `vault:v1:gps:${encode('a'.repeat(64))}`,
+      refreshToken: `enc:v1:${encode('a'.repeat(64))}`,
     };
 
     await decryptResultWithBridge('User', user);

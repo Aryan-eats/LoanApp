@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Lead, LeadDocument, DocumentStatus } from '../types/admin';
 import type { LoanCategory } from '../../data/loanProductsData';
@@ -323,7 +323,7 @@ export function useDocumentsPage() {
     try {
       const response = await getDocumentDownloadUrl(docId);
       if (response.success && response.data?.url) {
-        window.open(response.data.url, '_blank');
+        window.open(response.data.url, '_blank', 'noopener,noreferrer');
       } else {
         alert(response.message || 'Could not generate download link');
       }

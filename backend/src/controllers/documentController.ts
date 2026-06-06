@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Document controller – handles HTTP requests for document CRUD.
  */
 
@@ -547,8 +547,8 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // Create a token that expires in 48 hours
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    // Create a token that expires in 24 hours (short TTL)
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const uploadToken = await prisma.documentUploadToken.create({
       data: {
@@ -592,7 +592,7 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
  */
 export const validateUploadToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const token = String(req.params.token);
+    const token = String(req.params.token || req.headers['x-upload-token'] || '');
 
     const tokenRecord = await prisma.documentUploadToken.findUnique({
       where: { token },
@@ -664,7 +664,7 @@ export const validateUploadToken = async (req: Request, res: Response): Promise<
  */
 export const uploadViaToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const token = String(req.params.token);
+    const token = String(req.params.token || req.headers['x-upload-token'] || '');
     const documentId = String(req.query.documentId || '');
 
     if (!documentId) {

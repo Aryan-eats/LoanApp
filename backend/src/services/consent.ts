@@ -1,7 +1,8 @@
 import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../config/prisma.js';
-import { decryptField, encryptForGPSIndia, isVaultCiphertext } from './vault.js';
+import { decryptField, encryptForGPSIndia, isEncryptedCiphertext } from './encryption.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
+import { decryptResultWithBridge } from '../utils/fieldEncryption.js';
 
 const GPS_INDIA_GRANTED_TO = 'gps_india';
 
@@ -16,7 +17,7 @@ const decryptPartnerValue = async (
   value: string | null
 ): Promise<string | null> => {
   if (!value) return null;
-  if (isVaultCiphertext(value)) return decryptField(partnerOrgId, value);
+  if (isEncryptedCiphertext(value)) return decryptField(partnerOrgId, value);
   return value;
 };
 
@@ -216,10 +217,13 @@ export const grantAccess = async (params: GrantAccessInput) => {
     throw new Error('Failed to allocate a new lead ID');
   }
 
-  return prisma.lead.findUnique({
+  const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     include: { documents: true, timeline: true, consentGrants: true },
   });
+
+  await decryptResultWithBridge('Lead', lead);
+  return lead;
 };
 
 export const verifyAccess = async ({ leadId, requestingParty }: VerifyAccessInput): Promise<boolean> => {

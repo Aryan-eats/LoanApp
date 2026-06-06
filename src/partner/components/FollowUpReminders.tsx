@@ -118,7 +118,7 @@ export default function FollowUpReminders({ leads, localLeads }: FollowUpReminde
 }
 
 // Temporary internal component, lucide check circle
-function CheckCircle(props: any) {
+function CheckCircle(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

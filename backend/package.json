@@ -6,9 +6,6 @@
   "scripts": {
     "build": "tsc",
     "build:scripts": "tsc --project tsconfig.scripts.json",
-    "vault:provision-keys": "tsx src/scripts/provisionPartnerVaultKeys.ts",
-    "vault:backfill": "tsx src/scripts/migrateVaultEncryption.ts",
-    "vault:backfill-status": "tsx src/scripts/checkVaultBackfillStatus.ts",
     "start": "node dist/index.js",
     "dev": "npx tsx watch src/index.ts",
     "test": "vitest run",

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Upload,
@@ -47,16 +47,19 @@ export default function CustomerUploadPage() {
 
     const validateToken = async () => {
       try {
-        const response = await apiClient.get(`/documents/upload-via-token/${token}`);
+        const response = await apiClient.get('/documents/upload-via-token', {
+          headers: { 'x-upload-token': token }
+        });
         if (response.data.success) {
           setTokenInfo(response.data.data);
           setState('ready');
         }
-      } catch (err: any) {
-        const data = err.response?.data;
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { code?: string; message?: string }; status?: number } };
+        const data = error.response?.data;
         if (data?.code === 'EXPIRED') {
           setState('expired');
-        } else if (err.response?.status === 404) {
+        } else if (error.response?.status === 404) {
           setState('error');
           setErrorMessage('This upload link is invalid or no longer exists.');
         } else {
@@ -93,10 +96,13 @@ export default function CustomerUploadPage() {
         formData.append('document', file);
 
         const response = await apiClient.post(
-          `/documents/upload-via-token/${token}?documentId=${docId}`,
+          `/documents/upload-via-token?documentId=${docId}`,
           formData,
           {
-            headers: { 'Content-Type': 'multipart/form-data' },
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              'x-upload-token': token
+            },
             onUploadProgress: (progressEvent) => {
               if (progressEvent.total) {
                 setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
@@ -117,8 +123,9 @@ export default function CustomerUploadPage() {
             return { ...prev, documents: updatedDocs };
           });
         }
-      } catch (err: any) {
-        const data = err.response?.data;
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { message?: string } } };
+        const data = error.response?.data;
         alert(data?.message || 'Upload failed. Please try again.');
       } finally {
         setUploadingDocId(null);

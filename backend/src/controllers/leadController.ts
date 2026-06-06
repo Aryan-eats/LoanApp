@@ -83,35 +83,6 @@ const matchesLeadFilters = (
   return true;
 };
 
-const isVaultReadFailure = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  return /vault|transit\/decrypt|decrypt failed|key .* not found|ciphertext/i.test(message);
-};
-
-const getAdminLeadsFallback = async (
-  baseWhere: Record<string, unknown>,
-  sortField: string,
-  sortOrder: 'asc' | 'desc',
-  skip: number,
-  limit: number
-): Promise<{ leads: LeadWithRelations[]; total: number }> => {
-  const [leads, total] = await Promise.all([
-    basePrisma.lead.findMany({
-      where: baseWhere,
-      orderBy: { [sortField]: sortOrder },
-      skip,
-      take: limit,
-      include: leadInclude,
-    }),
-    basePrisma.lead.count({ where: baseWhere }),
-  ]);
-
-  return {
-    leads: leads.map((lead) => redactLeadPII(lead as LeadWithRelations)),
-    total,
-  };
-};
-
 /**
  * @desc    Create a new lead
  * @route   POST /api/partner/leads
@@ -392,26 +363,7 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
         ]);
       }
     } catch (error) {
-      if (req.user.role === 'partner' || !isVaultReadFailure(error)) {
         throw error;
-      }
-
-      if (search || source || scoreBand) {
-        res.status(503).json({
-          success: false,
-          message: 'Lead search is unavailable until Vault decryption is restored',
-        });
-        return;
-      }
-
-      console.warn('Get leads fallback: Vault decryption unavailable, returning redacted admin list');
-      ({ leads, total } = await getAdminLeadsFallback(
-        baseWhere,
-        sortField,
-        sortOrder,
-        skip,
-        limit
-      ));
     }
 
     const leadsForResponse = req.user.role === 'partner'

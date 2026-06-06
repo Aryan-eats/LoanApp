@@ -104,7 +104,6 @@ model Partner {
   partnerType      String            @default("freelancer") @map("partner_type")
   status           String            @default("active")
   ownerUserId      String            @map("owner_user_id") @db.Uuid
-  vaultKeyRef      String            @map("vault_key_ref")
   contactEmail     String?           @map("contact_email")
   contactPhone     String?           @map("contact_phone")
   city             String?

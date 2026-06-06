@@ -141,13 +141,11 @@ function LeadCard({ lead }: { lead: Lead }) {
 export default function CustomerDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
   const [detail, setDetail] = useState<PartnerCustomerDetailResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(customerId));
+  const [error, setError] = useState<string | null>(customerId ? null : 'Customer id is missing.');
 
   useEffect(() => {
     if (!customerId) {
-      setError('Customer id is missing.');
-      setIsLoading(false);
       return;
     }
 
