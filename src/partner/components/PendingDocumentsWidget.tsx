@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Lead } from '../types/partner-dashboard';
+import type { DocumentType, Lead } from '../types/partner-dashboard';
 import { FileWarning, Clock, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { usePartnerTheme } from './PartnerThemeProvider';
@@ -19,7 +19,7 @@ export default function PendingDocumentsWidget({ leads }: PendingDocumentsWidget
         const days = Math.floor((now.getTime() - new Date(l.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
         // Find missing docs from lead.documents
         const uploadedTypes = l.documents.map(d => d.type);
-        const requiredTypes = ['pan_card', 'aadhaar_front', 'bank_statement']; // simple heuristic for presentation
+        const requiredTypes: DocumentType[] = ['pan_card', 'aadhaar_front', 'bank_statement']; // simple heuristic for presentation
         const missing = requiredTypes.find(t => !uploadedTypes.includes(t)) || 'Required Document';
         const formattedMissing = missing.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
         
