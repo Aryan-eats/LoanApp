@@ -55,6 +55,7 @@ export const getRedisClient = async (): Promise<Redis> => {
   }
 
   const redis = new Redis(redisUrl, {
+    tls: {},
     lazyConnect: true,
     maxRetriesPerRequest: 3,
     connectTimeout: 5_000, // fail fast if Redis is unreachable
