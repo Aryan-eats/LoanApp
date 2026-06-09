@@ -74,7 +74,7 @@ app.use(
     ],
   }),
 );
-app.options('*', cors());
+app.options('/{*path}', cors());
 // Security Middleware
 app.use(
   helmet({
