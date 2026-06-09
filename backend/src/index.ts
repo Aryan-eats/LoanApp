@@ -49,6 +49,11 @@ const getAllowedOrigins = (): string[] => {
     process.env.ALLOWED_ORIGINS ||
     process.env.FRONTEND_URL ||
     "http://localhost:5173";
+  console.log("ALLOWED_ORIGINS env:", process.env.ALLOWED_ORIGINS);
+  console.log(
+    "Parsed origins:",
+    origins.split(",").map((o) => o.trim()),
+  );
   return origins.split(",").map((o) => o.trim());
 };
 
@@ -74,7 +79,7 @@ app.use(
     ],
   }),
 );
-app.options('/{*path}', cors());
+app.options("/{*path}", cors());
 // Security Middleware
 app.use(
   helmet({
