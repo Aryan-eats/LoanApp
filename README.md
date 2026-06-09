@@ -1,79 +1,106 @@
-LoanApp
+# LoanApp
+
 A full-stack loan management platform for partners and administrators. The repository combines a public lead-capture site, an internal admin console, and a partner dashboard with a built-in client management system.
-Live Demo: https://moneybiz.vercel.app/
 
-Test Credentials
-Role         Email                Password 
-Admin     admin@loanapp.com       Admin@123456
-Partner   testing@test.com        Testing@123
+**Live Demo:** https://moneybiz.vercel.app/
 
-Admin accounts can manage partners, leads, banks, documents, and audit logs. Partner accounts can submit leads, upload documents, and track commissions.
+---
 
+## Test Credentials
 
-Overview
+| Role    | Email                  | Password        |
+|---------|------------------------|-----------------|
+| Admin   | admin@loanapp.com      | Admin@123456    |
+| Partner | testing@test.com       | Testing@123     |
+
+> Admin accounts can manage partners, leads, banks, documents, and audit logs. Partner accounts can submit leads, upload documents, and track commissions.
+
+---
+
+## Overview
+
 Website visitors can submit loan enquiries through a public-facing form. Partners onboard, manage their pipeline, and track commissions through a dedicated dashboard. Admin users review and moderate everything — partner approvals, lead assignments, document verification, bank management, and audit activity.
 
-Stack
-Frontend
+---
 
-React 19, Vite 7, TypeScript 5
-Tailwind CSS v4, Framer Motion
-React Router 7, Zustand
-Axios, Vitest + React Testing Library
+## Stack
 
-Backend
+**Frontend**
+- React 19, Vite 7, TypeScript 5
+- Tailwind CSS v4, Framer Motion
+- React Router 7, Zustand
+- Axios, Vitest + React Testing Library
 
-Node.js + Express 5, TypeScript
-Prisma ORM 7, PostgreSQL 16, Redis 7
-JWT (access + refresh token), bcryptjs
-Helmet, CORS, express-validator
+**Backend**
+- Node.js + Express 5, TypeScript
+- Prisma ORM 7, PostgreSQL 16, Redis 7
+- JWT (access + refresh token), bcryptjs
+- Helmet, CORS, express-validator
 
-Infrastructure
+**Infrastructure**
+- Docker + Docker Compose
+- Nginx (static serving + reverse proxy)
+- Cloudflare R2 (document storage via AWS S3 SDK)
 
-Docker + Docker Compose
-Nginx (static serving + reverse proxy)
-Cloudflare R2 (document storage via AWS S3 SDK)
+---
 
+## Architecture
 
-Architecture
 The system is a split frontend/backend architecture with role-specific user journeys and separate persistence layers for relational data, ephemeral state, and binary documents.
+
 Browser
-  → React app (public + admin + partner)
-  → REST API (/api)
-  → Express middleware stack
-  → Route handlers → Services → Prisma ORM → PostgreSQL
+→ React app (public + admin + partner)
+→ REST API (/api)
+→ Express middleware stack
+→ Route handlers → Services → Prisma ORM → PostgreSQL
 
 Supporting:
-  → Redis        (rate limiting, OTP flows, caching)
-  → Cloudflare R2 (document object storage)
-  → Nginx        (frontend hosting + API proxy)
-Core Flows
-Public flow — Visitors submit loan enquiries via the public site. Leads are stored in PostgreSQL and associated with a system partner for downstream handling.
-Partner flow — Partners register, wait for approval, then log in to submit leads, upload documents, and track their pipeline and commissions.
-Admin flow — Admins manage partners, leads, banks, document verification, required-document templates, user access, and audit logs.
-Document flow — Files are stored in Cloudflare R2. Metadata, review state, ownership, and workflow status live in PostgreSQL.
+→ Redis         (rate limiting, OTP flows, caching)
+→ Cloudflare R2 (document object storage)
+→ Nginx         (frontend hosting + API proxy)
 
-Security
+### Core Flows
 
-Encryption at rest — Sensitive fields (Aadhaar, PAN, account details, tokens) are encrypted via a Prisma extension
-Auth — Short-lived JWT access tokens + refresh tokens in httpOnly cookies to reduce XSS exposure
-Rate limiting — Redis-backed, distributed-friendly; degrades gracefully on Redis failure instead of blocking requests
-Security headers — Helmet with CSP and HSTS; x-powered-by disabled
-CORS — Allowlisted origins with credentialed request support
-Uploads — Hardened middleware; documents stored as objects, not database blobs
-Graceful shutdown — Controlled teardown for HTTP, Prisma, Redis, and R2 connections
-Tests — Security-focused test coverage including encryption, cookie security, PII redaction, upload validation, and spoofing scenarios
+**Public flow** — Visitors submit loan enquiries via the public site. Leads are stored in PostgreSQL and associated with a system partner for downstream handling.
 
+**Partner flow** — Partners register, wait for approval, then log in to submit leads, upload documents, and track their pipeline and commissions.
 
-Design Decisions
-PostgreSQL + Prisma over MongoDB — The workflow-driven nature of the product (leads, documents, timelines, approvals, commissions, audit events) required strong relational integrity and queryable status transitions.
-Split storage model — Structured records in PostgreSQL, transient state in Redis, binary files in Cloudflare R2. Each layer does the job it's best suited for.
-JWT + refresh cookie pattern — Short-lived access tokens limit exposure on leak. Refresh tokens in httpOnly cookies avoid storing long-lived credentials in localStorage.
-Layered backend — Routes, controllers, services, config, and utilities are kept separate to make the codebase testable and independently evolvable.
-Workflow state modeled explicitly — Leads track current status while timeline tables preserve the full transition history — better than mutable status columns alone for admin-heavy systems.
-Redis-backed rate limiting — Works across instances when Redis is healthy; designed to degrade safely when it isn't.
+**Admin flow** — Admins manage partners, leads, banks, document verification, required-document templates, user access, and audit logs.
 
-Project Structure
+**Document flow** — Files are stored in Cloudflare R2. Metadata, review state, ownership, and workflow status live in PostgreSQL.
+
+---
+
+## Security
+
+- **Encryption at rest** — Sensitive fields (Aadhaar, PAN, account details, tokens) are encrypted via a Prisma extension
+- **Auth** — Short-lived JWT access tokens + refresh tokens in `httpOnly` cookies to reduce XSS exposure
+- **Rate limiting** — Redis-backed, distributed-friendly; degrades gracefully on Redis failure instead of blocking requests
+- **Security headers** — Helmet with CSP and HSTS; `x-powered-by` disabled
+- **CORS** — Allowlisted origins with credentialed request support
+- **Uploads** — Hardened middleware; documents stored as objects, not database blobs
+- **Graceful shutdown** — Controlled teardown for HTTP, Prisma, Redis, and R2 connections
+- **Tests** — Security-focused coverage including encryption, cookie security, PII redaction, upload validation, and spoofing scenarios
+
+---
+
+## Design Decisions
+
+**PostgreSQL + Prisma over MongoDB** — The workflow-driven nature of the product (leads, documents, timelines, approvals, commissions, audit events) required strong relational integrity and queryable status transitions.
+
+**Split storage model** — Structured records in PostgreSQL, transient state in Redis, binary files in Cloudflare R2. Each layer does the job it's best suited for.
+
+**JWT + refresh cookie pattern** — Short-lived access tokens limit exposure on leak. Refresh tokens in `httpOnly` cookies avoid storing long-lived credentials in `localStorage`.
+
+**Layered backend** — Routes, controllers, services, config, and utilities are kept separate to make the codebase testable and independently evolvable.
+
+**Workflow state modeled explicitly** — Leads track current status while timeline tables preserve the full transition history — better than mutable status columns alone for admin-heavy systems.
+
+**Redis-backed rate limiting** — Works across instances when Redis is healthy; designed to degrade safely when it isn't.
+
+---
+
+## Project Structure
 loan-app/
 ├── src/                      # React frontend
 │   ├── admin/                # Admin dashboard
@@ -87,7 +114,7 @@ loan-app/
 │   ├── src/
 │   │   ├── config/           # Prisma, Redis, R2, app config
 │   │   ├── controllers/      # Request handlers
-│   │   ├── middleware/        # Auth, validation, uploads, rate limits
+│   │   ├── middleware/       # Auth, validation, uploads, rate limits
 │   │   ├── routes/           # Express routes
 │   │   ├── services/         # Business logic
 │   │   ├── utils/            # Tokens, encryption, helpers
@@ -100,9 +127,14 @@ loan-app/
 ├── Dockerfile
 └── nginx.conf
 
-Getting Started
-Docker (Recommended)
-bash# Full stack: Postgres, Redis, API, frontend
+---
+
+## Getting Started
+
+### Docker (Recommended)
+
+```bash
+# Full stack: Postgres, Redis, API, frontend
 docker compose up
 
 # Infra only (run apps locally)
@@ -114,16 +146,19 @@ docker compose --profile dev up db redis backend-dev frontend-dev
 # Tear down
 docker compose down
 docker compose down -v   # also removes volumes
+```
 
-Frontend: http://localhost
-API: http://localhost:5000
+- Frontend: http://localhost  
+- API: http://localhost:5000
 
+> Set `DATABASE_URL_DOCKER` in `.env` if the backend container should connect to an existing host Postgres instance. The Docker backend runs `prisma migrate deploy` on startup automatically.
 
-Set DATABASE_URL_DOCKER in .env if the backend container should connect to an existing host Postgres instance. The Docker backend runs prisma migrate deploy on startup automatically.
+### Manual Setup
 
-Manual Setup
-Prerequisites: Node.js 18+, PostgreSQL 14+, Redis 6+
-bash# Backend
+**Prerequisites:** Node.js 18+, PostgreSQL 14+, Redis 6+
+
+```bash
+# Backend
 cd backend
 npm install
 cp .env.example .env
@@ -136,10 +171,16 @@ cd ..
 npm install
 cp .env.example .env
 npm run dev
-Set VITE_API_URL in the root .env if the API runs at a non-default address.
+```
 
-Scripts
-bash# Root
+Set `VITE_API_URL` in the root `.env` if the API runs at a non-default address.
+
+---
+
+## Scripts
+
+```bash
+# Root
 npm run dev       # Start frontend dev server
 npm run build     # Production build
 npm run lint      # Lint
@@ -151,20 +192,31 @@ cd backend
 npm run dev       # Start backend dev server
 npm run build     # Compile TypeScript
 npm test          # Backend tests
+```
 
-Testing
-bashnpm test               # Frontend
+---
+
+## Testing
+
+```bash
+npm test                # Frontend
 cd backend && npm test  # Backend
+```
+
 Frontend tests cover hooks, API clients, auth store behavior, modal logic, and calculation logic. Backend tests cover auth, JWT handling, Redis integration, encryption, cookie security, audit integrity, input sanitisation, upload hardening, and PII redaction.
 
-Documentation
+---
 
-docs/api.md — API reference
-docs/database.md — Schema and data model
-production/security.md — Security hardening notes
-production/review.md — Pre-deploy review checklist
-production/checklist.md — Production readiness checklist
+## Documentation
 
+- `docs/api.md` — API reference
+- `docs/database.md` — Schema and data model
+- `production/security.md` — Security hardening notes
+- `production/review.md` — Pre-deploy review
+- `production/checklist.md` — Production readiness checklist
 
-License
+---
+
+## License
+
 MIT
