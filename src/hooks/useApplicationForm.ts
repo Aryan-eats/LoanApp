@@ -84,7 +84,6 @@ export const useApplicationForm = () => {
       const result = await createLead({
         fullName: formData.name,
         phone: formData.phone,
-        email: '', // Email is optional in the form
         city: formData.city,
         // Use loanSubType if available, otherwise fallback to loanType (Category)
         // This makes subType optional effectively

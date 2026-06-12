@@ -14,7 +14,7 @@ export interface CreateLeadData {
   // Client details
   fullName: string;
   phone: string;
-  email: string;
+  email?: string;
   dateOfBirth?: string;
   gender?: string;
   panNumber?: string;
