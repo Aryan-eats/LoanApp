@@ -16,6 +16,9 @@ const REDIS_RETRY_COOLDOWN_MS = 30_000;
 
 const isRetryCooldownActive = (): boolean => Date.now() < redisRetryAfter;
 
+const shouldUseRedisTls = (redisUrl: string): boolean =>
+  redisUrl.startsWith('rediss://') || process.env.REDIS_TLS === 'true';
+
 const clearClientReference = (instance: Redis): void => {
   if (client === instance) {
     client = null;
@@ -55,7 +58,7 @@ export const getRedisClient = async (): Promise<Redis> => {
   }
 
   const redis = new Redis(redisUrl, {
-    tls: {},
+    ...(shouldUseRedisTls(redisUrl) ? { tls: {} } : {}),
     lazyConnect: true,
     maxRetriesPerRequest: 3,
     connectTimeout: 5_000, // fail fast if Redis is unreachable

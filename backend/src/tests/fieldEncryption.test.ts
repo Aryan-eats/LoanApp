@@ -1,32 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const encode = (value: string): string => Buffer.from(value, 'utf8').toString('base64');
-
-const { encryptForGPSIndia, decryptAsGPSIndia, encryptField, decryptField } = vi.hoisted(() => ({
-  encryptForGPSIndia: vi.fn(
-    async (value: string) => `enc:v1:${Buffer.from(value, 'utf8').toString('base64')}`
-  ),
-  decryptAsGPSIndia: vi.fn(async (value: string) => {
-    const payload = value.split(':').at(-1);
-    return Buffer.from(payload ?? '', 'base64').toString('utf8');
-  }),
-  encryptField: vi.fn(
-    async (_partnerOrgId: string, value: string) =>
-      `enc:v1:${Buffer.from(value, 'utf8').toString('base64')}`
-  ),
-  decryptField: vi.fn(async (_partnerOrgId: string, value: string) => {
-    const payload = value.split(':').at(-1);
-    return Buffer.from(payload ?? '', 'base64').toString('utf8');
-  }),
-}));
-
-vi.mock('../services/encryption.js', () => ({
-  encryptForGPSIndia,
-  decryptAsGPSIndia,
-  encryptField,
-  decryptField,
-  isEncryptedCiphertext: (value: string) => value.startsWith('enc:v1:'),
-}));
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   decryptResultWithBridge,
@@ -34,10 +6,13 @@ import {
   encryptWhere,
   prepareReadArgsForBridge,
 } from '../utils/fieldEncryption.js';
+import { encryptField, encryptForGPSIndia } from '../services/encryption.js';
+
+const TEST_FIELD_KEY = Buffer.alloc(32, 7).toString('base64');
 
 describe('field encryption', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    process.env.FIELD_ENCRYPTION_KEY = TEST_FIELD_KEY;
   });
 
   it('encrypts covered User fields and marks the row as version 1', async () => {
@@ -50,9 +25,9 @@ describe('field encryption', () => {
     await encryptFields('User', data);
 
     expect(data.encryptionVersion).toBe(1);
-    expect(data.aadhaarNumber).toBe(`enc:v1:${encode('123412341234')}`);
+    expect(data.aadhaarNumber).not.toBe('123412341234');
+    expect(data.aadhaarNumber).toMatch(/^enc:v1:/);
     expect(data.refreshToken).toBe(refreshTokenHash);
-    expect(encryptForGPSIndia).toHaveBeenCalledTimes(1);
   });
 
   it('encrypts PartnerData with the partner transit key', async () => {
@@ -66,9 +41,12 @@ describe('field encryption', () => {
     await encryptFields('PartnerData', data);
 
     expect(data.encryptionVersion).toBe(1);
-    expect(data.fullName).toBe(`enc:v1:${encode('Jane Doe')}`);
-    expect(data.phone).toBe(`enc:v1:${encode('9999999999')}`);
-    expect(data.email).toBe(`enc:v1:${encode('jane@example.com')}`);
+    expect(data.fullName).not.toBe('Jane Doe');
+    expect(data.fullName).toMatch(/^enc:v1:/);
+    expect(data.phone).not.toBe('9999999999');
+    expect(data.phone).toMatch(/^enc:v1:/);
+    expect(data.email).not.toBe('jane@example.com');
+    expect(data.email).toMatch(/^enc:v1:/);
   });
 
   it('round-trips PartnerData through partner-key encrypt and decrypt', async () => {
@@ -96,7 +74,7 @@ describe('field encryption', () => {
 
     const cleanupPlan = prepareReadArgsForBridge('PartnerData', args);
     const record: Record<string, unknown> = {
-      fullName: `enc:v1:${encode('Jane Doe')}`,
+      fullName: await encryptField('partner-org-1', 'Jane Doe'),
       partnerOrgId: 'partner-org-1',
     };
 
@@ -110,8 +88,8 @@ describe('field encryption', () => {
 
   it('decrypts encrypted ciphertexts for result objects', async () => {
     const user = {
-      aadhaarNumber: `enc:v1:${encode('123412341234')}`,
-      refreshToken: `enc:v1:${encode('b'.repeat(64))}`,
+      aadhaarNumber: await encryptForGPSIndia('123412341234'),
+      refreshToken: await encryptForGPSIndia('b'.repeat(64)),
     };
 
     await decryptResultWithBridge('User', user);
@@ -125,8 +103,8 @@ describe('field encryption', () => {
       id: 'doc-1',
       partnerData: {
         partnerOrgId: 'partner-org-1',
-        fullName: `enc:v1:${encode('Jane Doe')}`,
-        email: `enc:v1:${encode('jane@example.com')}`,
+        fullName: await encryptField('partner-org-1', 'Jane Doe'),
+        email: await encryptField('partner-org-1', 'jane@example.com'),
       },
     };
 

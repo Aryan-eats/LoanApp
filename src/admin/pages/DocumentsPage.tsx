@@ -5,42 +5,49 @@ import {
   DocumentLeadCard,
   DocumentPreviewModal,
 } from '../components/documents';
-import { FileText, X, Plus, Loader2, Link2, Copy, Check, Clock } from 'lucide-react';
+import {
+  FileText,
+  X,
+  Plus,
+  Loader2,
+  Link2,
+  Copy,
+  Check,
+  Clock,
+  CreditCard,
+  BriefcaseBusiness,
+  Home,
+  Landmark,
+  Car,
+  Stars,
+  GraduationCap,
+  Sprout,
+  Flag,
+  ShoppingCart,
+  Zap,
+  Construction,
+} from 'lucide-react';
 import {
   getProductsByCategory,
 } from '../../data/loanProductsData';
-import {
-  CreditCard,
-  Business,
-  Home,
-  AccountBalance,
-  DriveEta,
-  Stars,
-  School,
-  Grass,
-  Flag,
-  ShoppingCart,
-  FlashOn,
-  Construction,
-} from '@mui/icons-material';
 import { useDocumentsPage } from '../hooks/useDocumentsPage';
 import type { LoanCategory } from '../../data/loanProductsData';
 
 const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'personal', label: 'Personal', icon: <CreditCard fontSize="small" /> },
-  { value: 'business', label: 'Business', icon: <Business fontSize="small" /> },
-  { value: 'home', label: 'Home', icon: <Home fontSize="small" /> },
-  { value: 'property', label: 'Property', icon: <AccountBalance fontSize="small" /> },
-  { value: 'vehicle', label: 'Vehicle', icon: <DriveEta fontSize="small" /> },
-  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars fontSize="small" /> },
-  { value: 'education', label: 'Education', icon: <School fontSize="small" /> },
-  { value: 'agriculture', label: 'Agriculture', icon: <Grass fontSize="small" /> },
-  { value: 'government', label: 'Govt. Schemes', icon: <Flag fontSize="small" /> },
-  { value: 'corporate', label: 'Corporate', icon: <AccountBalance fontSize="small" /> },
-  { value: 'consumer', label: 'Consumer', icon: <ShoppingCart fontSize="small" /> },
-  { value: 'short_term', label: 'Short-Term', icon: <FlashOn fontSize="small" /> },
-  { value: 'real_estate', label: 'Real Estate', icon: <Construction fontSize="small" /> },
-  { value: 'specialized', label: 'Specialized', icon: <FlashOn fontSize="small" /> },
+  { value: 'personal', label: 'Personal', icon: <CreditCard size={16} /> },
+  { value: 'business', label: 'Business', icon: <BriefcaseBusiness size={16} /> },
+  { value: 'home', label: 'Home', icon: <Home size={16} /> },
+  { value: 'property', label: 'Property', icon: <Landmark size={16} /> },
+  { value: 'vehicle', label: 'Vehicle', icon: <Car size={16} /> },
+  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars size={16} /> },
+  { value: 'education', label: 'Education', icon: <GraduationCap size={16} /> },
+  { value: 'agriculture', label: 'Agriculture', icon: <Sprout size={16} /> },
+  { value: 'government', label: 'Govt. Schemes', icon: <Flag size={16} /> },
+  { value: 'corporate', label: 'Corporate', icon: <Landmark size={16} /> },
+  { value: 'consumer', label: 'Consumer', icon: <ShoppingCart size={16} /> },
+  { value: 'short_term', label: 'Short-Term', icon: <Zap size={16} /> },
+  { value: 'real_estate', label: 'Real Estate', icon: <Construction size={16} /> },
+  { value: 'specialized', label: 'Specialized', icon: <Zap size={16} /> },
 ];
 
 const DocumentsPage: React.FC = () => {

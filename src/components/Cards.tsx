@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import PrefetchLink from './shared/PrefetchLink';
-import { preloadApply, preloadServices } from '../utils/routePreloaders';
 import OptimizedImage from './shared/OptimizedImage';
 import { Check, ArrowRight } from 'lucide-react';
 
@@ -100,7 +99,6 @@ const Cards: React.FC = () => {
                 </ul>
                 
                 <PrefetchLink 
-                  prefetchRoute={preloadApply}
                   to="/apply" 
                   state={{ loanType: loan.category }}
                   className="w-full py-3 rounded-lg bg-gray-50 text-[#0A2540] font-semibold text-center group-hover:bg-[#0A2540] group-hover:text-white transition-colors duration-300 flex items-center justify-center gap-2"
@@ -119,7 +117,7 @@ const Cards: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="mt-12 text-center"
         >
-           <PrefetchLink prefetchRoute={preloadServices} to="/services" className="inline-flex items-center gap-2 text-[#0A2540] font-bold hover:text-blue-700 transition-colors">
+           <PrefetchLink to="/services" className="inline-flex items-center gap-2 text-[#0A2540] font-bold hover:text-blue-700 transition-colors">
               See All Loan Categories <ArrowRight className="w-5 h-5" />
            </PrefetchLink>
         </motion.div>

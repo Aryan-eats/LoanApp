@@ -15,7 +15,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import type { LocalLead } from '../types/partner-dashboard';
-import { buildLoanTypeLabels } from '../../data/loanProducts';
+import { buildLoanTypeLabels } from '../../data/loanProductsData';
 import { localStatusConfig } from './LocalLeadStatusManager';
 
 const loanTypeLabels = buildLoanTypeLabels(true);

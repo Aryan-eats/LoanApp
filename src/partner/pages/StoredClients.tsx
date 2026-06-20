@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDebounce } from '../../hooks';
 import {
@@ -18,10 +18,11 @@ import CustomerContextPills from '../components/CustomerContextPills';
 import { useLocalLeadsStore } from '../../stores/localLeadsStore';
 import { useLeadsStore } from '../../stores/leadsStore';
 import type { LocalLead } from '../types/partner-dashboard';
-import { buildLoanTypeLabels } from '../../data/loanProducts';
+import { buildLoanTypeLabels } from '../../data/loanProductsData';
 import { resolveConsentSummary, resolveCustomerId, resolveCustomerKey, resolveLeadScore, resolveLeadSource, resolveScoreBand } from '../utils/customerCrm';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
+const PAGE_SIZE = 25;
 
 const formatCurrency = (amount: number): string => {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
@@ -42,6 +43,7 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
   const [notesValue, setNotesValue] = useState('');
   const [selectedLeadForModal, setSelectedLeadForModal] = useState<LocalLead | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const {
     leads: localLeads,
@@ -83,10 +85,26 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
     setIsModalOpen(true);
   };
 
-  const filteredLeads = localLeads.filter((l) => {
+  const filteredLeads = useMemo(() => localLeads.filter((l) => {
     const q = debouncedSearchQuery.toLowerCase();
     return !q || l.fullName.toLowerCase().includes(q) || l.phone.includes(q);
-  });
+  }), [debouncedSearchQuery, localLeads]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredLeads.slice(start, start + PAGE_SIZE);
+  }, [currentPage, filteredLeads]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <>
@@ -146,7 +164,7 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {filteredLeads.map((lead) => (
+                  {paginatedLeads.map((lead) => (
                     <tr key={lead.id} className="hover:bg-white/5 transition-colors">
                       <td className="px-5 py-4">
                         <p className="font-medium text-slate-200">{lead.fullName}</p>
@@ -239,6 +257,33 @@ export default function StoredClients({ onSubmitSuccess }: LocalClientsTabProps)
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="px-5 py-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                Showing <span className="font-medium text-slate-300">{paginatedLeads.length}</span> of{' '}
+                <span className="font-medium text-slate-300">{filteredLeads.length}</span> clients
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-300 hover:bg-white/5 disabled:text-slate-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-slate-500">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-300 hover:bg-white/5 disabled:text-slate-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         )

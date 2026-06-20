@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import PrefetchLink from './shared/PrefetchLink';
-import { preloadServices, preloadOnboarding } from '../utils/routePreloaders';
 
 const Banner: React.FC = () => {
   const shouldReduceMotion = useReducedMotion();
@@ -31,10 +30,10 @@ const Banner: React.FC = () => {
           transition={{ duration: shouldReduceMotion ? 0.15 : 0.4, ease: "easeOut", delay: shouldReduceMotion ? 0 : 0.18 }}
           className="flex justify-center gap-4"
         >
-          <PrefetchLink prefetchRoute={preloadServices} to="/services" className="bg-white text-black hover:bg-gray-100 font-bold py-3 px-8 rounded-full shadow-lg transition duration-200 sm:transform sm:hover:scale-105">
+          <PrefetchLink to="/services" className="bg-white text-black hover:bg-gray-100 font-bold py-3 px-8 rounded-full shadow-lg transition duration-200 sm:transform sm:hover:scale-105">
             Explore Categories
           </PrefetchLink>
-          <PrefetchLink prefetchRoute={preloadOnboarding} to="/onboarding" className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-black font-bold py-3 px-8 rounded-full transition duration-200 animate-pulse-glow sm:transform sm:hover:scale-105">
+          <PrefetchLink to="/onboarding" className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-black font-bold py-3 px-8 rounded-full transition duration-200 animate-pulse-glow sm:transform sm:hover:scale-105">
             Become a Partner
           </PrefetchLink>
         </motion.div>

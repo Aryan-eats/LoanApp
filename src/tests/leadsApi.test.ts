@@ -30,20 +30,24 @@ describe('leadsApi', () => {
   });
 
   it('getLeads uses partner endpoint by default', async () => {
-    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { success: true } });
+    const apiResponse = { success: true, data: { leads: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } } };
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: apiResponse });
 
-    await getLeads({ page: 1, limit: 10 });
+    const result = await getLeads({ page: 1, limit: 10 });
 
+    expect(result).toEqual(apiResponse);
     expect(apiClient.get).toHaveBeenCalledWith('/partner/leads', {
       params: { page: 1, limit: 10 },
     });
   });
 
   it('getLeads uses admin endpoint when isAdmin=true', async () => {
-    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { success: true } });
+    const apiResponse = { success: true, data: { leads: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } } };
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: apiResponse });
 
-    await getLeads({}, true);
+    const result = await getLeads({}, true);
 
+    expect(result).toEqual(apiResponse);
     expect(apiClient.get).toHaveBeenCalledWith('/admin/leads', { params: {} });
   });
 
@@ -61,7 +65,7 @@ describe('leadsApi', () => {
   it('createLead uses partner endpoint by default', async () => {
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { success: true } });
 
-    await createLead({
+    const result = await createLead({
       fullName: 'A User',
       phone: '9999999999',
       email: 'a@b.com',
@@ -69,13 +73,14 @@ describe('leadsApi', () => {
       loanAmount: 2500000,
     });
 
+    expect(result).toEqual({ success: true });
     expect(apiClient.post).toHaveBeenCalledWith('/partner/leads', expect.objectContaining({ fullName: 'A User' }));
   });
 
   it('createLead uses public endpoint when isPartner=false', async () => {
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { success: true } });
 
-    await createLead(
+    const result = await createLead(
       {
         fullName: 'Public User',
         phone: '9999999999',
@@ -86,6 +91,7 @@ describe('leadsApi', () => {
       false
     );
 
+    expect(result).toEqual({ success: true });
     expect(apiClient.post).toHaveBeenCalledWith('/leads', expect.any(Object));
   });
 

@@ -1,18 +1,18 @@
 import React from 'react';
-import { CreditCard } from 'lucide-react';
 import {
-  Business,
+  CreditCard,
+  BriefcaseBusiness,
   Home,
-  AccountBalance,
-  DriveEta,
+  Landmark,
+  Car,
   Stars,
-  School,
-  Grass,
+  GraduationCap,
+  Sprout,
   Flag,
   ShoppingCart,
   Construction,
-  FlashOn,
-} from '@mui/icons-material';
+  Zap,
+} from 'lucide-react';
 import type { LoanCategory } from '../../data/loanProductsData';
 
 export type Step = 'client' | 'loan' | 'employment' | 'address' | 'consent';
@@ -26,20 +26,20 @@ export const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
 ];
 
 export const loanCategories: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'personal', label: 'Personal Loan', icon: <CreditCard fontSize="small" /> },
-  { value: 'business', label: 'Business Loan', icon: <Business fontSize="small" /> },
-  { value: 'home', label: 'Home Loan', icon: <Home fontSize="small" /> },
-  { value: 'property', label: 'Property Loan', icon: <AccountBalance fontSize="small" /> },
-  { value: 'vehicle', label: 'Vehicle Loan', icon: <DriveEta fontSize="small" /> },
-  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars fontSize="small" /> },
-  { value: 'education', label: 'Education Loan', icon: <School fontSize="small" /> },
-  { value: 'agriculture', label: 'Agriculture Loan', icon: <Grass fontSize="small" /> },
-  { value: 'government', label: 'Govt. Schemes', icon: <Flag fontSize="small" /> },
-  { value: 'corporate', label: 'Corporate Loan', icon: <AccountBalance fontSize="small" /> },
-  { value: 'consumer', label: 'Consumer Loan', icon: <ShoppingCart fontSize="small" /> },
-  { value: 'short_term', label: 'Short-Term Loan', icon: <FlashOn fontSize="small" /> },
-  { value: 'real_estate', label: 'Real Estate', icon: <Construction fontSize="small" /> },
-  { value: 'specialized', label: 'Specialized', icon: <FlashOn fontSize="small" /> },
+  { value: 'personal', label: 'Personal Loan', icon: <CreditCard size={16} /> },
+  { value: 'business', label: 'Business Loan', icon: <BriefcaseBusiness size={16} /> },
+  { value: 'home', label: 'Home Loan', icon: <Home size={16} /> },
+  { value: 'property', label: 'Property Loan', icon: <Landmark size={16} /> },
+  { value: 'vehicle', label: 'Vehicle Loan', icon: <Car size={16} /> },
+  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars size={16} /> },
+  { value: 'education', label: 'Education Loan', icon: <GraduationCap size={16} /> },
+  { value: 'agriculture', label: 'Agriculture Loan', icon: <Sprout size={16} /> },
+  { value: 'government', label: 'Govt. Schemes', icon: <Flag size={16} /> },
+  { value: 'corporate', label: 'Corporate Loan', icon: <Landmark size={16} /> },
+  { value: 'consumer', label: 'Consumer Loan', icon: <ShoppingCart size={16} /> },
+  { value: 'short_term', label: 'Short-Term Loan', icon: <Zap size={16} /> },
+  { value: 'real_estate', label: 'Real Estate', icon: <Construction size={16} /> },
+  { value: 'specialized', label: 'Specialized', icon: <Zap size={16} /> },
 ];
 
 export const employmentTypes = [

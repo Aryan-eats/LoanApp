@@ -39,11 +39,6 @@ Desktop.ini
 # Docker
 docker-compose.override.yml
 
-# Internal docs
-production/
-docs/
-.worktrees/
-
 # Test coverage
 coverage/
 backend/coverage/
@@ -57,9 +52,21 @@ backend/coverage/
 # Generated artifacts
 git-history.txt
 
-# Production documentation (internal only)
+# Internal docs / local workspaces
+docs/
+production/
+.worktrees/
+
+# Local AI / agent / MCP tooling
 .agent/
+.agents/
+.ai/
+.codex/
 .gemini/
+.mcp/
+.playwright-mcp/
+.remember/
+.windsurf/
 .cursor/
 .cursorignore
 .cursorindexingignore
@@ -68,6 +75,12 @@ git-history.txt
 .github/copilot-instructions.md
 .aider*
 .claude/
+AGENTS.md
 CLAUDE.md
-production/
-docs/
+codex/
+mcp/
+ai/
+*.prompt
+*.prompt.md
+*.prompts.md
+*.chat.md

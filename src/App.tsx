@@ -1,6 +1,5 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Outlet } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -8,24 +7,19 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SessionExpiryWarningModal from './components/SessionExpiryWarningModal';
 import PageTransition from './components/shared/PageTransition';
 import { PageSkeleton } from './components/shared/SkeletonLoader';
-import {
-  preloadHome, preloadWhyUs, preloadServices, preloadAboutUs,
-  preloadContact, preloadCalculator, preloadOnboarding, preloadLogIn,
-  preloadBestOffers, preloadForbidden, preloadApply
-} from './utils/routePreloaders';
 
 // Lazy load pages for better performance
-const Home = lazy(preloadHome);
-const WhyUs = lazy(preloadWhyUs);
-const Services = lazy(preloadServices);
-const AboutUs = lazy(preloadAboutUs);
-const Contact = lazy(preloadContact);
-const Calculator = lazy(preloadCalculator);
-const PartnerOnboarding = lazy(preloadOnboarding);
-const LogIn = lazy(preloadLogIn);
-const BestOffers = lazy(preloadBestOffers);
-const Forbidden = lazy(preloadForbidden);
-const ApplicationForm = lazy(preloadApply);
+const Home = lazy(() => import('./pages/Home'));
+const WhyUs = lazy(() => import('./pages/WhyUs'));
+const Services = lazy(() => import('./pages/Services'));
+const AboutUs = lazy(() => import('./pages/AboutUs'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Calculator = lazy(() => import('./pages/Calculator'));
+const PartnerOnboarding = lazy(() => import('./pages/PartnerOnboarding'));
+const LogIn = lazy(() => import('./pages/LogIn'));
+const BestOffers = lazy(() => import('./pages/BestOffers'));
+const Forbidden = lazy(() => import('./pages/Forbidden'));
+const ApplicationForm = lazy(() => import('./components/ApplicationForm'));
 const CustomerUploadPage = lazy(() => import('./pages/CustomerUploadPage'));
 
 // Lazy load admin pages
@@ -78,11 +72,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-const AnimatedRoutes = () => {
-  const location = useLocation();
+const AppRoutes = () => {
   return (
-    <AnimatePresence mode="sync" initial={false}>
-      <Routes location={location} key={location.pathname}> 
+      <Routes>
         {/* Public routes */}
         <Route path="/" element={<Home />} />
         <Route path="/why-us" element={<WhyUs />} />
@@ -128,7 +120,6 @@ const AnimatedRoutes = () => {
           <Route path="support" element={<SupportPage />} />
         </Route>
       </Routes>
-    </AnimatePresence>
   );
 };
 
@@ -138,7 +129,7 @@ function App() {
       <Router>
         <AppLayout>
           <Suspense fallback={<PageSkeleton />}>
-            <AnimatedRoutes />
+            <AppRoutes />
           </Suspense>
         </AppLayout>
         <SessionExpiryWarningModal />

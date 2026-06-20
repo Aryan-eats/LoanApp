@@ -12,6 +12,8 @@ import * as partnerDataApi from '../api/partnerDataApi';
 
 export type { LocalLead, LocalLeadStatus };
 
+const LOCAL_LEADS_CACHE_TTL = 30_000;
+
 // ---- localStorage migration helpers ----------------------------------------
 
 const LS_KEY = 'partner-local-leads';
@@ -50,11 +52,12 @@ interface LocalLeadsState {
   isLoading: boolean;
   hasFetched: boolean;
   error: string | null;
+  lastFetchedAt: number;
 }
 
 interface LocalLeadsActions {
   /** Fetch all stored clients from the backend */
-  fetchLeads: () => Promise<void>;
+  fetchLeads: (force?: boolean) => Promise<void>;
   /** Add a new stored client (persists to DB) */
   addLead: (data: Omit<LocalLead, 'id' | 'createdAt' | 'updatedAt'>) => Promise<LocalLead | null>;
   /** Update status (persists to DB) */
@@ -72,6 +75,8 @@ interface LocalLeadsActions {
 
 type LocalLeadsStore = LocalLeadsState & LocalLeadsActions;
 
+let inflight: Promise<void> | null = null;
+
 // ---- Store implementation --------------------------------------------------
 
 export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
@@ -79,78 +84,94 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
   isLoading: false,
   hasFetched: false,
   error: null,
+  lastFetchedAt: 0,
 
-  fetchLeads: async () => {
-    // Don't refetch if we already have data (unless called explicitly)
-    if (get().isLoading) return;
-    set({ isLoading: true, error: null });
+  fetchLeads: async (force = false) => {
+    const { hasFetched, lastFetchedAt } = get();
+    if (!force && hasFetched && Date.now() - lastFetchedAt < LOCAL_LEADS_CACHE_TTL) {
+      return;
+    }
 
-    try {
-      // 1. Migrate any leftover localStorage data first
-      if (!isLocalStorageMigrated()) {
-        const legacyLeads = readLegacyLocalStorageLeads();
-        if (legacyLeads.length > 0) {
-          try {
-            await partnerDataApi.bulkCreateStoredClients(
-              legacyLeads.map((l) => ({
-                fullName: l.fullName,
-                phone: l.phone,
-                email: l.email,
-                dateOfBirth: l.dateOfBirth,
-                gender: l.gender,
-                panNumber: l.panNumber,
-                employmentType: l.employmentType,
-                monthlyIncome: l.monthlyIncome,
-                companyName: l.companyName,
-                designation: l.designation,
-                workExperience: l.workExperience,
-                city: l.city,
-                pincode: l.pincode,
-                state: l.state,
-                currentAddress: l.currentAddress,
-                residenceType: l.residenceType,
-                loanCategory: l.loanCategory,
-                loanType: l.loanType,
-                loanAmount: l.loanAmount,
-                tenure: l.tenure,
-                loanPurpose: l.loanPurpose,
-                localStatus: l.localStatus,
-                notes: l.notes,
-                createdAt: l.createdAt,
-              }))
-            );
+    if (inflight) {
+      return inflight;
+    }
+
+    const run = async () => {
+      set({ isLoading: true, error: null });
+
+      try {
+        // 1. Migrate any leftover localStorage data first
+        if (!isLocalStorageMigrated()) {
+          const legacyLeads = readLegacyLocalStorageLeads();
+          if (legacyLeads.length > 0) {
+            try {
+              await partnerDataApi.bulkCreateStoredClients(
+                legacyLeads.map((l) => ({
+                  fullName: l.fullName,
+                  phone: l.phone,
+                  email: l.email,
+                  dateOfBirth: l.dateOfBirth,
+                  gender: l.gender,
+                  panNumber: l.panNumber,
+                  employmentType: l.employmentType,
+                  monthlyIncome: l.monthlyIncome,
+                  companyName: l.companyName,
+                  designation: l.designation,
+                  workExperience: l.workExperience,
+                  city: l.city,
+                  pincode: l.pincode,
+                  state: l.state,
+                  currentAddress: l.currentAddress,
+                  residenceType: l.residenceType,
+                  loanCategory: l.loanCategory,
+                  loanType: l.loanType,
+                  loanAmount: l.loanAmount,
+                  tenure: l.tenure,
+                  loanPurpose: l.loanPurpose,
+                  localStatus: l.localStatus,
+                  notes: l.notes,
+                  createdAt: l.createdAt,
+                }))
+              );
+              markLocalStorageMigrated();
+            } catch (err) {
+              console.error('Failed to migrate localStorage leads to DB. Will retry next load.', err);
+              // Don't mark as migrated so we retry next time
+            }
+          } else {
+            // Nothing to migrate, mark done
             markLocalStorageMigrated();
-          } catch (err) {
-            console.error('Failed to migrate localStorage leads to DB. Will retry next load.', err);
-            // Don't mark as migrated so we retry next time
           }
-        } else {
-          // Nothing to migrate, mark done
-          markLocalStorageMigrated();
         }
-      }
 
-      // 2. Fetch from backend
-      const res = await partnerDataApi.getStoredClients();
-      if (res.success && res.data) {
-        set({ leads: res.data, hasFetched: true, error: null });
-      } else {
+        // 2. Fetch from backend
+        const res = await partnerDataApi.getStoredClients();
+        if (res.success && res.data) {
+          set({ leads: res.data, hasFetched: true, error: null, lastFetchedAt: Date.now() });
+        } else {
+          set({
+            leads: [],
+            hasFetched: true,
+            error: res.message || 'Failed to fetch stored clients',
+            lastFetchedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.error('fetchLeads (stored clients) error:', err);
         set({
           leads: [],
           hasFetched: true,
-          error: res.message || 'Failed to fetch stored clients',
+          error: err instanceof Error ? err.message : 'Failed to fetch stored clients',
+          lastFetchedAt: Date.now(),
         });
+      } finally {
+        set({ isLoading: false });
+        inflight = null;
       }
-    } catch (err) {
-      console.error('fetchLeads (stored clients) error:', err);
-      set({
-        leads: [],
-        hasFetched: true,
-        error: err instanceof Error ? err.message : 'Failed to fetch stored clients',
-      });
-    } finally {
-      set({ isLoading: false });
-    }
+    };
+
+    inflight = run();
+    return inflight;
   },
 
   addLead: async (data) => {
@@ -206,7 +227,7 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
     } catch (err) {
       console.error('updateStatus error:', err);
       // Revert by refetching
-      get().fetchLeads();
+      get().fetchLeads(true);
     }
   },
 
@@ -222,7 +243,7 @@ export const useLocalLeadsStore = create<LocalLeadsStore>()((set, get) => ({
       await partnerDataApi.updateStoredClientNotes(id, notes);
     } catch (err) {
       console.error('updateNotes error:', err);
-      get().fetchLeads();
+      get().fetchLeads(true);
     }
   },
 

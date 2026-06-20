@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDebounce } from '../../hooks';
 import { Link } from 'react-router-dom';
 import {
@@ -14,21 +14,19 @@ import {
   Clock,
   CheckCircle,
   IndianRupee,
-} from 'lucide-react';
-import {
   CreditCard,
-  Business,
+  BriefcaseBusiness,
   Home,
-  AccountBalance,
-  DriveEta,
+  Landmark,
+  Car,
   Stars,
-  School,
-  Grass,
+  GraduationCap,
+  Sprout,
   Flag,
   ShoppingCart,
   Construction,
-  FlashOn,
-} from '@mui/icons-material';
+  Zap,
+} from 'lucide-react';
 import StatusBadge from '../../components/shared/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import CustomerContextPills from '../components/CustomerContextPills';
@@ -36,15 +34,15 @@ import { useLeadsStore } from '../../stores/leadsStore';
 import type { Lead, LeadStatus, LoanType } from '../types/partner-dashboard';
 import {
   buildLoanTypeLabels,
-  buildLoanTypeOptions,
   getLoanProduct,
-  getLoanIcon,
   categoryLabels,
+  loanProducts,
   type LoanCategory,
-} from '../../data/loanProducts';
+} from '../../data/loanProductsData';
 import { resolveConsentSummary, resolveCustomerId, resolveCustomerKey, resolveLeadScore, resolveLeadSource, resolveScoreBand } from '../utils/customerCrm';
 
 const loanTypeLabels = buildLoanTypeLabels(true);
+const PAGE_SIZE = 25;
 
 const statusOptions: { value: LeadStatus; label: string }[] = [
   { value: 'submitted', label: 'Submitted' },
@@ -59,27 +57,44 @@ const statusOptions: { value: LeadStatus; label: string }[] = [
 ];
 
 const loanCategoryOptions: { value: LoanCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'personal', label: 'Personal', icon: <CreditCard fontSize="small" /> },
-  { value: 'business', label: 'Business', icon: <Business fontSize="small" /> },
-  { value: 'home', label: 'Home', icon: <Home fontSize="small" /> },
-  { value: 'property', label: 'Property', icon: <AccountBalance fontSize="small" /> },
-  { value: 'vehicle', label: 'Vehicle', icon: <DriveEta fontSize="small" /> },
-  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars fontSize="small" /> },
-  { value: 'education', label: 'Education', icon: <School fontSize="small" /> },
-  { value: 'agriculture', label: 'Agriculture', icon: <Grass fontSize="small" /> },
-  { value: 'government', label: 'Govt. Schemes', icon: <Flag fontSize="small" /> },
-  { value: 'corporate', label: 'Corporate', icon: <AccountBalance fontSize="small" /> },
-  { value: 'consumer', label: 'Consumer', icon: <ShoppingCart fontSize="small" /> },
-  { value: 'short_term', label: 'Short-Term', icon: <FlashOn fontSize="small" /> },
-  { value: 'real_estate', label: 'Real Estate', icon: <Construction fontSize="small" /> },
-  { value: 'specialized', label: 'Specialized', icon: <Stars fontSize="small" /> },
+  { value: 'personal', label: 'Personal', icon: <CreditCard size={14} /> },
+  { value: 'business', label: 'Business', icon: <BriefcaseBusiness size={14} /> },
+  { value: 'home', label: 'Home', icon: <Home size={14} /> },
+  { value: 'property', label: 'Property', icon: <Landmark size={14} /> },
+  { value: 'vehicle', label: 'Vehicle', icon: <Car size={14} /> },
+  { value: 'gold_securities', label: 'Gold & Securities', icon: <Stars size={14} /> },
+  { value: 'education', label: 'Education', icon: <GraduationCap size={14} /> },
+  { value: 'agriculture', label: 'Agriculture', icon: <Sprout size={14} /> },
+  { value: 'government', label: 'Govt. Schemes', icon: <Flag size={14} /> },
+  { value: 'corporate', label: 'Corporate', icon: <Landmark size={14} /> },
+  { value: 'consumer', label: 'Consumer', icon: <ShoppingCart size={14} /> },
+  { value: 'short_term', label: 'Short-Term', icon: <Zap size={14} /> },
+  { value: 'real_estate', label: 'Real Estate', icon: <Construction size={14} /> },
+  { value: 'specialized', label: 'Specialized', icon: <Stars size={14} /> },
 ];
 
-const loanTypeOptions = buildLoanTypeOptions().map((opt) => ({
-  value: opt.value as LoanType,
-  label: opt.label,
-  icon: opt.icon,
+const loanTypeOptions = loanProducts.map((product) => ({
+  value: product.code as LoanType,
+  label: product.shortLabel ?? product.label,
+  category: product.category,
 }));
+
+const loanCategoryIconMap: Record<LoanCategory, React.ReactNode> = {
+  personal: <CreditCard size={16} />,
+  business: <BriefcaseBusiness size={16} />,
+  home: <Home size={16} />,
+  property: <Landmark size={16} />,
+  vehicle: <Car size={16} />,
+  gold_securities: <Stars size={16} />,
+  education: <GraduationCap size={16} />,
+  agriculture: <Sprout size={16} />,
+  government: <Flag size={16} />,
+  corporate: <Landmark size={16} />,
+  consumer: <ShoppingCart size={16} />,
+  short_term: <Zap size={16} />,
+  real_estate: <Construction size={16} />,
+  specialized: <Stars size={16} />,
+};
 
 const formatCurrency = (amount: number): string => {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
@@ -97,18 +112,16 @@ export default function SubmittedToAdminTab() {
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showLeadDetails, setShowLeadDetails] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { leads } = useLeadsStore();
 
-  const getFilteredSubTypes = () => {
+  const filteredSubTypes = useMemo(() => {
     if (selectedCategories.length === 0) return loanTypeOptions;
-    return loanTypeOptions.filter((opt) => {
-      const product = getLoanProduct(opt.value);
-      return product && selectedCategories.includes(product.category);
-    });
-  };
+    return loanTypeOptions.filter((opt) => selectedCategories.includes(opt.category));
+  }, [selectedCategories]);
 
-  const filteredLeads = (leads as Lead[]).filter((lead) => {
+  const filteredLeads = useMemo(() => (leads as Lead[]).filter((lead) => {
     const matchesSearch =
       lead.client.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       lead.client.phone.includes(debouncedSearchQuery) ||
@@ -121,9 +134,36 @@ export default function SubmittedToAdminTab() {
       selectedCategories.length === 0 || (leadProduct && selectedCategories.includes(leadProduct.category));
 
     const matchesLoanType = selectedLoanTypes.length === 0 || selectedLoanTypes.includes(lead.loanType);
+    const createdAt = new Date(lead.createdAt);
+    const matchesFrom = !dateRange.from || createdAt >= new Date(`${dateRange.from}T00:00:00`);
+    const matchesTo = !dateRange.to || createdAt <= new Date(`${dateRange.to}T23:59:59`);
 
-    return matchesSearch && matchesStatus && matchesCategory && matchesLoanType;
-  });
+    return matchesSearch && matchesStatus && matchesCategory && matchesLoanType && matchesFrom && matchesTo;
+  }), [
+    dateRange.from,
+    dateRange.to,
+    debouncedSearchQuery,
+    leads,
+    selectedCategories,
+    selectedLoanTypes,
+    selectedStatuses,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredLeads.slice(start, start + PAGE_SIZE);
+  }, [currentPage, filteredLeads]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, selectedStatuses, selectedCategories, selectedLoanTypes, dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const handleStatusToggle = (status: LeadStatus) => {
     setSelectedStatuses((prev) =>
@@ -287,7 +327,7 @@ export default function SubmittedToAdminTab() {
                 )}
               </label>
               <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                {getFilteredSubTypes().map((option) => (
+                {filteredSubTypes.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => handleLoanTypeToggle(option.value)}
@@ -295,13 +335,12 @@ export default function SubmittedToAdminTab() {
                       selectedLoanTypes.includes(option.value)
                         ? 'bg-indigo-600 text-white'
                         : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50 border border-white/5'
-                    }`}
-                  >
-                    <span>{option.icon}</span>
+                      }`}
+                    >
                     {option.label}
                   </button>
                 ))}
-                {getFilteredSubTypes().length === 0 && selectedCategories.length > 0 && (
+                {filteredSubTypes.length === 0 && selectedCategories.length > 0 && (
                   <p className="text-sm text-slate-500 italic">No sub-types available for selected categories</p>
                 )}
               </div>
@@ -345,7 +384,7 @@ export default function SubmittedToAdminTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredLeads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-5 py-4">
                       <span className="font-mono text-sm text-indigo-400">{lead.id}</span>
@@ -417,13 +456,29 @@ export default function SubmittedToAdminTab() {
             </table>
           </div>
 
-          <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between">
-            <p className="text-sm text-slate-500">Page 1 of 1</p>
+          <div className="px-5 py-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              Showing <span className="font-medium text-slate-300">{paginatedLeads.length}</span> of{' '}
+              <span className="font-medium text-slate-300">{filteredLeads.length}</span> leads
+            </p>
             <div className="flex items-center gap-2">
-              <button disabled className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-600 cursor-not-allowed">
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-300 hover:bg-white/5 disabled:text-slate-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
                 Previous
               </button>
-              <button disabled className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-600 cursor-not-allowed">
+              <span className="text-sm text-slate-500">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                className="px-3 py-1.5 border border-white/5 rounded-lg text-sm text-slate-300 hover:bg-white/5 disabled:text-slate-600 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
                 Next
               </button>
             </div>
@@ -518,7 +573,9 @@ export default function SubmittedToAdminTab() {
                   <div>
                     <p className="text-xs text-slate-500">Loan Sub-Type</p>
                     <div className="flex items-center gap-2">
-                      {getLoanIcon(selectedLead.loanType)}
+                      {getLoanProduct(selectedLead.loanType)?.category
+                        ? loanCategoryIconMap[getLoanProduct(selectedLead.loanType)!.category]
+                        : null}
                       <p className="text-sm font-medium text-slate-300">
                         {loanTypeLabels[selectedLead.loanType] || selectedLead.loanType}
                       </p>

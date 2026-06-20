@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getLeads, updateLeadStatus as apiUpdateLeadStatus, assignBank as apiAssignBank } from '../../api/leadsApi';
 import type { Lead, LeadStatus, LoanType } from '../types/admin';
 import type { ApiLeadResponse, ApiTimelineEvent, ApiLeadDocument } from '../types/apiResponses';
@@ -197,7 +197,7 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
     }
   };
 
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = useMemo(() => leads.filter((lead) => {
     // Always exclude leads with no status (incomplete/draft data)
     if (!lead.status) return false;
 
@@ -211,7 +211,7 @@ export const useLeadsManager = (): UseLeadsManagerResult => {
     const matchesLoanType = !loanTypeFilter || lead.loanType === loanTypeFilter;
 
     return matchesSearch && matchesStatus && matchesLoanType;
-  });
+  }), [leads, loanTypeFilter, searchQuery, statusFilter]);
 
   return {
     leads,

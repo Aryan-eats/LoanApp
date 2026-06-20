@@ -1,75 +1,76 @@
-﻿// Icon rendering for loan products - imports @mui/icons-material.
+// Icon rendering for loan products.
 // Only import this module when you need to render loan icons.
 // For data/labels only, import from './loanProductsData' instead.
 
-import {
-  CreditCard,
-  FlashOn,
-  Smartphone,
-  Tv,
-  Flight,
-  Favorite,
-  LocalHospital,
-  Work,
-  Business,
-  AccountBalanceWallet,
-  AccountBalance,
-  TrendingDown,
-  Description,
-  Payments,
-  Analytics,
-  RocketLaunch,
-  Settings,
-  Build,
-  Link,
-  MedicalServices,
-  Store,
-  Home,
-  Construction,
-  Architecture,
-  SwapHoriz,
-  Add,
-  LocationOn,
-  HomeWork,
-  Elderly,
-  Factory,
-  DriveEta,
-  TwoWheeler,
-  LocalShipping,
-  Agriculture,
-  Stars,
-  Receipt,
-  Diamond,
-  TrendingUp,
-  Shield,
-  School,
-  Public,
-  Lock,
-  MenuBook,
-  Assignment,
-  Language,
-  AttachMoney,
-  Inventory,
-  Flag,
-  Handshake,
-  Verified,
-  Grass,
-  Nature,
-  Science,
-  Pets,
-  Chair,
-  Star,
-  Today,
-  Refresh,
-  Warning,
-  Engineering,
-  CallMerge,
-  CurrencyBitcoin,
-  BatteryChargingFull,
-  Recycling,
-  WbSunny,
-} from '@mui/icons-material';
 import React from 'react';
+import {
+  Armchair,
+  ArrowLeftRight,
+  BadgeCheck,
+  BadgeIndianRupee,
+  BatteryCharging,
+  Bike,
+  Bitcoin,
+  BookOpen,
+  BriefcaseBusiness,
+  Building,
+  CalendarDays,
+  Car,
+  ChartNoAxesCombined,
+  ClipboardList,
+  Construction,
+  CreditCard,
+  Diamond,
+  DraftingCompass,
+  Factory,
+  FileText,
+  Flag,
+  FlaskConical,
+  GitMerge,
+  Globe,
+  GraduationCap,
+  HandCoins,
+  Handshake,
+  HardHat,
+  Heart,
+  Home,
+  Hospital,
+  Landmark,
+  Languages,
+  Leaf,
+  Link as LinkIcon,
+  Lock,
+  MapPin,
+  Package,
+  PawPrint,
+  PersonStanding,
+  Plane,
+  Plus,
+  Receipt,
+  Recycle,
+  RefreshCw,
+  Rocket,
+  Settings,
+  Shield,
+  Smartphone,
+  Sprout,
+  Star,
+  Stars,
+  Stethoscope,
+  Store,
+  Sun,
+  TrendingDown,
+  TrendingUp,
+  TriangleAlert,
+  Truck,
+  Tv,
+  Wallet,
+  Wheat,
+  Wrench,
+  Zap,
+  type LucideIcon,
+  type LucideProps,
+} from 'lucide-react';
 import {
   loanProducts,
   getLoanProduct,
@@ -79,104 +80,105 @@ import {
   type LoanCategory,
 } from './loanProductsData';
 
-// Icon mapping function
-export function getLoanIconComponent(iconName?: string, size: "small" | "inherit" | "large" | "medium" = "small"): React.ReactNode {
+type IconSize = 'small' | 'inherit' | 'large' | 'medium';
+
+const getIconProps = (size: IconSize): LucideProps => {
+  if (size === 'inherit') return {};
+  if (size === 'large') return { size: 28 };
+  if (size === 'medium') return { size: 22 };
+  return { size: 18 };
+};
+
+const loanIconComponents: Record<string, LucideIcon> = {
+  AccountBalance: Landmark,
+  AccountBalanceWallet: Wallet,
+  Add: Plus,
+  Analytics: ChartNoAxesCombined,
+  Architecture: DraftingCompass,
+  Agriculture: Wheat,
+  Assignment: ClipboardList,
+  AttachMoney: BadgeIndianRupee,
+  BatteryChargingFull: BatteryCharging,
+  Bridge: GitMerge,
+  Build: Wrench,
+  Business: BriefcaseBusiness,
+  Chair: Armchair,
+  Construction,
+  CreditCard,
+  CurrencyBitcoin: Bitcoin,
+  Description: FileText,
+  Diamond,
+  DriveEta: Car,
+  Eco: Recycle,
+  Elderly: PersonStanding,
+  Engineering: HardHat,
+  Factory,
+  Favorite: Heart,
+  Flag,
+  Flash: Zap,
+  FlashOn: Zap,
+  Flight: Plane,
+  Grass: Sprout,
+  Handshake,
+  Home,
+  HomeWork: Building,
+  Inventory: Package,
+  Language: Languages,
+  Link: LinkIcon,
+  Lock,
+  LocalHospital: Hospital,
+  LocalShipping: Truck,
+  LocationOn: MapPin,
+  MedicalServices: Stethoscope,
+  MenuBook: BookOpen,
+  Nature: Leaf,
+  Payments: HandCoins,
+  Pets: PawPrint,
+  Public: Globe,
+  Receipt,
+  Refresh: RefreshCw,
+  RocketLaunch: Rocket,
+  School: GraduationCap,
+  Science: FlaskConical,
+  Settings,
+  Shield,
+  Smartphone,
+  Star,
+  Stars,
+  Store,
+  SwapHoriz: ArrowLeftRight,
+  Today: CalendarDays,
+  TrendingDown,
+  TrendingUp,
+  Tv,
+  TwoWheeler: Bike,
+  Verified: BadgeCheck,
+  Warning: TriangleAlert,
+  WbSunny: Sun,
+  Work: BriefcaseBusiness,
+};
+
+export function getLoanIconComponent(iconName?: string, size: IconSize = 'small'): React.ReactNode {
   if (!iconName) return null;
 
-  const iconProps = { fontSize: size };
-
-  switch (iconName) {
-    case 'CreditCard': return <CreditCard {...iconProps} />;
-    case 'Flash': return <FlashOn {...iconProps} />;
-    case 'Smartphone': return <Smartphone {...iconProps} />;
-    case 'Tv': return <Tv {...iconProps} />;
-    case 'Flight': return <Flight {...iconProps} />;
-    case 'Favorite': return <Favorite {...iconProps} />;
-    case 'LocalHospital': return <LocalHospital {...iconProps} />;
-    case 'Work': return <Work {...iconProps} />;
-    case 'Business': return <Business {...iconProps} />;
-    case 'AccountBalanceWallet': return <AccountBalanceWallet {...iconProps} />;
-    case 'AccountBalance': return <AccountBalance {...iconProps} />;
-    case 'TrendingDown': return <TrendingDown {...iconProps} />;
-    case 'Description': return <Description {...iconProps} />;
-    case 'Payments': return <Payments {...iconProps} />;
-    case 'Analytics': return <Analytics {...iconProps} />;
-    case 'RocketLaunch': return <RocketLaunch {...iconProps} />;
-    case 'Settings': return <Settings {...iconProps} />;
-    case 'Build': return <Build {...iconProps} />;
-    case 'Link': return <Link {...iconProps} />;
-    case 'MedicalServices': return <MedicalServices {...iconProps} />;
-    case 'Store': return <Store {...iconProps} />;
-    case 'Home': return <Home {...iconProps} />;
-    case 'Construction': return <Construction {...iconProps} />;
-    case 'Architecture': return <Architecture {...iconProps} />;
-    case 'SwapHoriz': return <SwapHoriz {...iconProps} />;
-    case 'Add': return <Add {...iconProps} />;
-    case 'LocationOn': return <LocationOn {...iconProps} />;
-    case 'HomeWork': return <HomeWork {...iconProps} />;
-    case 'Elderly': return <Elderly {...iconProps} />;
-    case 'Factory': return <Factory {...iconProps} />;
-    case 'DriveEta': return <DriveEta {...iconProps} />;
-    case 'TwoWheeler': return <TwoWheeler {...iconProps} />;
-    case 'LocalShipping': return <LocalShipping {...iconProps} />;
-    case 'Agriculture': return <Agriculture {...iconProps} />;
-    case 'Stars': return <Stars {...iconProps} />;
-    case 'Receipt': return <Receipt {...iconProps} />;
-    case 'Diamond': return <Diamond {...iconProps} />;
-    case 'TrendingUp': return <TrendingUp {...iconProps} />;
-    case 'Shield': return <Shield {...iconProps} />;
-    case 'School': return <School {...iconProps} />;
-    case 'Public': return <Public {...iconProps} />;
-    case 'Lock': return <Lock {...iconProps} />;
-    case 'MenuBook': return <MenuBook {...iconProps} />;
-    case 'Assignment': return <Assignment {...iconProps} />;
-    case 'Language': return <Language {...iconProps} />;
-    case 'AttachMoney': return <AttachMoney {...iconProps} />;
-    case 'Inventory': return <Inventory {...iconProps} />;
-    case 'Flag': return <Flag {...iconProps} />;
-    case 'Handshake': return <Handshake {...iconProps} />;
-    case 'Verified': return <Verified {...iconProps} />;
-    case 'Grass': return <Grass {...iconProps} />;
-    case 'Nature': return <Nature {...iconProps} />;
-    case 'Science': return <Science {...iconProps} />;
-    case 'Pets': return <Pets {...iconProps} />;
-    case 'Chair': return <Chair {...iconProps} />;
-    case 'Star': return <Star {...iconProps} />;
-    case 'Today': return <Today {...iconProps} />;
-    case 'Refresh': return <Refresh {...iconProps} />;
-    case 'Warning': return <Warning {...iconProps} />;
-    case 'Engineering': return <Engineering {...iconProps} />;
-    case 'Bridge': return <CallMerge {...iconProps} />;
-    case 'CurrencyBitcoin': return <CurrencyBitcoin {...iconProps} />;
-    case 'BatteryChargingFull': return <BatteryChargingFull {...iconProps} />;
-    case 'Eco': return <Recycling {...iconProps} />;
-    case 'WbSunny': return <WbSunny {...iconProps} />;
-    default: return <CreditCard {...iconProps} />;
-  }
+  const Icon = loanIconComponents[iconName] ?? CreditCard;
+  const iconProps = getIconProps(size);
+  return <Icon {...iconProps} />;
 }
 
-/**
- * Get icon component for a loan code
- */
-export function getLoanIcon(code: string, size: "small" | "inherit" | "large" | "medium" = "small"): React.ReactNode {
+export function getLoanIcon(code: string, size: IconSize = 'small'): React.ReactNode {
   const product = getLoanProduct(code);
   return getLoanIconComponent(product?.icon, size);
 }
 
-/**
- * Build an array of { value, label, icon } for select/radio inputs
- */
 export function buildLoanTypeOptions(): { value: string; label: string; icon: React.ReactNode }[] {
   return loanProducts.map((p) => ({
     value: p.code,
     label: p.shortLabel ?? p.label,
-    icon: getLoanIconComponent(p.icon, "small"),
+    icon: getLoanIconComponent(p.icon, 'small'),
   }));
 }
 
-/**
- * Build options grouped by category (for grouped select inputs)
- */
 export function buildGroupedLoanTypeOptions(): {
   category: LoanCategory;
   categoryLabel: string;
@@ -188,7 +190,7 @@ export function buildGroupedLoanTypeOptions(): {
     options: getProductsByCategory(cat).map((p) => ({
       value: p.code,
       label: p.shortLabel ?? p.label,
-      icon: getLoanIconComponent(p.icon, "small"),
+      icon: getLoanIconComponent(p.icon, 'small'),
     })),
   }));
 }
