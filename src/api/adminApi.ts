@@ -45,6 +45,15 @@ export interface ApiResponse<T> {
   data?: T;
 }
 
+export type PermissionResource = 'leads' | 'partners' | 'banks' | 'users' | 'roles';
+export type PermissionAction = 'read' | 'create' | 'update' | 'delete';
+export type RolePermissions = Record<PermissionResource, Record<PermissionAction, boolean>>;
+
+export interface RolePermissionEntry {
+  role: Exclude<AdminUser['role'], 'partner'>;
+  permissions: RolePermissions;
+}
+
 /**
  * GET /api/admin/users - Get all users
  */
@@ -99,6 +108,25 @@ export const updateUser = async (
  */
 export const deleteUser = async (id: string): Promise<ApiResponse<void>> => {
   const response = await apiClient.delete(`/admin/users/${id}`);
+  return response.data;
+};
+
+/**
+ * GET /api/admin/roles - Get role permissions
+ */
+export const getRolePermissions = async (): Promise<ApiResponse<{ roles: RolePermissionEntry[] }>> => {
+  const response = await apiClient.get('/admin/roles');
+  return response.data;
+};
+
+/**
+ * PUT /api/admin/roles/:role/permissions - Update role permissions
+ */
+export const updateRolePermissions = async (
+  role: RolePermissionEntry['role'],
+  permissions: RolePermissions
+): Promise<ApiResponse<{ role: RolePermissionEntry['role']; permissions: RolePermissions }>> => {
+  const response = await apiClient.put(`/admin/roles/${role}/permissions`, { permissions });
   return response.data;
 };
 
@@ -232,6 +260,8 @@ export default {
   getUserById,
   updateUser,
   deleteUser,
+  getRolePermissions,
+  updateRolePermissions,
   getAdminStats,
   getAdminPartners,
   getAuditLogs,

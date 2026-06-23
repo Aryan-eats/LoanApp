@@ -73,6 +73,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AppRoutes = () => {
+  const adminRoles = ['super_admin', 'admin', 'manager', 'agent', 'viewer'];
+  const adminOperatorRoles = ['super_admin', 'admin', 'manager', 'agent'];
+
   return (
       <Routes>
         {/* Public routes */}
@@ -90,19 +93,19 @@ const AppRoutes = () => {
         <Route path="/upload/:token" element={<CustomerUploadPage />} />
 
         {/* Admin routes - single ProtectedRoute wrapper, no remount on route change */}
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><Outlet /></ProtectedRoute>}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={adminRoles}><Outlet /></ProtectedRoute>}>
+          <Route index element={<ProtectedRoute allowedRoles={adminOperatorRoles}><AdminDashboard /></ProtectedRoute>} />
+          <Route path="dashboard" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><AdminDashboard /></ProtectedRoute>} />
           <Route path="partners" element={<PartnersPage />} />
           <Route path="leads" element={<LeadsPage />} />
-          <Route path="documents" element={<DocumentsPage />} />
+          <Route path="documents" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><DocumentsPage /></ProtectedRoute>} />
           <Route path="banks" element={<BanksPage />} />
           <Route path="banks/:bankId" element={<BankManagePage />} />
-          <Route path="commissions" element={<CommissionsPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="audit-logs" element={<AuditLogsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="docs/reqdoc" element={<ReqDocPage />} />
+          <Route path="commissions" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><CommissionsPage /></ProtectedRoute>} />
+          <Route path="users" element={<ProtectedRoute allowedRoles={['super_admin']}><UsersPage /></ProtectedRoute>} />
+          <Route path="audit-logs" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><AuditLogsPage /></ProtectedRoute>} />
+          <Route path="settings" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><SettingsPage /></ProtectedRoute>} />
+          <Route path="docs/reqdoc" element={<ProtectedRoute allowedRoles={adminOperatorRoles}><ReqDocPage /></ProtectedRoute>} />
         </Route>
 
         {/* Partner Dashboard routes */}

@@ -173,11 +173,16 @@ const LogIn: React.FC = () => {
     try {
       await login(email, password);
       const user = useAuthStore.getState().user;
-      if (loginType === 'admin'   && user?.role !== 'admin')   { setError('You do not have admin access.'); return; }
+      const isAdminRole = user?.role && ['super_admin', 'admin', 'manager', 'agent', 'viewer'].includes(user.role);
+      if (loginType === 'admin'   && !isAdminRole)   { setError('You do not have admin access.'); return; }
       if (loginType === 'partner' && user?.role !== 'partner') { setError('Please use the Admin portal for admin accounts.'); return; }
       const destination =
-        user?.role === 'admin'
-          ? from?.startsWith('/admin')   ? from : '/admin'
+        isAdminRole
+          ? user?.role === 'viewer'
+            ? from?.startsWith('/admin/leads') || from?.startsWith('/admin/partners') || from?.startsWith('/admin/banks')
+              ? from
+              : '/admin/leads'
+            : from?.startsWith('/admin')   ? from : '/admin'
           : user?.role === 'partner'
           ? from?.startsWith('/partner') ? from : '/partner'
           : '/';

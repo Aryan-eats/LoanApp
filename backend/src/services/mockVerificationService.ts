@@ -16,7 +16,8 @@ export const isMockVerificationEnabled = (): boolean =>
   process.env.NODE_ENV !== 'production' && process.env.MOCK_VERIFICATION_ENABLED === 'true';
 
 export const getMockOtp = (channel: VerificationChannel): string | undefined =>
-  channel === 'phone' ? process.env.MOCK_PHONE_OTP : process.env.MOCK_EMAIL_OTP;
+  (channel === 'phone' ? process.env.MOCK_PHONE_OTP : process.env.MOCK_EMAIL_OTP)
+  || process.env.MOCK_OTP;
 
 /**
  * Returns true when mock-mode is active and the submitted OTP matches the

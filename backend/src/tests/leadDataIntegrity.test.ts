@@ -201,8 +201,10 @@ describe('formatLeadResponse – full lead', () => {
   it('includes eligibilityResult when eligibility data exists', () => {
     expect(result.eligibilityResult).toBeDefined();
     expect(result.eligibilityResult!.isEligible).toBe(true);
-    expect(typeof result.eligibilityResult!.maxLoanAmount).toBe('number');
-    expect(typeof result.eligibilityResult!.estimatedEMI).toBe('number');
+    expect(result.eligibilityResult!.maxLoanAmount).toBe(6000000);
+    expect(result.eligibilityResult!.minLoanAmount).toBe(1000000);
+    expect(result.eligibilityResult!.estimatedEMI).toBe(42000);
+    expect(result.eligibilityResult!.checkedAt).toBe('2025-06-15T11:00:00.000Z');
   });
 
   it('includes commission when commission data exists', () => {

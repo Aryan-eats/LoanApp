@@ -114,6 +114,16 @@ if (process.env.NODE_ENV === "production") {
   app.use(compression());
 }
 
+// Health checks must not consume the general API rate-limit bucket.
+app.get("/api/health", (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 // Apply general rate limiting to all API routes
 app.use("/api", apiLimiter);
 
@@ -125,16 +135,6 @@ app.use("/api/partner", partnerRoutes);
 app.use("/api/partners", partnersRoutes);
 app.use("/api/leads", leadsRoutes); // Public leads endpoint for website forms
 app.use("/api/documents", documentRoutes);
-
-// Health check endpoint
-app.get("/api/health", (_req: Request, res: Response) => {
-  res.status(200).json({
-    success: true,
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-  });
-});
 
 // Security headers for all responses
 app.use((_req: Request, res: Response, next: NextFunction) => {

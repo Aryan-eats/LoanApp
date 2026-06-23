@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { protect, authorize } from '../middleware/auth.js';
-import { validateUUID } from '../middleware/validateUUID.js';
+import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
 import { cacheControl } from '../middleware/cacheControl.js';
 import { resolvePartnerOrg } from '../middleware/rlsContext.js';
 import {
@@ -25,9 +25,12 @@ import {
   submitStoredClientToGPS,
   getPartnerCustomerById,
   getPartnerCustomerActivity,
+  runPartnerSoftCheck,
 } from '../controllers/partnerDataController.js';
 
 const router = Router();
+
+router.param('id', validateUUIDParam);
 
 // All partner routes require authentication and partner role
 router.use(protect);
@@ -63,6 +66,7 @@ router.patch('/leads/:id/status', updateLeadStatus);
  */
 // Bulk create (must be before /:id routes)
 router.post('/stored-clients/bulk', bulkCreateStoredClients);
+router.post('/soft-check', runPartnerSoftCheck);
 
 router.get('/customers/:id', getPartnerCustomerById);
 router.get('/customers/:id/activity', getPartnerCustomerActivity);

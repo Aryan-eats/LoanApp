@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { validateUUID } from '../middleware/validateUUID.js';
+import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
 import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl, deleteLeadDoc, updateLeadDocStatus, bulkUpdateLeadDocStatus, generateUploadToken, uploadViaToken, validateUploadToken } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
 import { cacheControl } from '../middleware/cacheControl.js';
@@ -17,6 +17,9 @@ import { cacheWrap } from '../utils/cache.js';
 const MAX_UPLOAD_DISPLAY = `${Math.round(MAX_FILE_SIZE / (1024 * 1024))} MB`;
 
 const router = Router();
+
+router.param('leadId', validateUUIDParam);
+router.param('documentId', validateUUIDParam);
 
 /**
  * Multer error handling wrapper.

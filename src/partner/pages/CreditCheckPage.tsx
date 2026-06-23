@@ -1,25 +1,20 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
-  Search,
-  CheckCircle,
-  XCircle,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Shield,
-  Building2,
-  Clock,
-  IndianRupee,
-  Info,
   ArrowRight,
+  Building2,
+  CheckCircle,
+  Clock,
+  Info,
   Percent,
-  User,
-  Phone,
-  Briefcase,
+  Search,
+  Shield,
+  XCircle,
 } from 'lucide-react';
-import Tooltip from '../components/Tooltip';
+import { runSoftCheck, type SoftCheckResult } from '../../api/partnerDataApi';
 
-interface EligibilityFormData {
+type EligibilityFormData = {
   clientName: string;
   phone: string;
   monthlyIncome: string;
@@ -27,188 +22,107 @@ interface EligibilityFormData {
   loanType: string;
   loanAmount: string;
   existingEMI: string;
-}
-
-interface EligibilityResult {
-  isEligible: boolean;
-  score: number;
-  maxLoanAmount: number;
-  minLoanAmount: number;
-  estimatedEMI: number;
-  eligibleBanks: EligibleBank[];
-  factors: EligibilityFactor[];
-}
-
-interface EligibleBank {
-  id: string;
-  name: string;
-  logo?: string;
-  interestRate: string;
-  maxAmount: number;
-  processingFee: string;
-  processingTime: string;
-  features: string[];
-}
-
-interface EligibilityFactor {
-  factor: string;
-  status: 'positive' | 'neutral' | 'negative';
-  description: string;
-  weight: number;
-}
-
-const mockEligibilityResult: EligibilityResult = {
-  isEligible: true,
-  score: 78,
-  maxLoanAmount: 2500000,
-  minLoanAmount: 100000,
-  estimatedEMI: 28500,
-  eligibleBanks: [
-    {
-      id: '1',
-      name: 'HDFC Bank',
-      interestRate: '10.5% - 12.5%',
-      maxAmount: 2500000,
-      processingFee: '1% + GST',
-      processingTime: '3-5 days',
-      features: ['No prepayment charges', 'Flexible tenure', 'Quick disbursement'],
-    },
-    {
-      id: '2',
-      name: 'ICICI Bank',
-      interestRate: '10.75% - 13%',
-      maxAmount: 2200000,
-      processingFee: '0.5% + GST',
-      processingTime: '2-4 days',
-      features: ['Zero documentation for existing customers', 'Balance transfer option'],
-    },
-    {
-      id: '3',
-      name: 'Axis Bank',
-      interestRate: '11% - 14%',
-      maxAmount: 2000000,
-      processingFee: '1.5% + GST',
-      processingTime: '5-7 days',
-      features: ['Top-up loan available', 'Part payment allowed'],
-    },
-    {
-      id: '4',
-      name: 'Bajaj Finserv',
-      interestRate: '12% - 16%',
-      maxAmount: 1500000,
-      processingFee: '2% + GST',
-      processingTime: '24-48 hours',
-      features: ['Instant approval', 'Minimal documentation'],
-    },
-  ],
-  factors: [
-    { factor: 'Income Level', status: 'positive', description: 'Monthly income meets requirement', weight: 30 },
-    { factor: 'Employment Stability', status: 'positive', description: 'Stable employment with reputed employer', weight: 25 },
-    { factor: 'Debt-to-Income Ratio', status: 'neutral', description: 'Existing obligations are moderate', weight: 20 },
-    { factor: 'Credit History', status: 'positive', description: 'Good credit behavior assumed', weight: 25 },
-  ],
+  consentCredit: boolean;
 };
 
 const formatCurrency = (amount: number): string => {
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-  return `₹${amount.toLocaleString('en-IN')}`;
+  if (amount >= 10_000_000) return `Rs ${(amount / 10_000_000).toFixed(2)} Cr`;
+  if (amount >= 100_000) return `Rs ${(amount / 100_000).toFixed(2)} L`;
+  return `Rs ${amount.toLocaleString('en-IN')}`;
 };
 
+const softCheckCopy =
+  "This preliminary eligibility check uses declared information and lender rules. It does not affect the client's credit score. Final approval may require lender verification and a hard inquiry.";
+
 export default function CreditCheckPage() {
+  const location = useLocation();
+  const clientData = (location.state as { clientData?: Record<string, unknown> } | null)?.clientData;
   const [formData, setFormData] = useState<EligibilityFormData>({
-    clientName: '',
-    phone: '',
-    monthlyIncome: '',
-    employmentType: '',
-    loanType: '',
-    loanAmount: '',
+    clientName: String(clientData?.fullName ?? ''),
+    phone: String(clientData?.phone ?? ''),
+    monthlyIncome: String(clientData?.monthlyIncome ?? ''),
+    employmentType: String(clientData?.employmentType ?? ''),
+    loanType: String(clientData?.loanType ?? ''),
+    loanAmount: String(clientData?.loanAmount ?? ''),
     existingEMI: '',
+    consentCredit: Boolean(clientData?.consentCredit),
   });
-
   const [isChecking, setIsChecking] = useState(false);
-  const [result, setResult] = useState<EligibilityResult | null>(null);
-  const [showResult, setShowResult] = useState(false);
+  const [result, setResult] = useState<SoftCheckResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleInputChange = (field: keyof EligibilityFormData, value: string) => {
+  const updateField = (field: keyof EligibilityFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const canRun =
+    formData.clientName &&
+    formData.phone &&
+    formData.monthlyIncome &&
+    formData.employmentType &&
+    formData.loanType &&
+    formData.loanAmount &&
+    formData.consentCredit &&
+    !isChecking;
+
   const handleCheckEligibility = async () => {
     setIsChecking(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setResult(mockEligibilityResult);
-    setIsChecking(false);
-    setShowResult(true);
-  };
+    setSubmitError(null);
 
-  const handleReset = () => {
-    setFormData({
-      clientName: '',
-      phone: '',
-      monthlyIncome: '',
-      employmentType: '',
-      loanType: '',
-      loanAmount: '',
-      existingEMI: '',
-    });
-    setResult(null);
-    setShowResult(false);
-  };
+    try {
+      const response = await runSoftCheck({
+        fullName: formData.clientName,
+        phone: formData.phone,
+        monthlyIncome: Number(formData.monthlyIncome),
+        existingEMI: Number(formData.existingEMI || 0),
+        employmentType: formData.employmentType,
+        loanType: formData.loanType,
+        loanAmount: Number(formData.loanAmount),
+        consentCredit: formData.consentCredit,
+      });
 
-  const getFactorIcon = (status: string) => {
-    switch (status) {
-      case 'positive':
-        return <TrendingUp size={16} className="text-emerald-400" />;
-      case 'negative':
-        return <TrendingDown size={16} className="text-red-400" />;
-      default:
-        return <Minus size={16} className="text-amber-400" />;
+      if (!response.success || !response.data) {
+        setSubmitError(response.message || 'Failed to run soft check');
+        return;
+      }
+
+      setResult(response.data);
+    } catch (error) {
+      const { parseApiError } = await import('../../utils/parseApiError');
+      setSubmitError(parseApiError(error, 'Failed to run soft check'));
+    } finally {
+      setIsChecking(false);
     }
   };
 
-  const getFactorColor = (status: string) => {
-    switch (status) {
-      case 'positive':
-        return 'border-emerald-500/20 bg-emerald-500/5';
-      case 'negative':
-        return 'border-red-500/20 bg-red-500/5';
-      default:
-        return 'border-amber-500/20 bg-amber-500/5';
-    }
-  };
-
-  if (showResult && result) {
+  if (result) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-100">Eligibility Result</h1>
-            <p className="text-slate-400 mt-1">Soft check completed for {formData.clientName}</p>
+            <p className="mt-1 text-slate-400">Soft check completed for {formData.clientName}</p>
           </div>
           <button
-            onClick={handleReset}
-            className="px-4 py-2 bg-slate-900/50 backdrop-blur-sm border border-white/10 rounded-lg text-sm font-medium text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors"
+            onClick={() => setResult(null)}
+            className="rounded-lg border border-white/10 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-slate-100"
           >
             Check Another Client
           </button>
         </div>
 
-        <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-4 flex gap-3">
-          <Shield className="text-indigo-400 flex-shrink-0" size={20} />
+        <div className="flex gap-3 rounded-xl border border-indigo-500/10 bg-indigo-500/5 p-4">
+          <Shield className="shrink-0 text-indigo-400" size={20} />
           <div>
-            <p className="text-sm font-medium text-indigo-300">Soft Check – No CIBIL Impact</p>
-            <p className="text-sm text-indigo-200/80 mt-1">
-              This eligibility check is based on the information provided and does not impact your client's credit score.
-              Final approval and terms are subject to bank verification and actual credit score.
-            </p>
+            <p className="text-sm font-medium text-indigo-300">Soft Check - No Credit Impact</p>
+            <p className="mt-1 text-sm text-indigo-200/80">{softCheckCopy}</p>
           </div>
         </div>
 
-        <div className={`rounded-xl p-6 ${result.isEligible ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className={`rounded-xl border p-6 ${result.isEligible ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-red-500/20 bg-red-500/10'}`}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${result.isEligible ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+              <div className={`flex h-16 w-16 items-center justify-center rounded-full ${result.isEligible ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
                 {result.isEligible ? (
                   <CheckCircle size={32} className="text-emerald-400" />
                 ) : (
@@ -217,142 +131,76 @@ export default function CreditCheckPage() {
               </div>
               <div>
                 <h2 className={`text-xl font-bold ${result.isEligible ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {result.isEligible ? 'Eligible for Loan!' : 'Not Eligible'}
+                  {result.isEligible ? 'Eligible for Loan' : 'Not Eligible'}
                 </h2>
                 <p className={`text-sm ${result.isEligible ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {result.isEligible
-                    ? 'Your client qualifies for multiple bank offers'
-                    : 'Current profile does not meet eligibility criteria'}
+                  {result.isEligible ? 'Client qualifies for matching lender offers' : 'Current profile does not meet lender rules'}
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-4">
-              <div className="text-center">
-                <div className="relative w-20 h-20">
-                  <svg className="w-20 h-20 transform -rotate-90">
-                    <circle cx="40" cy="40" r="36" stroke="#1e293b" strokeWidth="8" fill="none" />
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="36"
-                      stroke={result.score >= 70 ? '#34d399' : result.score >= 50 ? '#fbbf24' : '#f87171'}
-                      strokeWidth="8"
-                      fill="none"
-                      strokeDasharray={`${(result.score / 100) * 226} 226`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-xl font-bold text-slate-100">
-                    {result.score}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">Eligibility Score</p>
-              </div>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-slate-100">{result.score}</p>
+              <p className="text-xs text-slate-400">Eligibility Score</p>
             </div>
           </div>
 
-          {result.isEligible && (
-            <div className="mt-6 pt-6 border-t border-emerald-500/20 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-3 bg-black/20 rounded-lg flex flex-col justify-center">
-                <p className="text-xs text-emerald-300 font-medium">Eligible Loan Range</p>
-                <p className="text-lg font-bold text-emerald-400 mt-1">
-                  {formatCurrency(result.minLoanAmount)} - {formatCurrency(result.maxLoanAmount)}
-                </p>
-              </div>
-              <div className="text-center p-3 bg-black/20 rounded-lg flex flex-col justify-center">
-                <p className="text-xs text-emerald-300 font-medium">Estimated EMI</p>
-                <p className="text-lg font-bold text-emerald-400 mt-1">
-                  {formatCurrency(result.estimatedEMI)}/month
-                </p>
-              </div>
-              <div className="text-center p-3 bg-black/20 rounded-lg flex flex-col justify-center">
-                <p className="text-xs text-emerald-300 font-medium">Banks Available</p>
-                <p className="text-lg font-bold text-emerald-400 mt-1">{result.eligibleBanks.length} Options</p>
-              </div>
-            </div>
-          )}
+          <div className="mt-6 grid grid-cols-1 gap-4 border-t border-white/10 pt-6 sm:grid-cols-3">
+            <Summary label="Eligible Loan Range" value={`${formatCurrency(result.minLoanAmount)} - ${formatCurrency(result.maxLoanAmount)}`} />
+            <Summary label="Estimated EMI" value={`${formatCurrency(result.estimatedEMI)}/month`} />
+            <Summary label="Banks Available" value={`${result.eligibleBanks.length} Options`} />
+          </div>
         </div>
 
-        <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-6">
-          <h3 className="text-lg font-semibold text-slate-100 mb-4">Eligibility Factors</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {result.factors.map((factor, index) => (
-              <div
-                key={index}
-                className={`p-4 rounded-lg border ${getFactorColor(factor.status)}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    {getFactorIcon(factor.status)}
-                    <span className="font-medium text-slate-200">{factor.factor}</span>
-                  </div>
+        <section className="rounded-xl border border-white/10 bg-slate-900/50 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-slate-100">Eligibility Factors</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {result.factors.map((factor) => (
+              <div key={factor.factor} className="rounded-lg border border-white/10 bg-slate-800/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-slate-200">{factor.factor}</p>
                   <span className="text-xs text-slate-400">{factor.weight}% weight</span>
                 </div>
-                <p className="text-sm text-slate-400 mt-2">{factor.description}</p>
+                <p className="mt-2 text-sm text-slate-400">{factor.description}</p>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {result.isEligible && (
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-6">
-            <h3 className="text-lg font-semibold text-slate-100 mb-4">Eligible Banks & NBFCs</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {result.eligibleBanks.length > 0 && (
+          <section className="rounded-xl border border-white/10 bg-slate-900/50 p-6">
+            <h3 className="mb-4 text-lg font-semibold text-slate-100">Eligible Banks & NBFCs</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {result.eligibleBanks.map((bank) => (
-                <div
-                  key={bank.id}
-                  className="p-4 bg-slate-800/50 border border-white/10 rounded-xl hover:border-indigo-500/50 hover:shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-slate-900 border border-white/5 rounded-lg flex items-center justify-center">
-                        <Building2 size={24} className="text-slate-400" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-slate-200">{bank.name}</h4>
-                        <p className="text-xs text-slate-400">Up to {formatCurrency(bank.maxAmount)}</p>
-                      </div>
+                <div key={bank.id} className="rounded-xl border border-white/10 bg-slate-800/50 p-4">
+                  <div className="mb-3 flex items-start gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-white/5 bg-slate-900">
+                      <Building2 size={24} className="text-slate-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-200">{bank.name}</h4>
+                      <p className="text-xs text-slate-400">Up to {formatCurrency(bank.displayAmount)}</p>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className="flex items-center gap-2 text-sm">
+                  <div className="grid grid-cols-2 gap-3 text-sm text-slate-300">
+                    <span className="inline-flex items-center gap-2">
                       <Percent size={14} className="text-slate-500" />
-                      <span className="text-slate-300">{bank.interestRate}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
+                      {bank.interestRateMin}% - {bank.interestRateMax}%
+                    </span>
+                    <span className="inline-flex items-center gap-2">
                       <Clock size={14} className="text-slate-500" />
-                      <span className="text-slate-300">{bank.processingTime}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm col-span-2">
-                      <IndianRupee size={14} className="text-slate-500" />
-                      <span className="text-slate-300">Processing: {bank.processingFee}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {bank.features.map((feature, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-xs rounded-full"
-                      >
-                        {feature}
-                      </span>
-                    ))}
+                      {bank.processingTime}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-violet-900 border border-indigo-700/50 rounded-xl p-6 text-indigo-50 shadow-lg">
-          <h3 className="text-lg font-semibold mb-2 text-indigo-100">Ready to Proceed?</h3>
-          <p className="text-indigo-200/80 text-sm mb-4">
-            Submit this lead with required documents to get formal offers from banks.
-          </p>
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg font-medium hover:bg-indigo-600 border border-indigo-400/30 transition-colors">
+        <div className="rounded-xl border border-indigo-700/50 bg-indigo-900 p-6 text-indigo-50">
+          <h3 className="mb-2 text-lg font-semibold text-indigo-100">Ready to Proceed?</h3>
+          <p className="mb-4 text-sm text-indigo-200/80">Submit this lead with required documents to get formal lender offers.</p>
+          <button className="inline-flex items-center gap-2 rounded-lg border border-indigo-400/30 bg-indigo-500 px-4 py-2 font-medium text-white transition-colors hover:bg-indigo-600">
             Submit Lead
             <ArrowRight size={16} />
           </button>
@@ -365,149 +213,70 @@ export default function CreditCheckPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Credit Check / Eligibility</h1>
-        <p className="text-slate-400 mt-1">Check your client's loan eligibility instantly</p>
+        <p className="mt-1 text-slate-400">Check your client's loan eligibility instantly</p>
       </div>
 
-      <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-4 flex gap-3">
-        <Shield className="text-indigo-400 flex-shrink-0" size={20} />
+      <div className="flex gap-3 rounded-lg border border-indigo-500/10 bg-indigo-500/5 p-4">
+        <Shield className="shrink-0 text-indigo-400" size={20} />
         <div>
-          <p className="text-sm font-medium text-indigo-300">Soft Check – No CIBIL Impact</p>
-          <p className="text-sm text-indigo-200/80 mt-1">
-            This is a preliminary eligibility check based on basic information. It does NOT affect your client's 
-            credit score. A hard inquiry will only be made when the application is formally submitted to a bank.
-          </p>
+          <p className="text-sm font-medium text-indigo-300">Soft Check - No Credit Impact</p>
+          <p className="mt-1 text-sm text-indigo-200/80">{softCheckCopy}</p>
         </div>
       </div>
 
-      <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-slate-100 mb-6">Client Information</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Client Name *</label>
-            <div className="relative">
-              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="text"
-                value={formData.clientName}
-                onChange={(e) => handleInputChange('clientName', e.target.value)}
-                placeholder="Enter client's full name"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Mobile Number *</label>
-            <div className="relative">
-              <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
-                placeholder="10-digit mobile number"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Employment Type *</label>
-            <div className="relative">
-              <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <select
-                value={formData.employmentType}
-                onChange={(e) => handleInputChange('employmentType', e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
-              >
-                <option value="" className="bg-slate-900">Select employment type</option>
-                <option value="salaried" className="bg-slate-900">Salaried</option>
-                <option value="self_employed" className="bg-slate-900">Self Employed</option>
-                <option value="business_owner" className="bg-slate-900">Business Owner</option>
-                <option value="professional" className="bg-slate-900">Professional (Doctor, CA, etc.)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">
-              <span className="flex items-center gap-1.5">
-                Monthly Income *
-                <Tooltip content="Enter net monthly income (take-home salary for salaried, average monthly profit for self-employed)" />
-              </span>
-            </label>
-            <div className="relative">
-              <IndianRupee size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="number"
-                value={formData.monthlyIncome}
-                onChange={(e) => handleInputChange('monthlyIncome', e.target.value)}
-                placeholder="e.g., 50000"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Loan Type *</label>
-            <select
-              value={formData.loanType}
-              onChange={(e) => handleInputChange('loanType', e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="" className="bg-slate-900">Select loan type</option>
-              <option value="personal_loan" className="bg-slate-900">Personal Loan</option>
-              <option value="home_loan" className="bg-slate-900">Home Loan</option>
-              <option value="business_loan" className="bg-slate-900">Business Loan</option>
-              <option value="car_loan" className="bg-slate-900">Car Loan</option>
-              <option value="lap" className="bg-slate-900">Loan Against Property</option>
-              <option value="education_loan" className="bg-slate-900">Education Loan</option>
+      <section className="rounded-xl border border-white/10 bg-slate-900/50 p-6">
+        <h2 className="mb-6 text-lg font-semibold text-slate-100">Client Information</h2>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <Field id="clientName" label="Client Name *">
+            <input id="clientName" type="text" value={formData.clientName} onChange={(e) => updateField('clientName', e.target.value)} placeholder="Enter client's full name" className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </Field>
+          <Field id="phone" label="Mobile Number *">
+            <input id="phone" type="tel" value={formData.phone} onChange={(e) => updateField('phone', e.target.value)} placeholder="10-digit mobile number" className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </Field>
+          <Field id="employmentType" label="Employment Type *">
+            <select id="employmentType" value={formData.employmentType} onChange={(e) => updateField('employmentType', e.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Select employment type</option>
+              <option value="salaried">Salaried</option>
+              <option value="self_employed">Self Employed</option>
+              <option value="business_owner">Business Owner</option>
+              <option value="professional">Professional</option>
             </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Required Loan Amount *</label>
-            <div className="relative">
-              <IndianRupee size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="number"
-                value={formData.loanAmount}
-                onChange={(e) => handleInputChange('loanAmount', e.target.value)}
-                placeholder="e.g., 500000"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">
-              <span className="flex items-center gap-1.5">
-                Existing EMI Obligations (Optional)
-                <Tooltip content="Total of all existing loan EMIs per month. Leave blank if none." />
-              </span>
-            </label>
-            <div className="relative max-w-md">
-              <IndianRupee size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="number"
-                value={formData.existingEMI}
-                onChange={(e) => handleInputChange('existingEMI', e.target.value)}
-                placeholder="Monthly EMI amount (if any)"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
+          </Field>
+          <Field id="monthlyIncome" label="Monthly Income *">
+            <input id="monthlyIncome" type="number" value={formData.monthlyIncome} onChange={(e) => updateField('monthlyIncome', e.target.value)} placeholder="e.g., 50000" className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </Field>
+          <Field id="loanType" label="Loan Type *">
+            <select id="loanType" value={formData.loanType} onChange={(e) => updateField('loanType', e.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Select loan type</option>
+              <option value="personal_loan">Personal Loan</option>
+              <option value="home_loan">Home Loan</option>
+              <option value="business_loan">Business Loan</option>
+              <option value="car_loan">Car Loan</option>
+              <option value="lap">Loan Against Property</option>
+              <option value="education_loan">Education Loan</option>
+            </select>
+          </Field>
+          <Field id="loanAmount" label="Required Loan Amount *">
+            <input id="loanAmount" type="number" value={formData.loanAmount} onChange={(e) => updateField('loanAmount', e.target.value)} placeholder="e.g., 500000" className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </Field>
+          <Field id="existingEMI" label="Existing EMI Obligations">
+            <input id="existingEMI" type="number" value={formData.existingEMI} onChange={(e) => updateField('existingEMI', e.target.value)} placeholder="Monthly EMI amount (if any)" className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </Field>
+          <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-slate-800/30 p-4 text-sm text-slate-300 md:col-span-2">
+            <input type="checkbox" checked={formData.consentCredit} onChange={(e) => updateField('consentCredit', e.target.checked)} className="mt-1 h-4 w-4" />
+            <span>Client has consented to a soft eligibility check. This does not affect the client's credit score.</span>
+          </label>
         </div>
 
-        <div className="mt-8 flex items-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center gap-4">
           <button
             onClick={handleCheckEligibility}
-            disabled={!formData.clientName || !formData.phone || !formData.monthlyIncome || !formData.employmentType || !formData.loanType || !formData.loanAmount || isChecking}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            disabled={!canRun}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isChecking ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 Checking Eligibility...
               </>
             ) : (
@@ -518,50 +287,32 @@ export default function CreditCheckPage() {
             )}
           </button>
           <p className="text-sm text-slate-400">
-            <Info size={14} className="inline mr-1 text-slate-500" />
+            <Info size={14} className="mr-1 inline text-slate-500" />
             This check takes less than 30 seconds
           </p>
         </div>
-      </div>
+        {submitError && <p className="mt-3 text-sm text-red-300">{submitError}</p>}
+      </section>
+    </div>
+  );
+}
 
-      <div className="bg-slate-900/50 backdrop-blur-sm rounded-xl border border-white/10 p-6">
-        <h3 className="text-lg font-semibold text-slate-100 mb-4">How Eligibility Check Works</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex gap-3">
-            <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center flex-shrink-0 font-semibold border border-indigo-500/30">
-              1
-            </div>
-            <div>
-              <h4 className="font-medium text-slate-200">Enter Details</h4>
-              <p className="text-sm text-slate-400 mt-1">
-                Provide basic client information like income and loan requirements
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center flex-shrink-0 font-semibold border border-indigo-500/30">
-              2
-            </div>
-            <div>
-              <h4 className="font-medium text-slate-200">Instant Analysis</h4>
-              <p className="text-sm text-slate-400 mt-1">
-                Our system analyzes eligibility across 20+ banks in seconds
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center flex-shrink-0 font-semibold border border-indigo-500/30">
-              3
-            </div>
-            <div>
-              <h4 className="font-medium text-slate-200">Get Results</h4>
-              <p className="text-sm text-slate-400 mt-1">
-                See eligible loan amount range and best matching bank offers
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-300">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-black/20 p-3 text-center">
+      <p className="text-xs font-medium text-emerald-300">{label}</p>
+      <p className="mt-1 text-lg font-bold text-emerald-400">{value}</p>
     </div>
   );
 }

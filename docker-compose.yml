@@ -73,6 +73,9 @@ services:
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-5000}
+      PG_POOL_MAX: ${PG_POOL_MAX:-50}
+      PG_POOL_MIN: ${PG_POOL_MIN:-2}
       # DB connection is over Docker-internal network — no TLS on the pg container.
       DB_SSL: ${DB_SSL:-false}
     extra_hosts:
@@ -121,6 +124,9 @@ services:
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       FRONTEND_URL: http://localhost:5173
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:3000
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-5000}
+      PG_POOL_MAX: ${PG_POOL_MAX:-50}
+      PG_POOL_MIN: ${PG_POOL_MIN:-2}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command:

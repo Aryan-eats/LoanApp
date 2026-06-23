@@ -24,3 +24,21 @@ export const validateUUID = (req: Request, res: Response, next: NextFunction): v
   }
   next();
 };
+
+export const validateUUIDParam = (
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+  value: string,
+  paramName: string,
+): void => {
+  if ((paramName === 'id' || paramName.endsWith('Id')) && (!value || !UUID_V4_REGEX.test(value))) {
+    res.status(400).json({
+      success: false,
+      message: `Invalid ID format for "${paramName}"`,
+    });
+    return;
+  }
+
+  next();
+};

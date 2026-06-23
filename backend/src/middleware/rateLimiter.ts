@@ -5,6 +5,7 @@ import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
 const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const apiRateLimitMax = Number(process.env.API_RATE_LIMIT_MAX) || (isDev ? 500 : 100);
 
 const isLocalDevRequest = (req: Request): boolean => {
   if (!isDev) return false;
@@ -46,7 +47,7 @@ const buildStore = (prefix: string) => {
 // General API rate limiter
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 500 : 100,
+  max: apiRateLimitMax,
   passOnStoreError: true,
   message: {
     success: false,

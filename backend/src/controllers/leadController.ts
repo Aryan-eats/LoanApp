@@ -9,6 +9,7 @@ import { getRequiredDocTypes } from '../data/loanDocsMap.js';
 import { formatLeadResponse } from '../utils/leadHelpers.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
 import { canViewLeadPII, grantAccess } from '../services/consent.js';
+import { isAdminRole } from '../services/adminPermissions.js';
 
 type LeadWithRelations = Prisma.LeadGetPayload<{
   include: { documents: true; timeline: true; consentGrants: true };
@@ -564,7 +565,7 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    if (req.user.role !== 'admin') {
+    if (!isAdminRole(req.user.role)) {
       res.status(403).json({ success: false, message: 'Only admins can delete leads' });
       return;
     }
@@ -858,7 +859,7 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    if (req.user.role !== 'admin') {
+    if (!isAdminRole(req.user.role)) {
       res.status(403).json({ success: false, message: 'Only admins can assign banks to leads' });
       return;
     }

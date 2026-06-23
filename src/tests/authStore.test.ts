@@ -138,6 +138,19 @@ describe('Auth Store', () => {
     expect(state.user?.email).toBe('test@example.com');
   });
 
+  it('accepts super_admin as an authenticated admin role', async () => {
+    const user = { ...baseUser, role: 'super_admin' as const };
+    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue('valid-token');
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { user } },
+    });
+
+    await useAuthStore.getState().checkAuth();
+
+    expect(useAuthStore.getState().user?.role).toBe('super_admin');
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+  });
+
   it('checkAuth refreshes token when no in-memory token exists', async () => {
     (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({

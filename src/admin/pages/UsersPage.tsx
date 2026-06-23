@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../components/AdminLayout';
 import StatusBadge from '../../components/shared/StatusBadge';
-import { getUsers, createUser } from '../../api/adminApi';
+import {
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  getRolePermissions,
+  updateRolePermissions,
+  type PermissionAction,
+  type PermissionResource,
+  type RolePermissions,
+} from '../../api/adminApi';
 import type { AdminRole } from '../types/admin';
 import { useDebounce } from '../../hooks';
+import useAuthStore from '../../stores/authStore';
 
 const roleLabels: Record<AdminRole, string> = {
   super_admin: 'Super Admin',
@@ -32,6 +43,23 @@ interface User {
 }
 
 const VALID_ROLES: readonly AdminRole[] = ['super_admin', 'admin', 'manager', 'agent', 'viewer'] as const;
+const PERMISSION_RESOURCES: readonly PermissionResource[] = ['leads', 'partners', 'banks', 'users', 'roles'];
+const PERMISSION_ACTIONS: readonly PermissionAction[] = ['read', 'create', 'update', 'delete'];
+
+const resourceLabels: Record<PermissionResource, string> = {
+  leads: 'Leads',
+  partners: 'Partners',
+  banks: 'Banks',
+  users: 'Users',
+  roles: 'Roles',
+};
+
+const actionLabels: Record<PermissionAction, string> = {
+  read: 'Read',
+  create: 'Create',
+  update: 'Update',
+  delete: 'Delete',
+};
 
 interface ApiUser {
   _id?: string;
@@ -57,6 +85,8 @@ function safeFormatDate(value: unknown): string {
 }
 
 const UsersPage: React.FC = () => {
+  const currentUser = useAuthStore((state) => state.user);
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,10 +94,19 @@ const UsersPage: React.FC = () => {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [roleFilter, setRoleFilter] = useState<AdminRole | ''>('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [editUser, setEditUser] = useState({
+    firstName: '',
+    lastName: '',
+    role: '' as AdminRole | '',
+    isActive: true,
+  });
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<Record<AdminRole, RolePermissions> | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [savingRole, setSavingRole] = useState<AdminRole | null>(null);
   const [newUser, setNewUser] = useState({
     firstName: '',
     lastName: '',
@@ -103,6 +142,26 @@ const UsersPage: React.FC = () => {
     };
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+
+    const fetchRolePermissions = async () => {
+      try {
+        setRoleError(null);
+        const response = await getRolePermissions();
+        if (response.success && response.data) {
+          setRolePermissions(Object.fromEntries(
+            response.data.roles.map(({ role, permissions }) => [role, permissions])
+          ) as Record<AdminRole, RolePermissions>);
+        }
+      } catch (err) {
+        setRoleError(err instanceof Error ? err.message : 'Failed to load role permissions.');
+      }
+    };
+
+    fetchRolePermissions();
+  }, [isSuperAdmin]);
 
   const resetForm = () => {
     setNewUser({ firstName: '', lastName: '', email: '', role: '', password: '' });
@@ -161,6 +220,117 @@ const UsersPage: React.FC = () => {
     }
   };
 
+  const openEditUser = (user: User) => {
+    const [firstName = '', ...rest] = user.name === '\u2014' ? [''] : user.name.split(' ');
+    setSelectedUser(user);
+    setEditUser({
+      firstName,
+      lastName: rest.join(' '),
+      role: user.role,
+      isActive: user.isActive,
+    });
+    setFormError(null);
+  };
+
+  const handleSaveUser = async () => {
+    if (!selectedUser || !editUser.role) return;
+    setFormError(null);
+
+    try {
+      setIsSubmitting(true);
+      const response = await updateUser(selectedUser.id, {
+        firstName: editUser.firstName.trim(),
+        lastName: editUser.lastName.trim(),
+        role: editUser.role,
+        isActive: editUser.isActive,
+      });
+
+      if (response.success && response.data) {
+        const u = response.data.user;
+        setUsers(prev => prev.map(user => user.id === selectedUser.id ? {
+          ...user,
+          name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || '\u2014',
+          role: isValidRole(u.role) ? u.role : user.role,
+          isActive: Boolean(u.isActive),
+        } : user));
+        setSelectedUser(null);
+      } else {
+        setFormError(response.message || 'Failed to update user.');
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update user.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleUserStatus = async (user: User) => {
+    try {
+      const response = await updateUser(user.id, { isActive: !user.isActive });
+      if (response.success) {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !u.isActive } : u));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user status.');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser || !window.confirm(`Delete ${selectedUser.email}?`)) return;
+    try {
+      setIsSubmitting(true);
+      const response = await deleteUser(selectedUser.id);
+      if (response.success) {
+        setUsers(prev => prev.filter(user => user.id !== selectedUser.id));
+        setSelectedUser(null);
+      } else {
+        setFormError(response.message || 'Failed to delete user.');
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to delete user.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const setPermission = (
+    role: AdminRole,
+    resource: PermissionResource,
+    action: PermissionAction,
+    value: boolean
+  ) => {
+    if (role === 'super_admin') return;
+    setRolePermissions(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [role]: {
+          ...prev[role],
+          [resource]: {
+            ...prev[role][resource],
+            [action]: value,
+          },
+        },
+      };
+    });
+  };
+
+  const handleSaveRolePermissions = async (role: AdminRole) => {
+    if (!rolePermissions || role === 'super_admin') return;
+    try {
+      setSavingRole(role);
+      setRoleError(null);
+      const response = await updateRolePermissions(role, rolePermissions[role]);
+      if (!response.success) {
+        setRoleError(response.message || 'Failed to update role permissions.');
+      }
+    } catch (err) {
+      setRoleError(err instanceof Error ? err.message : 'Failed to update role permissions.');
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
@@ -182,6 +352,7 @@ const UsersPage: React.FC = () => {
         </div>
         <button
           onClick={() => setIsAddModalOpen(true)}
+          disabled={!isSuperAdmin}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -359,7 +530,7 @@ const UsersPage: React.FC = () => {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setSelectedUser(user)}
+                            onClick={() => openEditUser(user)}
                             className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
                             title="View/Edit"
                           >
@@ -368,6 +539,8 @@ const UsersPage: React.FC = () => {
                             </svg>
                           </button>
                           <button
+                            onClick={() => handleToggleUserStatus(user)}
+                            disabled={!isSuperAdmin}
                             className={`p-1.5 rounded transition-colors ${
                               user.isActive
                                 ? 'text-red-500 hover:text-red-700 hover:bg-red-50'
@@ -406,6 +579,11 @@ const UsersPage: React.FC = () => {
 
         {activeTab === 'roles' && (
           <div className="p-4">
+            {roleError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {roleError}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {Object.entries(roleLabels).map(([role, label]) => (
                 <div key={role} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
@@ -452,9 +630,58 @@ const UsersPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+
+                  {isSuperAdmin && rolePermissions?.[role as AdminRole] && (
+                    <div className="mt-4 border-t border-gray-200 pt-3">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr>
+                              <th className="py-1 text-left font-medium text-gray-500">Resource</th>
+                              {PERMISSION_ACTIONS.map(action => (
+                                <th key={action} className="py-1 text-center font-medium text-gray-500">
+                                  {actionLabels[action]}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {PERMISSION_RESOURCES.map(resource => (
+                              <tr key={resource}>
+                                <td className="py-1 text-gray-700">{resourceLabels[resource]}</td>
+                                {PERMISSION_ACTIONS.map(action => (
+                                  <td key={action} className="py-1 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={rolePermissions[role as AdminRole][resource][action]}
+                                      disabled={role === 'super_admin'}
+                                      onChange={(e) => setPermission(role as AdminRole, resource, action, e.target.checked)}
+                                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {role !== 'super_admin' && (
+                        <button
+                          onClick={() => handleSaveRolePermissions(role as AdminRole)}
+                          disabled={savingRole === role}
+                          className="mt-3 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          {savingRole === role ? 'Saving...' : 'Save Permissions'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+            {!isSuperAdmin && (
+              <p className="mt-4 text-sm text-gray-500">Only Super Admin can edit role permissions.</p>
+            )}
           </div>
         )}
       </div>
@@ -476,6 +703,11 @@ const UsersPage: React.FC = () => {
             </div>
 
             <div className="space-y-4">
+              {formError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {formError}
+                </div>
+              )}
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center text-xl font-semibold text-gray-600">
                   {selectedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
@@ -490,7 +722,8 @@ const UsersPage: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                 <input
                   type="text"
-                  defaultValue={selectedUser.name}
+                  value={editUser.firstName}
+                  onChange={(e) => setEditUser(prev => ({ ...prev, firstName: e.target.value }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
               </div>
@@ -499,7 +732,18 @@ const UsersPage: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
-                  defaultValue={selectedUser.email}
+                  value={selectedUser.email}
+                  disabled
+                  className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                <input
+                  type="text"
+                  value={editUser.lastName}
+                  onChange={(e) => setEditUser(prev => ({ ...prev, lastName: e.target.value }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
               </div>
@@ -507,7 +751,8 @@ const UsersPage: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <select
-                  defaultValue={selectedUser.role}
+                  value={editUser.role}
+                  onChange={(e) => setEditUser(prev => ({ ...prev, role: e.target.value as AdminRole }))}
                   className="w-full px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white"
                 >
                   {Object.entries(roleLabels).map(([value, label]) => (
@@ -520,7 +765,8 @@ const UsersPage: React.FC = () => {
                 <input
                   type="checkbox"
                   id="isActive"
-                  defaultChecked={selectedUser.isActive}
+                  checked={editUser.isActive}
+                  onChange={(e) => setEditUser(prev => ({ ...prev, isActive: e.target.checked }))}
                   className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
                 />
                 <label htmlFor="isActive" className="text-sm text-gray-700">Active User</label>
@@ -528,8 +774,12 @@ const UsersPage: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
-              <button className="text-sm text-red-600 hover:text-red-700">
-                Reset Password
+              <button
+                onClick={handleDeleteUser}
+                disabled={isSubmitting || !isSuperAdmin}
+                className="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                Delete User
               </button>
               <div className="flex items-center gap-3">
                 <button
@@ -538,8 +788,12 @@ const UsersPage: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors">
-                  Save Changes
+                <button
+                  onClick={handleSaveUser}
+                  disabled={isSubmitting || !isSuperAdmin}
+                  className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </div>

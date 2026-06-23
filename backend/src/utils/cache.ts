@@ -11,6 +11,7 @@ import { getRedisClient, isRedisAvailable } from '../config/redis.js';
 
 const PREFIX = 'cache:';
 const DEFAULT_TTL_SECONDS = 300; // 5 minutes
+const inFlightFetches = new Map<string, Promise<unknown>>();
 
 export interface CachedValue<T> {
   cached: true;
@@ -120,7 +121,20 @@ export const cacheWrap = async <T>(
   const cached = await cacheGet<T>(key);
   if (cached?.cached) return cached.value;
 
-  const fresh = await fetcher();
-  await cacheSet(key, fresh, ttlSeconds);
-  return fresh;
+  const inFlight = inFlightFetches.get(key) as Promise<T> | undefined;
+  if (inFlight) return inFlight;
+
+  const refresh = (async () => {
+    const fresh = await fetcher();
+    await cacheSet(key, fresh, ttlSeconds);
+    return fresh;
+  })();
+
+  // ponytail: process-local single-flight; Redis lock only if multiple API replicas stampede.
+  inFlightFetches.set(key, refresh);
+  try {
+    return await refresh;
+  } finally {
+    inFlightFetches.delete(key);
+  }
 };

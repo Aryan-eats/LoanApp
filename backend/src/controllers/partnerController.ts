@@ -4,6 +4,7 @@ import type { User, AuditEventType } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
 import { cacheWrap, cacheDelete } from '../utils/cache.js';
+import { isAdminRole } from '../services/adminPermissions.js';
 
 // Derive the frontend-visible status from DB fields
 const derivePartnerStatus = (user: User): string => {
@@ -514,7 +515,7 @@ export const updatePartnerProfile = async (req: Request, res: Response): Promise
   try {
     const partnerId = req.params.id as string;
 
-    if (req.user && req.user.role !== 'admin' && req.user.id !== partnerId) {
+    if (req.user && !isAdminRole(req.user.role) && req.user.id !== partnerId) {
       res.status(403).json({ success: false, message: 'Not authorized to update this profile' });
       return;
     }
@@ -584,7 +585,7 @@ export const submitPartnerKYC = async (req: Request, res: Response): Promise<voi
   try {
     const partnerId = req.params.id as string;
 
-    if (req.user && req.user.role !== 'admin' && req.user.id !== partnerId) {
+    if (req.user && !isAdminRole(req.user.role) && req.user.id !== partnerId) {
       res.status(403).json({ success: false, message: 'Not authorized' });
       return;
     }

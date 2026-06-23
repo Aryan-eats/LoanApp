@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { protect, authorize } from '../middleware/auth.js';
-import { validateUUID } from '../middleware/validateUUID.js';
+import { protect, authorizeAdmin, requirePermission } from '../middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
 import {
   getPartners,
   getPartnerById,
@@ -17,6 +17,8 @@ import { registerPartner } from '../controllers/authController.js';
 
 const router = Router();
 
+router.param('id', validateUUIDParam);
+
 /**
  * Partner Management Routes
  * Base path: /api/partners
@@ -30,37 +32,37 @@ router.post('/', registerPartner);
 router.use(protect);
 
 // Admin-only routes
-router.use(authorize('admin'));
+router.use(authorizeAdmin);
 router.use(validateUUID);
 
 // GET /api/partners/stats - Get partner statistics (must be before /:id)
-router.get('/stats', getPartnerStats);
+router.get('/stats', requirePermission('partners', 'read'), getPartnerStats);
 
 // GET /api/partners - Get all partners (with filters)
-router.get('/', getPartners);
+router.get('/', requirePermission('partners', 'read'), getPartners);
 
 // GET /api/partners/:id - Get partner details
-router.get('/:id', getPartnerById);
+router.get('/:id', requirePermission('partners', 'read'), getPartnerById);
 
 // PUT /api/partners/:id - Update partner details
-router.put('/:id', updatePartner);
+router.put('/:id', requirePermission('partners', 'update'), updatePartner);
 
 // PATCH /api/partners/:id/status - Approve/Reject/Suspend partner
-router.patch('/:id/status', updatePartnerStatus);
+router.patch('/:id/status', requirePermission('partners', 'update'), updatePartnerStatus);
 
 // GET /api/partners/:id/leads - Get leads for specific partner
-router.get('/:id/leads', getPartnerLeads);
+router.get('/:id/leads', requirePermission('partners', 'read'), getPartnerLeads);
 
 // GET /api/partners/:id/commissions - Get commissions for partner
-router.get('/:id/commissions', getPartnerCommissions);
+router.get('/:id/commissions', requirePermission('partners', 'read'), getPartnerCommissions);
 
 // PUT /api/partners/:id/profile - Update partner profile
-router.put('/:id/profile', updatePartnerProfile);
+router.put('/:id/profile', requirePermission('partners', 'update'), updatePartnerProfile);
 
 // POST /api/partners/:id/kyc - Submit KYC documents
-router.post('/:id/kyc', submitPartnerKYC);
+router.post('/:id/kyc', requirePermission('partners', 'update'), submitPartnerKYC);
 
 // PATCH /api/partners/:id/kyc/status - Update KYC status
-router.patch('/:id/kyc/status', updatePartnerKYCStatus);
+router.patch('/:id/kyc/status', requirePermission('partners', 'update'), updatePartnerKYCStatus);
 
 export default router;

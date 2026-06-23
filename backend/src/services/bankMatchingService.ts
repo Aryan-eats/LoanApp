@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/client';
 import { basePrisma } from '../config/prisma.js';
 
@@ -43,6 +44,14 @@ export interface MatchedBankOffer {
   estimatedEmi: number | null;
 }
 
+type MatchBank = Prisma.BankGetPayload<{ include: { commissionRates: true } }>;
+
+const BANK_MATCH_CACHE_TTL_MS = Math.max(
+  0,
+  parseInt(process.env.BANK_MATCH_CACHE_TTL_MS ?? '30000', 10) || 0
+);
+const bankMatchCache = new Map<string, { banks: MatchBank[]; expiresAt: number }>();
+
 const resolveLoanTypes = ({ loanType, loanSubType }: MatchOffersInput): string[] => {
   if (loanSubType && loanSubType.trim().length > 0) {
     return [loanSubType.trim()];
@@ -83,6 +92,29 @@ const calculateEstimatedEmi = (
     .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 };
 
+const getActiveBanksForLoanTypes = async (loanTypes: string[]): Promise<MatchBank[]> => {
+  const cacheKey = loanTypes.slice().sort().join('|');
+  const cached = bankMatchCache.get(cacheKey);
+  if (BANK_MATCH_CACHE_TTL_MS > 0 && cached && cached.expiresAt > Date.now()) {
+    return cached.banks;
+  }
+
+  const banks = await basePrisma.bank.findMany({
+    where: {
+      status: 'active',
+      supportedLoanTypes: { hasSome: loanTypes },
+    },
+    include: { commissionRates: true },
+    orderBy: [{ interestRateMin: 'asc' }, { name: 'asc' }],
+  });
+
+  // ponytail: short read cache; add write-side invalidation if bank updates need instant propagation.
+  if (BANK_MATCH_CACHE_TTL_MS > 0) {
+    bankMatchCache.set(cacheKey, { banks, expiresAt: Date.now() + BANK_MATCH_CACHE_TTL_MS });
+  }
+  return banks;
+};
+
 export const matchLeadOffers = async (input: MatchOffersInput): Promise<{
   resolvedLoanTypes: string[];
   offers: MatchedBankOffer[];
@@ -97,14 +129,7 @@ export const matchLeadOffers = async (input: MatchOffersInput): Promise<{
       ? new Decimal(input.loanAmount)
       : null;
 
-  const banks = await basePrisma.bank.findMany({
-    where: {
-      status: 'active',
-      supportedLoanTypes: { hasSome: resolvedLoanTypes },
-    },
-    include: { commissionRates: true },
-    orderBy: [{ interestRateMin: 'asc' }, { name: 'asc' }],
-  });
+  const banks = await getActiveBanksForLoanTypes(resolvedLoanTypes);
 
   const offers = banks.flatMap((bank) => {
     const minAmount = new Decimal(bank.minAmount.toString());

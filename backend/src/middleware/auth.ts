@@ -3,6 +3,36 @@ import type { User, UserRole } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { verifyAccessToken, extractTokenFromHeader } from '../utils/jwt.js';
 import { tokenBlacklist } from '../utils/tokenBlacklist.js';
+import {
+  isAdminRole,
+  userHasPermission,
+  type PermissionAction,
+  type PermissionResource,
+} from '../services/adminPermissions.js';
+
+const AUTH_USER_CACHE_TTL_MS = Math.max(
+  0,
+  parseInt(process.env.AUTH_USER_CACHE_TTL_MS ?? '5000', 10) || 0
+);
+// ponytail: short auth cache; lower TTL or disable with 0 if instant user deactivation matters more than load.
+const authUserCache = new Map<string, { user: User; expiresAt: number }>();
+
+const getCachedAuthUser = (userId: string): User | null => {
+  if (AUTH_USER_CACHE_TTL_MS <= 0) return null;
+
+  const cached = authUserCache.get(userId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    authUserCache.delete(userId);
+    return null;
+  }
+  return cached.user;
+};
+
+const setCachedAuthUser = (user: User): void => {
+  if (AUTH_USER_CACHE_TTL_MS <= 0 || !user.isActive) return;
+  authUserCache.set(user.id, { user, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
+};
 
 declare global {
   namespace Express {
@@ -66,7 +96,7 @@ export const protect = async (
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = getCachedAuthUser(payload.sub) ?? await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) {
       res.status(401).json({
         success: false,
@@ -83,6 +113,7 @@ export const protect = async (
       return;
     }
 
+    setCachedAuthUser(user);
     req.user = user;
     next();
   } catch (error) {
@@ -108,6 +139,28 @@ export const authorize = (...roles: UserRole[]) => {
       res.status(403).json({
         success: false,
         message: `Role '${req.user.role}' is not authorized to access this resource`,
+      });
+      return;
+    }
+
+    next();
+  };
+};
+
+export const authorizeAdmin = authorize('super_admin', 'admin', 'manager', 'agent', 'viewer');
+export const authorizeAdminOperator = authorize('super_admin', 'admin', 'manager', 'agent');
+
+export const requirePermission = (resource: PermissionResource, action: PermissionAction) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Not authorized' });
+      return;
+    }
+
+    if (!isAdminRole(req.user.role) || !(await userHasPermission(req.user.role, resource, action))) {
+      res.status(403).json({
+        success: false,
+        message: `Role '${req.user.role}' is not authorized to ${action} ${resource}`,
       });
       return;
     }

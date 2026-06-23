@@ -46,6 +46,51 @@ export interface SubmitStoredClientResponse {
   leadId: string;
 }
 
+export interface SoftCheckPayload {
+  storedClientId?: string;
+  leadId?: string;
+  fullName?: string;
+  phone?: string;
+  monthlyIncome?: number;
+  existingEMI?: number;
+  employmentType?: string;
+  loanType?: string;
+  loanAmount?: number;
+  consentCredit: boolean;
+}
+
+export interface SoftCheckResult {
+  checkType: 'soft';
+  creditImpact: 'none';
+  isEligible: boolean;
+  score: number;
+  maxLoanAmount: number;
+  minLoanAmount: number;
+  estimatedEMI: number;
+  eligibleBanks: Array<{
+    id: string;
+    name: string;
+    code: string;
+    logo?: string | null;
+    interestRateMin: number | string;
+    interestRateMax: number | string;
+    processingFee: string;
+    maxTenure: number;
+    minAmount: number | string;
+    maxAmount: number | string;
+    processingTime: string;
+    features: string[];
+    displayAmount: number;
+  }>;
+  factors: Array<{
+    factor: string;
+    status: 'positive' | 'neutral' | 'negative';
+    description: string;
+    weight: number;
+  }>;
+  disclaimer: string;
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────────
 
 /** Fetch all stored clients for the current partner */
@@ -85,6 +130,14 @@ export async function submitStoredClientToGPS(
   const { data } = await apiClient.post<ApiResponse<SubmitStoredClientResponse>>(
     `/partner/stored-clients/${id}/submit`
   );
+  return data;
+}
+
+/** Run a declared-data soft eligibility check. */
+export async function runSoftCheck(
+  payload: SoftCheckPayload
+): Promise<ApiResponse<SoftCheckResult>> {
+  const { data } = await apiClient.post<ApiResponse<SoftCheckResult>>('/partner/soft-check', payload);
   return data;
 }
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import PrefetchLink from '../../components/shared/PrefetchLink';
+import useAuthStore from '../../stores/authStore';
 
 interface MenuItem {
   path: string;
@@ -101,6 +102,10 @@ interface AdminSidebarProps {
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle }) => {
   const location = useLocation();
+  const userRole = useAuthStore((state) => state.user?.role);
+  const visibleMenuItems = userRole === 'viewer'
+    ? menuItems.filter((item) => ['/admin/partners', '/admin/leads', '/admin/banks'].includes(item.path))
+    : menuItems;
 
   const isActive = (path: string) => {
     if (path === '/admin') {
@@ -145,7 +150,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle }) =>
           {/* Navigation */}
           <nav className="flex-1 py-4 overflow-y-auto">
             <ul className="space-y-1 px-2">
-              {menuItems.map((item) => (
+              {visibleMenuItems.map((item) => (
                 <li key={item.path}>
                   <PrefetchLink
                     to={item.path}

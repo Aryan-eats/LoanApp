@@ -61,6 +61,10 @@ Supporting:
 
 ### Core Flows
 
+**Admin access update** - Admin subroles manage user access and role permissions through backend permission checks. `super_admin` has full access, while `viewer` is read-only for leads, partners, and banks.
+
+**Soft-check update** - Partners can run a backend soft eligibility check for a stored client or lead. The check normalizes bank decimal values before calculation, returns estimated eligibility data, and does not call a credit bureau.
+
 **Public flow** — Visitors submit loan enquiries via the public site. Leads are stored in PostgreSQL and associated with a system partner for downstream handling.
 
 **Partner flow** — Partners register, wait for approval, then log in to submit leads, upload documents, and track their pipeline and commissions.
@@ -73,8 +77,9 @@ Supporting:
 
 ## Security
 
-- **Encryption at rest** — Sensitive fields (Aadhaar, PAN, account details, tokens) are encrypted via a Prisma extension
+- **Encryption at rest** — Sensitive fields are encrypted only where service/controller code explicitly applies the field-encryption helpers
 - **Auth** — Short-lived JWT access tokens + refresh tokens in `httpOnly` cookies to reduce XSS exposure
+- **Mock OTP** — Non-production OTP mocks use `MOCK_OTP` from environment; the documented local value is `123456`
 - **Rate limiting** — Redis-backed, distributed-friendly; degrades gracefully on Redis failure instead of blocking requests
 - **Security headers** — Helmet with CSP and HSTS; `x-powered-by` disabled
 - **CORS** — Allowlisted origins with credentialed request support
@@ -97,6 +102,8 @@ Supporting:
 **Workflow state modeled explicitly** — Leads track current status while timeline tables preserve the full transition history — better than mutable status columns alone for admin-heavy systems.
 
 **Redis-backed rate limiting** — Works across instances when Redis is healthy; designed to degrade safely when it isn't.
+
+**Admin permissions in the backend** — Admin subroles are accepted through `authorizeAdmin`, then checked with `requirePermission(resource, action)`. `super_admin` has full access and can edit role permissions. `viewer` is read-only for leads, partners, and banks.
 
 ---
 

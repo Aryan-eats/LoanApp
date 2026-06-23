@@ -11,13 +11,16 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import apiClient, { setAccessToken, clearTokens, getAccessToken, startSilentRefresh } from '../api/apiClient';
 
+export type AuthRole = 'super_admin' | 'admin' | 'manager' | 'agent' | 'viewer' | 'partner';
+const AUTH_ROLES: readonly AuthRole[] = ['super_admin', 'admin', 'manager', 'agent', 'viewer', 'partner'];
+
 export interface AuthUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   phone?: string;
-  role: 'admin' | 'partner';
+  role: AuthRole;
   isActive: boolean;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
@@ -58,13 +61,14 @@ const toPersistedAuthUser = (user: unknown): PersistedAuthUser | null => {
     return null;
   }
 
-  if (candidate.role !== 'admin' && candidate.role !== 'partner') {
+  const role = candidate.role;
+  if (!AUTH_ROLES.includes(role as AuthRole)) {
     return null;
   }
 
   return {
     id: candidate.id,
-    role: candidate.role,
+    role: role as AuthRole,
   };
 };
 
@@ -80,7 +84,7 @@ const isFullAuthUser = (user: unknown): user is AuthUser => {
     && typeof candidate.email === 'string'
     && typeof candidate.firstName === 'string'
     && typeof candidate.lastName === 'string'
-    && (candidate.role === 'admin' || candidate.role === 'partner')
+    && AUTH_ROLES.includes(candidate.role as AuthRole)
   );
 };
 

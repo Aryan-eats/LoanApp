@@ -12,6 +12,13 @@ import { sanitizeAdminUserResponse } from '../services/authService.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
 import { cacheWrap, cacheDelete, cacheInvalidatePattern } from '../utils/cache.js';
 import { getPartners } from './partnerController.js';
+import {
+  ADMIN_ROLES,
+  isAdminRole,
+  listRolePermissions,
+  setRolePermissions,
+  type AdminRole,
+} from '../services/adminPermissions.js';
 
 // -- Users -------------------------------------------------------------------
 
@@ -81,7 +88,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const validRoles = ['super_admin', 'admin', 'manager', 'agent', 'viewer'];
+    const validRoles = ADMIN_ROLES;
     if (!validRoles.includes(role)) {
       res.status(400).json({
         success: false,
@@ -153,6 +160,14 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     const id = String(req.params.id);
     const { firstName, lastName, phone, role, isActive, isEmailVerified, isPhoneVerified } = req.body;
 
+    if (role !== undefined && !isAdminRole(role)) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid role. Must be one of: ${ADMIN_ROLES.join(', ')}`,
+      });
+      return;
+    }
+
     const updateData: Record<string, unknown> = {};
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
@@ -191,6 +206,64 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     }
   } catch (error) {
     console.error('Update user error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// -- Roles -------------------------------------------------------------------
+
+export const listRoles = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const permissions = await listRolePermissions();
+    res.status(200).json({
+      success: true,
+      data: {
+        roles: ADMIN_ROLES.map((role) => ({ role, permissions: permissions[role] })),
+      },
+    });
+  } catch (error) {
+    console.error('List roles error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const updateRolePermissions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const role = String(req.params.role);
+    if (!isAdminRole(role)) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid role. Must be one of: ${ADMIN_ROLES.join(', ')}`,
+      });
+      return;
+    }
+
+    if (role === 'super_admin') {
+      res.status(400).json({ success: false, message: 'Super Admin permissions are fixed' });
+      return;
+    }
+
+    const permissions = await setRolePermissions(
+      role as AdminRole,
+      req.body?.permissions,
+      req.user?.id ?? null
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Role permissions updated successfully',
+      data: { role, permissions },
+    });
+
+    await logAuditEvent('ADMIN_ROLE_CHANGED', req, {
+      userId: req.user?.id,
+      entityId: role,
+      entityType: 'role',
+      severity: 'HIGH',
+      metadata: { permissions },
+    });
+  } catch (error) {
+    console.error('Update role permissions error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
