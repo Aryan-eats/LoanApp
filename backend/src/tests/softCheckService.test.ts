@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runSoftCheck, type SoftCheckBank } from '../services/softCheckService.js';
+import { runSoftCheck, type SoftCheckBank } from '../modules/soft-check/softCheck.service.js';
 
 const banks: SoftCheckBank[] = [
   {

@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import type { User } from '@prisma/client';
-import prisma from '../shared/db/prisma.js';
+import prisma from '../../shared/db/prisma.js';
 import {
   comparePassword,
   hashPassword,
   isPasswordReused,
   addToPasswordHistory,
-} from '../services/userService.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
+} from '../../services/userService.js';
+import { logAuditEvent } from '../../utils/auditLogger.js';
 
 // Format user response (exclude sensitive data)
 const formatUserResponse = (user: User) => ({

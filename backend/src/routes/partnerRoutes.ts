@@ -25,7 +25,6 @@ import {
   submitStoredClientToGPS,
   getPartnerCustomerById,
   getPartnerCustomerActivity,
-  runPartnerSoftCheck,
 } from '../controllers/partnerDataController.js';
 
 const router = Router();
@@ -66,7 +65,6 @@ router.patch('/leads/:id/status', updateLeadStatus);
  */
 // Bulk create (must be before /:id routes)
 router.post('/stored-clients/bulk', bulkCreateStoredClients);
-router.post('/soft-check', runPartnerSoftCheck);
 
 router.get('/customers/:id', getPartnerCustomerById);
 router.get('/customers/:id/activity', getPartnerCustomerActivity);

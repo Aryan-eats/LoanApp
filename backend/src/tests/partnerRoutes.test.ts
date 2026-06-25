@@ -55,6 +55,9 @@ vi.mock('../controllers/partnerDataController.js', () => ({
   submitStoredClientToGPS,
   getPartnerCustomerById,
   getPartnerCustomerActivity,
+}));
+
+vi.mock('../modules/soft-check/softCheck.controller.js', () => ({
   runPartnerSoftCheck,
 }));
 
@@ -97,10 +100,12 @@ vi.mock('../shared/db/prisma.js', () => ({
 }));
 
 const partnerRoutes = (await import('../routes/partnerRoutes.js')).default;
+const softCheckRoutes = (await import('../modules/soft-check/softCheck.routes.js')).default;
 
 const createApp = () => {
   const app = express();
   app.use(express.json());
+  app.use('/api/partner/soft-check', softCheckRoutes);
   app.use('/api/partner', partnerRoutes);
   return app;
 };

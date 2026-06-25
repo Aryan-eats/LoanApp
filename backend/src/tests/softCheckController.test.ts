@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { runPartnerSoftCheck } from '../controllers/partnerDataController.js';
+import { runPartnerSoftCheck } from '../modules/soft-check/softCheck.controller.js';
 
 const { prismaMock, logAuditEventMock } = vi.hoisted(() => ({
   prismaMock: {

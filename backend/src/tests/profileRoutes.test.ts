@@ -8,7 +8,7 @@ const updatePassword = vi.fn((_req: express.Request, res: express.Response) => r
 const deleteAccount = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
 type JsonObject = Record<string, any>;
 
-vi.mock('../controllers/profileController.js', () => ({
+vi.mock('../modules/profile/profile.controller.js', () => ({
   getProfile,
   updateProfile,
   updatePassword,
@@ -25,7 +25,7 @@ vi.mock('../shared/middleware/auth.js', () => ({
   },
 }));
 
-const profileRoutes = (await import('../routes/profileRoutes.js')).default;
+const profileRoutes = (await import('../modules/profile/profile.routes.js')).default;
 
 const createApp = () => {
   const app = express();

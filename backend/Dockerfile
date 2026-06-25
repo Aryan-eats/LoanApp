@@ -22,6 +22,7 @@ COPY tsconfig.json ./
 COPY src/controllers ./src/controllers/
 COPY src/data ./src/data/
 COPY src/middleware ./src/middleware/
+COPY src/modules ./src/modules/
 COPY src/routes ./src/routes/
 COPY src/shared ./src/shared/
 COPY src/services ./src/services/

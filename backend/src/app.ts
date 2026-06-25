@@ -10,7 +10,8 @@ import documentRoutes from "./routes/documentRoutes.js";
 import leadsRoutes from "./routes/leadsRoutes.js";
 import partnerRoutes from "./routes/partnerRoutes.js";
 import partnersRoutes from "./routes/partnersRoutes.js";
-import profileRoutes from "./routes/profileRoutes.js";
+import profileRoutes from "./modules/profile/profile.routes.js";
+import softCheckRoutes from "./modules/soft-check/softCheck.routes.js";
 
 export const getAllowedOrigins = (): string[] => {
   const origins =
@@ -87,6 +88,7 @@ app.use("/api", apiLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/partner/soft-check", softCheckRoutes);
 app.use("/api/partner", partnerRoutes);
 app.use("/api/partners", partnersRoutes);
 app.use("/api/leads", leadsRoutes);
