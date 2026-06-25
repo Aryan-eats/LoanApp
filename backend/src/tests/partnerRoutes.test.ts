@@ -235,6 +235,22 @@ describe('partner routes', () => {
     expect(updateStoredClientStatus).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid soft-check body IDs before controller access', async () => {
+    const { response, json } = await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      { storedClientId: 'not-a-uuid', consentCredit: true },
+      partnerHeaders,
+    );
+
+    expect(response.status).toBe(400);
+    expect(json).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Validation failed',
+    }));
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
   it('redirects dashboard requests to partner lead stats', async () => {
     const { response } = await requestJson('GET', '/api/partner/dashboard', undefined, partnerHeaders);
 

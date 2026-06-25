@@ -2,7 +2,9 @@ import type { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import prisma from '../../shared/db/prisma.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
+import { getSoftCheckConfiguration } from './softCheckRepository.js';
 import {
+  runConfiguredSoftCheck,
   runSoftCheck,
   type SoftCheckBank,
   type SoftCheckInput,
@@ -67,6 +69,23 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       loanType: storedClient?.loanType ?? lead?.loanType ?? String(req.body.loanType ?? ''),
       loanAmount: Number(storedClient?.loanAmount ?? lead?.loanAmount ?? req.body.loanAmount ?? 0),
       consentCredit: true,
+      age: req.body.age === undefined ? undefined : Number(req.body.age),
+      requestedTenureMonths:
+        storedClient?.tenure ?? lead?.tenure ?? (
+          req.body.requestedTenureMonths === undefined
+            ? undefined
+            : Number(req.body.requestedTenureMonths)
+        ),
+      propertyValue: req.body.propertyValue === undefined ? undefined : Number(req.body.propertyValue),
+      propertyType: req.body.propertyType ? String(req.body.propertyType) : undefined,
+      declaredCibilRange: req.body.declaredCibilRange ? String(req.body.declaredCibilRange) : undefined,
+      purpose: storedClient?.loanPurpose ?? (req.body.purpose ? String(req.body.purpose) : undefined),
+      cityTier: req.body.cityTier,
+      residenceType: storedClient?.residenceType ?? (
+        req.body.residenceType ? String(req.body.residenceType) : undefined
+      ),
+      businessProfile: req.body.businessProfile,
+      goldProfile: req.body.goldProfile,
     };
 
     if (!input.fullName || !input.phone || !input.employmentType || !input.loanType || input.monthlyIncome <= 0 || input.loanAmount <= 0) {
@@ -77,8 +96,20 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const banks = (await prisma.bank.findMany({ where: { status: 'active' } })).map(toSoftCheckBank);
-    const result = runSoftCheck({ input, banks });
+    const [bankRows, configuration] = await Promise.all([
+      prisma.bank.findMany({ where: { status: 'active' } }),
+      getSoftCheckConfiguration(input.loanType).catch((error) => {
+        console.error(
+          'Soft-check configuration load failed:',
+          error instanceof Error ? error.message : 'unknown error',
+        );
+        return null;
+      }),
+    ]);
+    const banks = bankRows.map(toSoftCheckBank);
+    const result = configuration
+      ? runConfiguredSoftCheck({ input, banks, configuration })
+      : runSoftCheck({ input, banks });
 
     if (lead) {
       await prisma.lead.update({
@@ -102,6 +133,8 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
         creditImpact: 'none',
         checkType: 'soft',
         partnerOrgId,
+        ruleConfigReleaseId:
+          'ruleConfigReleaseId' in result ? result.ruleConfigReleaseId : null,
       },
     });
 

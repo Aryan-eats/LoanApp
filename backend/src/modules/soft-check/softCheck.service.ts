@@ -1,3 +1,10 @@
+import {
+  evaluateSoftCheck,
+  type NormalizedSoftCheckInput,
+  type SoftCheckEngineResult,
+} from './softCheckEngine.js';
+import type { SoftCheckConfiguration } from './softCheckRepository.js';
+
 export type SoftCheckInput = {
   fullName: string;
   phone: string;
@@ -7,6 +14,16 @@ export type SoftCheckInput = {
   loanType: string;
   loanAmount: number;
   consentCredit: boolean;
+  age?: number;
+  requestedTenureMonths?: number;
+  propertyValue?: number;
+  propertyType?: string;
+  declaredCibilRange?: string;
+  purpose?: string;
+  cityTier?: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'UNKNOWN';
+  residenceType?: string;
+  businessProfile?: NormalizedSoftCheckInput['businessProfile'];
+  goldProfile?: NormalizedSoftCheckInput['goldProfile'];
 };
 
 export type SoftCheckBank = {
@@ -44,6 +61,13 @@ export type SoftCheckResult = {
   }>;
   disclaimer: string;
 };
+
+export type ConfiguredSoftCheckResult = SoftCheckResult &
+  SoftCheckEngineResult & {
+    schemaVersion: '2.0';
+    ruleConfigReleaseId: string;
+    ruleConfigHash: string;
+  };
 
 const toNumber = (value: unknown) => {
   const parsed = Number(value);
@@ -126,3 +150,69 @@ export function runSoftCheck({
       'Soft eligibility check only. No credit score impact. Final approval requires lender verification and may involve a hard inquiry.',
   };
 }
+
+const normalizeEmploymentType = (
+  value: string
+): NormalizedSoftCheckInput['employmentType'] => {
+  switch (value) {
+    case 'salaried':
+    case 'SALARIED':
+      return 'SALARIED';
+    case 'professional':
+    case 'SELF_EMPLOYED_PROFESSIONAL':
+      return 'SELF_EMPLOYED_PROFESSIONAL';
+    case 'self_employed':
+    case 'business_owner':
+    case 'SELF_EMPLOYED_NON_PROFESSIONAL':
+      return 'SELF_EMPLOYED_NON_PROFESSIONAL';
+    default:
+      return 'UNKNOWN';
+  }
+};
+
+export const normalizeSoftCheckInput = (
+  input: SoftCheckInput
+): NormalizedSoftCheckInput => ({
+  employmentType: normalizeEmploymentType(input.employmentType),
+  monthlyIncome: toNumber(input.monthlyIncome),
+  existingEmiObligations: toNumber(input.existingEMI),
+  age: input.age,
+  cityTier: input.cityTier,
+  residenceType: input.residenceType,
+  productCode: input.loanType,
+  requestedAmount: toNumber(input.loanAmount),
+  requestedTenureMonths: input.requestedTenureMonths,
+  propertyValue: input.propertyValue,
+  propertyType: input.propertyType,
+  declaredCibilRange: input.declaredCibilRange,
+  purpose: input.purpose,
+  businessProfile: input.businessProfile,
+  goldProfile: input.goldProfile,
+});
+
+export const runConfiguredSoftCheck = ({
+  input,
+  banks,
+  configuration,
+}: {
+  input: SoftCheckInput;
+  banks: SoftCheckBank[];
+  configuration: SoftCheckConfiguration;
+}): ConfiguredSoftCheckResult => {
+  const legacy = runSoftCheck({ input, banks });
+  const engine = evaluateSoftCheck({
+    input: normalizeSoftCheckInput(input),
+    lenders: configuration.lenders,
+    rules: configuration.rules,
+  });
+
+  return {
+    ...legacy,
+    ...engine,
+    schemaVersion: '2.0',
+    ruleConfigReleaseId: configuration.ruleSetId,
+    ruleConfigHash: configuration.configHash,
+    disclaimer:
+      'Indicative pre-qualification based on declared information and current lender rules. This is not a sanction, loan offer, or guarantee. Final terms require lender verification, KYC, and separate consent before any bureau check.',
+  };
+};
