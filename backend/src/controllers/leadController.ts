@@ -43,6 +43,11 @@ const partnerLeadWhere = (
       }
     : { partnerId: userId };
 
+const leadStatsCacheKey = (
+  lead: { partnerId: string | null; partnerOrgId: string | null },
+  fallbackUserId: string,
+): string => `lead:stats:${lead.partnerOrgId ?? lead.partnerId ?? fallbackUserId}`;
+
 const redactLeadPII = <T extends {
   clientFullName: string;
   clientPhone: string;
@@ -230,7 +235,7 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
         },
       });
 
-      await cacheDelete(`lead:stats:${req.user.id}`, 'lead:stats:all');
+      await cacheDelete(leadStatsCacheKey(lead, req.user.id), 'lead:stats:all');
 
       res.status(201).json({
         success: true,
@@ -309,7 +314,7 @@ export const createLead = async (req: Request, res: Response): Promise<void> => 
       metadata: { loanType: lead.loanType, loanAmount: Number(lead.loanAmount) },
     });
 
-    await cacheDelete(`lead:stats:${req.user.id}`, 'lead:stats:all');
+    await cacheDelete(leadStatsCacheKey(lead, req.user.id), 'lead:stats:all');
 
     res.status(201).json({
       success: true,
@@ -570,7 +575,7 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
+    await cacheDelete(leadStatsCacheKey(lead, req.user.id), 'lead:stats:all');
 
     res.status(200).json({
       success: true,
@@ -629,7 +634,7 @@ export const deleteLead = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    await cacheDelete(`lead:stats:${leadToDelete.partnerId}`, 'lead:stats:all');
+    await cacheDelete(leadStatsCacheKey(leadToDelete, req.user.id), 'lead:stats:all');
 
     res.status(200).json({ success: true, message: 'Lead deleted successfully' });
   } catch (error) {
@@ -866,7 +871,7 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
       metadata: { previousStatus: lead.status, newStatus: status, note },
     });
 
-    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
+    await cacheDelete(leadStatsCacheKey(lead, req.user.id), 'lead:stats:all');
 
     res.status(200).json({
       success: true,
@@ -973,7 +978,7 @@ export const assignBank = async (req: Request, res: Response): Promise<void> => 
       metadata: { bankName, previousBank: lead.bankAssigned || null },
     });
 
-    await cacheDelete(`lead:stats:${lead.partnerId}`, 'lead:stats:all');
+    await cacheDelete(leadStatsCacheKey(lead, req.user.id), 'lead:stats:all');
 
     res.status(200).json({
       success: true,

@@ -7,7 +7,11 @@ const leadCount = vi.fn();
 const leadTransaction = vi.fn();
 const partnerDataUpdateMany = vi.fn();
 const leadDocumentFindUnique = vi.fn();
+const leadDocumentFindFirst = vi.fn();
+const documentUploadTokenCreate = vi.fn();
 const getLeadDocumentDownloadUrl = vi.fn();
+const uploadLeadDocument = vi.fn();
+const cacheDelete = vi.fn();
 
 vi.mock('../config/prisma.js', () => ({
   default: {
@@ -23,7 +27,11 @@ vi.mock('../config/prisma.js', () => ({
     },
     leadDocument: {
       findUnique: leadDocumentFindUnique,
+      findFirst: leadDocumentFindFirst,
       update: vi.fn(),
+    },
+    documentUploadToken: {
+      create: documentUploadTokenCreate,
     },
     bank: { findMany: vi.fn() },
     $transaction: leadTransaction,
@@ -36,7 +44,7 @@ vi.mock('../utils/auditLogger.js', () => ({
 }));
 
 vi.mock('../utils/cache.js', () => ({
-  cacheDelete: vi.fn(),
+  cacheDelete,
   cacheWrap: vi.fn(),
 }));
 
@@ -75,7 +83,7 @@ vi.mock('../services/documentService.js', () => ({
   deleteDocument: vi.fn(),
   documentExists: vi.fn(),
   listUserDocuments: vi.fn(),
-  uploadLeadDocument: vi.fn(),
+  uploadLeadDocument,
   getLeadDocumentDownloadUrl,
   updateLeadDocumentStatus: vi.fn(),
   bulkUpdateLeadDocumentStatus: vi.fn(),
@@ -83,7 +91,11 @@ vi.mock('../services/documentService.js', () => ({
 
 const { getLeadById, getLeads, updateLead } = await import('../controllers/leadController.js');
 const { updateStoredClientStatus } = await import('../controllers/partnerDataController.js');
-const { getLeadDocUrl } = await import('../controllers/documentController.js');
+const {
+  generateUploadToken,
+  getLeadDocUrl,
+  uploadLeadDoc,
+} = await import('../controllers/documentController.js');
 
 const partnerUser = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -183,6 +195,10 @@ describe('partner organization isolation', () => {
     await updateLead(createRequest({ body: { tenure: 24 } }), res);
 
     expect(leadTransaction).toHaveBeenCalledTimes(1);
+    expect(cacheDelete).toHaveBeenCalledWith(
+      'lead:stats:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'lead:stats:all',
+    );
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
@@ -231,5 +247,72 @@ describe('partner organization isolation', () => {
 
     expect(getLeadDocumentDownloadUrl).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('allows a partner member to upload a document for their organization lead', async () => {
+    leadFindUnique.mockResolvedValue(lead);
+    leadDocumentFindFirst.mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      leadId: lead.id,
+      type: 'pan',
+    });
+    uploadLeadDocument.mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      type: 'pan',
+      fileName: 'pan.pdf',
+      fileSize: 3,
+      fileUrl: 'https://example.test/pan.pdf',
+      mimeType: 'application/pdf',
+      uploadedBy: 'Partner Member',
+      uploadedAt: new Date(),
+      status: 'uploaded',
+    });
+    const res = createResponse();
+    const req = createRequest({
+      params: {
+        leadId: lead.id,
+        documentId: '44444444-4444-4444-8444-444444444444',
+      },
+    }) as Request & { file: Express.Multer.File };
+    req.file = {
+      originalname: 'pan.pdf',
+      buffer: Buffer.from('pdf'),
+      mimetype: 'application/pdf',
+      size: 3,
+    } as Express.Multer.File;
+
+    await uploadLeadDoc(req, res);
+
+    expect(uploadLeadDocument).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('allows a partner member to generate an upload token for their organization lead', async () => {
+    leadDocumentFindUnique.mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      leadId: lead.id,
+      type: 'pan',
+      lead: {
+        id: lead.id,
+        partnerId: lead.partnerId,
+        partnerOrgId: lead.partnerOrgId,
+        clientFullName: 'Customer',
+        clientEmail: 'customer@example.test',
+      },
+    });
+    documentUploadTokenCreate.mockResolvedValue({
+      token: 'upload-token',
+    });
+    const res = createResponse();
+
+    await generateUploadToken(
+      createRequest({
+        params: { documentId: '44444444-4444-4444-8444-444444444444' },
+      }),
+      res,
+    );
+
+    expect(documentUploadTokenCreate).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 });

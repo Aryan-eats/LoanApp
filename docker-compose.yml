@@ -83,7 +83,7 @@ services:
     command:
       - sh
       - -c
-      - npx prisma migrate deploy && node dist/index.js
+      - npx prisma migrate deploy && node dist/server.js
     depends_on:
       db:
         condition: service_healthy
@@ -132,7 +132,7 @@ services:
     command:
       - sh
       - -c
-      - npx prisma migrate deploy && npx tsx watch src/index.ts
+      - npx prisma migrate deploy && npx tsx watch src/server.ts
     depends_on:
       db:
         condition: service_healthy

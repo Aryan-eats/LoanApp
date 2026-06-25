@@ -86,7 +86,10 @@ export const uploadLeadDoc = async (req: Request, res: Response): Promise<void> 
     }
 
     // Authorization: only the lead owner or admin may upload
-    if (lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+    if (
+      currentUser.role !== 'admin'
+      && !partnerOwnsLead(lead, currentUser.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Access denied' });
       return;
     }
@@ -545,10 +548,20 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
 
     const documentId = String(req.params.documentId);
 
-    // Look up the document and its parent lead (include partnerId for IDOR check)
+    // Look up the document and its parent lead for the organization IDOR check.
     const docRecord = await prisma.leadDocument.findUnique({
       where: { id: documentId },
-      include: { lead: { select: { id: true, partnerId: true, clientFullName: true, clientEmail: true } } },
+      include: {
+        lead: {
+          select: {
+            id: true,
+            partnerId: true,
+            partnerOrgId: true,
+            clientFullName: true,
+            clientEmail: true,
+          },
+        },
+      },
     });
 
     if (!docRecord) {
@@ -557,7 +570,10 @@ export const generateUploadToken = async (req: Request, res: Response): Promise<
     }
 
     // IDOR guard: partners can only generate tokens for their own leads
-    if (currentUser.role === 'partner' && docRecord.lead.partnerId !== currentUser.id) {
+    if (
+      currentUser.role === 'partner'
+      && !partnerOwnsLead(docRecord.lead, currentUser.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Access denied – lead does not belong to you' });
       return;
     }
