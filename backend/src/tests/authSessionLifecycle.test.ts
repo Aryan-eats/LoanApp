@@ -36,7 +36,7 @@ vi.mock('../shared/security/tokenBlacklist.js', () => ({
   tokenBlacklist: { add: tokenBlacklistAdd },
 }));
 
-vi.mock('../utils/auditLogger.js', () => ({
+vi.mock('../modules/audit/auditLogger.js', () => ({
   logAuditEvent,
   generateDeviceFingerprint: vi.fn(() => 'device-fingerprint'),
   getClientIP: vi.fn(),

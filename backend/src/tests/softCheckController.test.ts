@@ -14,7 +14,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   default: prismaMock,
 }));
 
-vi.mock('../utils/auditLogger.js', () => ({
+vi.mock('../modules/audit/auditLogger.js', () => ({
   logAuditEvent: logAuditEventMock,
 }));
 

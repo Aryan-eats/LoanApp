@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { body } from 'express-validator';
 import prisma from '../shared/db/prisma.js';
-import { matchLeadOffers } from '../services/bankMatchingService.js';
+import { matchLeadOffers } from '../modules/banks/bankMatching.service.js';
 import { validateUUID } from '../shared/middleware/validateUUID.js';
 import { handleValidationErrors } from '../shared/middleware/validators.js';
 

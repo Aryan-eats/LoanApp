@@ -7,7 +7,7 @@ import {
   generateDeviceFingerprint,
   getClientIP,
   checkSuspiciousActivity,
-} from '../utils/auditLogger.js';
+} from '../modules/audit/auditLogger.js';
 import {
   signAccessToken,
   signRefreshToken,

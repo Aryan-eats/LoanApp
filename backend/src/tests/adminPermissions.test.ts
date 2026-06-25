@@ -3,7 +3,7 @@ import {
   defaultRolePermissions,
   hasRolePermission,
   normalizeRolePermissions,
-} from '../services/adminPermissions.js';
+} from '../modules/users/adminPermissions.service.js';
 
 describe('admin permissions', () => {
   it('makes viewer read-only for leads, partners, and banks', () => {

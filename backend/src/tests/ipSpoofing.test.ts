@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getClientIP, generateDeviceFingerprint } from '../utils/auditLogger.js';
+import { getClientIP, generateDeviceFingerprint } from '../modules/audit/auditLogger.js';
 import type { Request } from 'express';
 
 function fakeReq(overrides: Partial<Request> = {}): Request {

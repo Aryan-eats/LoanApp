@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateDeviceFingerprint, getClientIP, redactPhone } from '../utils/auditLogger.js';
+import { generateDeviceFingerprint, getClientIP, redactPhone } from '../modules/audit/auditLogger.js';
 import type { Request } from 'express';
 
 function fakeReq(overrides: Partial<Request> = {}): Request {

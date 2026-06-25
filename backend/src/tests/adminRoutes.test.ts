@@ -39,25 +39,40 @@ const updateLeadStatus = ok('updateLeadStatus');
 const assignBank = ok('assignBank');
 type JsonObject = Record<string, any>;
 
-vi.mock('../controllers/adminController.js', () => ({
+vi.mock('../modules/users/users.controller.js', () => ({
   listUsers,
   createUser,
   getUser,
   updateUser,
   deleteUser,
   updateRolePermissions,
+  listRoles,
+}));
+
+vi.mock('../controllers/partnerController.js', () => ({
+  getPartners: listPartners,
+}));
+
+vi.mock('../modules/admin/admin.controller.js', () => ({
   getStats,
+}));
+
+vi.mock('../modules/audit/audit.controller.js', () => ({
   listAuditLogs,
   exportAuditLogsCsv,
   createAuditLogsExportJob,
   getAuditLogsExportJob,
   downloadAuditLogsExportJob,
-  listRoles,
-  listPartners,
+}));
+
+vi.mock('../modules/doc-requirements/docRequirements.controller.js', () => ({
   listDocRequirements,
   createDocRequirement,
   updateDocRequirement,
   deleteDocRequirement,
+}));
+
+vi.mock('../modules/banks/banks.controller.js', () => ({
   listBanks,
   getBank,
   toggleBankStatus,
@@ -114,7 +129,7 @@ vi.mock('../shared/middleware/auth.js', () => ({
     },
 }));
 
-const adminRoutes = (await import('../routes/adminRoutes.js')).default;
+const adminRoutes = (await import('../modules/admin/admin.routes.js')).default;
 
 const createApp = () => {
   const app = express();

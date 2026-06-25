@@ -7,7 +7,7 @@ import {
   isPasswordReused,
   addToPasswordHistory,
 } from '../../services/userService.js';
-import { logAuditEvent } from '../../utils/auditLogger.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
 
 // Format user response (exclude sensitive data)
 const formatUserResponse = (user: User) => ({

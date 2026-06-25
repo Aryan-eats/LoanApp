@@ -13,7 +13,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   },
 }));
 
-vi.mock('../services/bankMatchingService.js', () => ({
+vi.mock('../modules/banks/bankMatching.service.js', () => ({
   matchLeadOffers: vi.fn(),
 }));
 
@@ -32,7 +32,7 @@ const prisma = (await import('../shared/db/prisma.js')).default as unknown as {
     update: ReturnType<typeof vi.fn>;
   };
 };
-const { matchLeadOffers } = await import('../services/bankMatchingService.js') as {
+const { matchLeadOffers } = await import('../modules/banks/bankMatching.service.js') as {
   matchLeadOffers: ReturnType<typeof vi.fn>;
 };
 const leadsRoutes = (await import('../routes/leadsRoutes.js')).default;

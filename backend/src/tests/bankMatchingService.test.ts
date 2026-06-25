@@ -9,7 +9,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   },
 }));
 
-const { matchLeadOffers } = await import('../services/bankMatchingService.js');
+const { matchLeadOffers } = await import('../modules/banks/bankMatching.service.js');
 
 const bank = {
   id: '22222222-2222-4222-8222-222222222222',

@@ -3,7 +3,7 @@ import prisma from '../shared/db/prisma.js';
 import {
   logAuditEvent,
   redactPhone,
-} from '../utils/auditLogger.js';
+} from '../modules/audit/auditLogger.js';
 import {
   formatUserResponse,
   hashToken,

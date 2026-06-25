@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import prisma from '../shared/db/prisma.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
+import { logAuditEvent } from '../modules/audit/auditLogger.js';
 import { hashToken } from '../services/authService.js';
 import {
   hashPassword,

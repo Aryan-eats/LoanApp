@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import prisma from '../shared/db/prisma.js';
 import { grantAccess } from '../services/consent.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
+import { logAuditEvent } from '../modules/audit/auditLogger.js';
 import { formatLeadResponse } from '../utils/leadHelpers.js';
 import {
   computeLeadScore,

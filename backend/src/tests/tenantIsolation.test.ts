@@ -39,7 +39,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   basePrisma: {},
 }));
 
-vi.mock('../utils/auditLogger.js', () => ({
+vi.mock('../modules/audit/auditLogger.js', () => ({
   logAuditEvent: vi.fn(),
 }));
 
@@ -61,7 +61,7 @@ vi.mock('../services/consent.js', () => ({
   grantAccess: vi.fn(),
 }));
 
-vi.mock('../services/adminPermissions.js', () => ({
+vi.mock('../modules/users/adminPermissions.service.js', () => ({
   isAdminRole: (role: string) => role === 'admin',
 }));
 

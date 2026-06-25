@@ -1,31 +1,37 @@
 import { Router } from 'express';
-import { protect, authorizeAdmin, authorizeAdminOperator, requirePermission } from '../shared/middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
-import { cacheControl } from '../shared/middleware/cacheControl.js';
+import { protect, authorizeAdmin, authorizeAdminOperator, requirePermission } from '../../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../../shared/middleware/validateUUID.js';
+import { cacheControl } from '../../shared/middleware/cacheControl.js';
 import {
   listUsers,
   listRoles,
-  listPartners,
   createUser,
   getUser,
   updateUser,
   deleteUser,
   updateRolePermissions,
-  getStats,
+} from '../users/users.controller.js';
+import { getPartners as listPartners } from '../../controllers/partnerController.js';
+import { getStats } from './admin.controller.js';
+import {
   listAuditLogs,
   exportAuditLogsCsv,
   createAuditLogsExportJob,
   getAuditLogsExportJob,
   downloadAuditLogsExportJob,
+} from '../audit/audit.controller.js';
+import {
   listDocRequirements,
   createDocRequirement,
   updateDocRequirement,
   deleteDocRequirement,
+} from '../doc-requirements/docRequirements.controller.js';
+import {
   listBanks,
   getBank,
   toggleBankStatus,
   updateBank,
-} from '../controllers/adminController.js';
+} from '../banks/banks.controller.js';
 import {
   getLeads,
   getLeadById,
@@ -35,7 +41,7 @@ import {
   getLeadStats,
   updateLeadStatus,
   assignBank,
-} from '../controllers/leadController.js';
+} from '../../controllers/leadController.js';
 
 const router = Router();
 

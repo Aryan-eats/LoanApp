@@ -8,7 +8,7 @@ import {
   userHasPermission,
   type PermissionAction,
   type PermissionResource,
-} from '../../services/adminPermissions.js';
+} from '../../modules/users/adminPermissions.service.js';
 
 const AUTH_USER_CACHE_TTL_MS = Math.max(
   0,

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { redactPAN, redactAadhaar, redactPhone } from '../utils/auditLogger.js';
+import { redactPAN, redactAadhaar, redactPhone } from '../modules/audit/auditLogger.js';
 
 // ---------------------------------------------------------------------------
 // redactPAN – Indian Permanent Account Number

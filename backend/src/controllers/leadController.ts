@@ -4,12 +4,12 @@ import { Decimal } from '@prisma/client/runtime/client';
 import type { LeadStatus } from '@prisma/client';
 import prisma, { basePrisma } from '../shared/db/prisma.js';
 import { cacheWrap, cacheDelete } from '../shared/utils/cache.js';
-import { logAuditEvent } from '../utils/auditLogger.js';
-import { getRequiredDocTypes } from '../data/loanDocsMap.js';
+import { logAuditEvent } from '../modules/audit/auditLogger.js';
+import { getRequiredDocTypes } from '../modules/doc-requirements/loanDocsMap.js';
 import { formatLeadResponse } from '../utils/leadHelpers.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
 import { canViewLeadPII, grantAccess } from '../services/consent.js';
-import { isAdminRole } from '../services/adminPermissions.js';
+import { isAdminRole } from '../modules/users/adminPermissions.service.js';
 
 type LeadWithRelations = Prisma.LeadGetPayload<{
   include: { documents: true; timeline: true; consentGrants: true };

@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import prisma from '../../shared/db/prisma.js';
-import { logAuditEvent } from '../../utils/auditLogger.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
 import {
   runSoftCheck,
   type SoftCheckBank,
