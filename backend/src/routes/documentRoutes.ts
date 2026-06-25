@@ -5,13 +5,13 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
+import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
 import { upload, list, download, remove, uploadLeadDoc, getLeadDocUrl, deleteLeadDoc, updateLeadDocStatus, bulkUpdateLeadDocStatus, generateUploadToken, uploadViaToken, validateUploadToken } from '../controllers/documentController.js';
-import { protect } from '../middleware/auth.js';
-import { cacheControl } from '../middleware/cacheControl.js';
-import { uploadSingle, MAX_FILE_SIZE, validateMagicBytes } from '../middleware/upload.js';
-import { basePrisma } from '../config/prisma.js';
-import { cacheWrap } from '../utils/cache.js';
+import { protect } from '../shared/middleware/auth.js';
+import { cacheControl } from '../shared/middleware/cacheControl.js';
+import { uploadSingle, MAX_FILE_SIZE, validateMagicBytes } from '../shared/middleware/upload.js';
+import { basePrisma } from '../shared/db/prisma.js';
+import { cacheWrap } from '../shared/utils/cache.js';
 
 /** Human-readable max upload size derived from the shared constant. */
 const MAX_UPLOAD_DISPLAY = `${Math.round(MAX_FILE_SIZE / (1024 * 1024))} MB`;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { protect, authorizeAdmin, requirePermission } from '../middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
+import { protect, authorizeAdmin, requirePermission } from '../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
 import {
   getPartners,
   getPartnerById,

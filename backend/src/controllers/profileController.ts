@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import type { User } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 import {
   comparePassword,
   hashPassword,

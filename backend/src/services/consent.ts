@@ -1,6 +1,10 @@
 import { Prisma, type UserRole } from '@prisma/client';
-import prisma from '../config/prisma.js';
-import { decryptField, encryptForGPSIndia, isEncryptedCiphertext } from './encryption.js';
+import prisma from '../shared/db/prisma.js';
+import {
+  decryptField,
+  encryptForGPSIndia,
+  isEncryptedCiphertext,
+} from '../shared/security/encryption.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
 import { decryptResultWithBridge } from '../utils/fieldEncryption.js';
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 import { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 

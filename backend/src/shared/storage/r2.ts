@@ -1,5 +1,5 @@
 /**
- * Cloudflare R2 client singleton.
+ * Shared Cloudflare R2 client singleton.
  *
  * Uses the S3-compatible API provided by Cloudflare R2.
  * All document storage modules import from here to share a single client instance.

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sendOTP, verifyOTP, resendOTP, formatIndianNumber } from '../services/smsService.js';
+import { sendOTP, verifyOTP, resendOTP, formatIndianNumber } from '../shared/integrations/msg91.service.js';
 
 // Mock global fetch
 const fetchMock = vi.fn();

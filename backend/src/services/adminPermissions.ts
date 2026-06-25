@@ -1,6 +1,6 @@
 import type { UserRole } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 
 export const ADMIN_ROLES = ['super_admin', 'admin', 'manager', 'agent', 'viewer'] as const;
 export const PERMISSION_RESOURCES = ['leads', 'partners', 'banks', 'users', 'roles'] as const;

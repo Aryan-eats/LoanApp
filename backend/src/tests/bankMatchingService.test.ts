@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const findMany = vi.fn();
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   basePrisma: {
     bank: { findMany },
   },

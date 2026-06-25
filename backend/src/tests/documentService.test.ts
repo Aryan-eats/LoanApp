@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Unit tests for document service helpers and behavior changes.
  *
  * These tests verify:
@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { sanitiseFilename } from '../services/documentService.js';
-import { MAX_FILE_SIZE } from '../middleware/upload.js';
+import { MAX_FILE_SIZE } from '../shared/middleware/upload.js';
 
 // --- sanitiseFilename -------------------------------------
 

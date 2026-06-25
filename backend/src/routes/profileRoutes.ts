@@ -5,11 +5,11 @@ import {
   updatePassword,
   deleteAccount,
 } from '../controllers/profileController.js';
-import { protect } from '../middleware/auth.js';
+import { protect } from '../shared/middleware/auth.js';
 import {
   validateProfileUpdate,
   validatePasswordUpdate,
-} from '../middleware/validators.js';
+} from '../shared/middleware/validators.js';
 
 const router = Router();
 

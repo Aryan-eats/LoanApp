@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { envConfig } from './env.js';
+import { envConfig } from '../config/env.js';
 
 void envConfig;
 
@@ -44,7 +44,7 @@ const adapter = globalForPrisma.adapter ?? new PrismaPg(pool);
  * PRIMARY CLIENT — use for all application queries.
  *
  * Field-level PII encryption is handled explicitly in the service layer
- * via src/services/encryption.ts (AES-256-GCM), not via a Prisma extension.
+ * via src/shared/security/encryption.ts (AES-256-GCM), not via a Prisma extension.
  * This keeps the encryption contract visible and the type system happy.
  */
 export const prisma: PrismaClient =

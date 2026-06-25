@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const get = vi.fn();
 const set = vi.fn();
 
-vi.mock('../config/redis.js', () => ({
+vi.mock('../shared/config/redis.js', () => ({
   isRedisAvailable: () => true,
   getRedisClient: async () => ({ get, set }),
 }));
 
-const { cacheWrap } = await import('../utils/cache.js');
+const { cacheWrap } = await import('../shared/utils/cache.js');
 
 describe('cacheWrap', () => {
   beforeEach(() => {

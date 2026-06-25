@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { body } from 'express-validator';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 import { matchLeadOffers } from '../services/bankMatchingService.js';
-import { validateUUID } from '../middleware/validateUUID.js';
-import { handleValidationErrors } from '../middleware/validators.js';
+import { validateUUID } from '../shared/middleware/validateUUID.js';
+import { handleValidationErrors } from '../shared/middleware/validators.js';
 
 // --------------------------------
 // Public lead payload validators

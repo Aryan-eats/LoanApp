@@ -1,4 +1,4 @@
-﻿/**
+/**
  * OTP challenge flow for phone-based verification during onboarding.
  *
  * Uses Redis when available (ephemeral data with TTL), falling back
@@ -6,8 +6,8 @@
  */
 
 import crypto from 'crypto';
-import prisma from '../config/prisma.js';
-import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import prisma from '../shared/db/prisma.js';
+import { getRedisClient, isRedisAvailable } from '../shared/config/redis.js';
 import { matchesMockOtp } from './mockVerificationService.js';
 
 const OTP_TTL_SECONDS = 5 * 60; // 5 minutes

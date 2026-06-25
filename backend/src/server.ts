@@ -1,11 +1,11 @@
-import prisma from "./config/prisma.js";
-import { destroyR2Client } from "./config/r2.js";
+import prisma from "./shared/db/prisma.js";
+import { destroyR2Client } from "./shared/storage/r2.js";
 import {
   checkRedisMemory,
   disconnectRedis,
   isRedisAvailable,
-} from "./config/redis.js";
-import { validateJWTConfig } from "./utils/jwtValidator.js";
+} from "./shared/config/redis.js";
+import { validateJWTConfig } from "./shared/security/jwtValidator.js";
 
 try {
   validateJWTConfig();

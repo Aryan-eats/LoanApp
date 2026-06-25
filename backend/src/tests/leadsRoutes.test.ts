@@ -3,7 +3,7 @@ import express from 'express';
 import type { AddressInfo } from 'net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: {
     lead: {
       create: vi.fn(),
@@ -25,7 +25,7 @@ type JsonObject = Record<string, any>;
 process.env.LEAD_TOKEN_SECRET = LEAD_TOKEN_SECRET;
 process.env.SYSTEM_PARTNER_ID = SYSTEM_PARTNER_ID;
 
-const prisma = (await import('../config/prisma.js')).default as unknown as {
+const prisma = (await import('../shared/db/prisma.js')).default as unknown as {
   lead: {
     create: ReturnType<typeof vi.fn>;
     findUnique: ReturnType<typeof vi.fn>;

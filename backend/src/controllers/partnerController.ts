@@ -1,9 +1,9 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Decimal } from '@prisma/client/runtime/client';
 import type { User, AuditEventType } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 import { logAuditEvent, redactPAN, redactAadhaar } from '../utils/auditLogger.js';
-import { cacheWrap, cacheDelete } from '../utils/cache.js';
+import { cacheWrap, cacheDelete } from '../shared/utils/cache.js';
 import { isAdminRole } from '../services/adminPermissions.js';
 
 // Derive the frontend-visible status from DB fields

@@ -1,5 +1,5 @@
 /**
- * Environment bootstrap.
+ * Shared environment bootstrap.
  *
  * This module is imported by prisma.ts (and potentially other config modules)
  * to guarantee that dotenv is loaded before any database/redis connections are

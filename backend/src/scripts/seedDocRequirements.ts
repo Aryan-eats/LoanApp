@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Seed script – populates lender_doc_requirements from static DocsReq data.
  * Safe to run multiple times (upsert).
  *
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-import { basePrisma as prisma } from '../config/prisma.js';
+import { basePrisma as prisma } from '../shared/db/prisma.js';
 
 // -- Bank / NBFC catalogue (mirrors mockBanks.ts) -----------------------------
 const banks = [

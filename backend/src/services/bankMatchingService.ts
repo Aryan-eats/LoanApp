@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/client';
-import { basePrisma } from '../config/prisma.js';
+import { basePrisma } from '../shared/db/prisma.js';
 
 const loanTypeMapping: Record<string, string[]> = {
   'Personal Loans': ['personal_loan'],

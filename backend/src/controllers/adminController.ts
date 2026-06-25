@@ -1,16 +1,16 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import type { AuditEventType } from '@prisma/client';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import prisma from '../config/prisma.js';
-import { basePrisma } from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
+import { basePrisma } from '../shared/db/prisma.js';
 import { hashPassword } from '../services/userService.js';
 import { sanitizeAdminUserResponse } from '../services/authService.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
-import { cacheWrap, cacheDelete, cacheInvalidatePattern } from '../utils/cache.js';
+import { cacheWrap, cacheDelete, cacheInvalidatePattern } from '../shared/utils/cache.js';
 import { getPartners } from './partnerController.js';
 import {
   ADMIN_ROLES,

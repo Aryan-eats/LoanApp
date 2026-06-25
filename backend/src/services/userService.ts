@@ -1,8 +1,8 @@
-﻿import bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { User } from '@prisma/client';
-import prisma, { type ExtendedTransactionClient } from '../config/prisma.js';
-import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import prisma, { type ExtendedTransactionClient } from '../shared/db/prisma.js';
+import { getRedisClient, isRedisAvailable } from '../shared/config/redis.js';
 import {
   matchesMockOtp,
   type VerificationChannel,

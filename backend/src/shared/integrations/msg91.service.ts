@@ -7,7 +7,7 @@ import {
   getMockOtp,
   isMockVerificationEnabled,
   matchesMockOtp,
-} from './mockVerificationService.js';
+} from '../../services/mockVerificationService.js';
 
 // --------------------------------
 // Types

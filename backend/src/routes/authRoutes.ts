@@ -20,14 +20,14 @@ import {
   forgotPassword,
   resetPassword,
 } from '../controllers/passwordController.js';
-import { optionalAuth, protect } from '../middleware/auth.js';
+import { optionalAuth, protect } from '../shared/middleware/auth.js';
 import {
   loginLimiter,
   registerLimiter,
   passwordResetLimiter,
   otpLimiter,
   refreshLimiter,
-} from '../middleware/rateLimiter.js';
+} from '../shared/middleware/rateLimiter.js';
 import {
   validateLogin,
   validateRegister,
@@ -40,7 +40,7 @@ import {
   validateMsg91SendOTP,
   validateMsg91VerifyOTP,
   validateMsg91ResendOTP,
-} from '../middleware/validators.js';
+} from '../shared/middleware/validators.js';
 
 const router = Router();
 

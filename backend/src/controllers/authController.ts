@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Prisma, type User } from '@prisma/client';
-import prisma from '../config/prisma.js';
-import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../utils/cookieConfig.js';
+import prisma from '../shared/db/prisma.js';
+import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../shared/security/cookieConfig.js';
 import {
   logAuditEvent,
   generateDeviceFingerprint,
@@ -15,8 +15,8 @@ import {
   getAccessTokenTtlSeconds,
   extractTokenFromHeader,
   getTokenExpirationMs,
-} from '../utils/jwt.js';
-import { tokenBlacklist } from '../utils/tokenBlacklist.js';
+} from '../shared/security/jwt.js';
+import { tokenBlacklist } from '../shared/security/tokenBlacklist.js';
 import {
   comparePassword,
   hashPassword,

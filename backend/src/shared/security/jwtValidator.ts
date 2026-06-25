@@ -1,5 +1,5 @@
 /**
- * JWT Configuration Validator
+ * Shared JWT configuration validator
  *
  * Validates JWT configuration on startup.
  */

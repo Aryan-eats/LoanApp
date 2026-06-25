@@ -7,7 +7,7 @@ const tokenBlacklistAdd = vi.fn();
 const removeSession = vi.fn();
 const logAuditEvent = vi.fn();
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: {
     user: {
       findUnique: userFindUnique,
@@ -16,7 +16,7 @@ vi.mock('../config/prisma.js', () => ({
   },
 }));
 
-vi.mock('../utils/jwt.js', () => ({
+vi.mock('../shared/security/jwt.js', () => ({
   signAccessToken: vi.fn(() => 'new-access-token'),
   signRefreshToken: vi.fn(() => 'new-refresh-token'),
   verifyRefreshToken: vi.fn(() => ({
@@ -32,7 +32,7 @@ vi.mock('../utils/jwt.js', () => ({
   ),
 }));
 
-vi.mock('../utils/tokenBlacklist.js', () => ({
+vi.mock('../shared/security/tokenBlacklist.js', () => ({
   tokenBlacklist: { add: tokenBlacklistAdd },
 }));
 

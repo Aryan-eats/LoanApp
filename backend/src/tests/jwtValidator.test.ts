@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { validateJWTConfig, generateSecureSecret } from '../utils/jwtValidator.js';
+import { validateJWTConfig, generateSecureSecret } from '../shared/security/jwtValidator.js';
 
 describe('JWT Validator Config', () => {
   const origEnv: Record<string, string | undefined> = {};

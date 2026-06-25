@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const partnerDataFindFirst = vi.fn();
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: {
     partnerData: { findFirst: partnerDataFindFirst },
   },
 }));
 
-vi.mock('../services/encryption.js', () => ({
+vi.mock('../shared/security/encryption.js', () => ({
   decryptField: vi.fn(),
   encryptForGPSIndia: vi.fn(),
   isEncryptedCiphertext: vi.fn(),

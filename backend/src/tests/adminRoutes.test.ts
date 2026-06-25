@@ -75,11 +75,11 @@ vi.mock('../controllers/leadController.js', () => ({
   assignBank,
 }));
 
-vi.mock('../middleware/cacheControl.js', () => ({
+vi.mock('../shared/middleware/cacheControl.js', () => ({
   cacheControl: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
-vi.mock('../middleware/auth.js', () => ({
+vi.mock('../shared/middleware/auth.js', () => ({
   protect: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers.authorization === 'Bearer valid-token') {
       next();

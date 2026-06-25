@@ -10,7 +10,7 @@ const { prismaMock, logAuditEventMock } = vi.hoisted(() => ({
   logAuditEventMock: vi.fn(),
 }));
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: prismaMock,
 }));
 

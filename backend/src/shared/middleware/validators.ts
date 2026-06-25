@@ -1,7 +1,7 @@
 import { body, validationResult } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
 
-// Validation result handler
+// Shared validation result handler
 export const handleValidationErrors = (
   req: Request,
   res: Response,

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * Returns Express middleware that sets `Cache-Control: public, max-age=<seconds>`
+ * Shared middleware that sets `Cache-Control: public, max-age=<seconds>`
  * on the response. Intended for static-ish reference data (banks, doc-type lists)
  * that changes infrequently.
  *

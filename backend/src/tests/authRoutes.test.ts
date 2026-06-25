@@ -43,7 +43,7 @@ vi.mock('../controllers/passwordController.js', () => ({
   resetPassword,
 }));
 
-vi.mock('../middleware/rateLimiter.js', () => ({
+vi.mock('../shared/middleware/rateLimiter.js', () => ({
   loginLimiter: noOp,
   registerLimiter: noOp,
   passwordResetLimiter: noOp,
@@ -51,7 +51,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   refreshLimiter: noOp,
 }));
 
-vi.mock('../middleware/auth.js', () => ({
+vi.mock('../shared/middleware/auth.js', () => ({
   optionalAuth: noOp,
   protect: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers.authorization === 'Bearer valid-token') {

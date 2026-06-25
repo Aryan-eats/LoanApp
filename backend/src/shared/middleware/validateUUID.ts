@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * UUID v4 format regex.
+ * Shared UUID v4 format regex.
  * Matches standard 8-4-4-4-12 hex format (case-insensitive).
  */
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

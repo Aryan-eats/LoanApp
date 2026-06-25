@@ -51,7 +51,7 @@ vi.mock('../controllers/documentController.js', () => ({
   validateUploadToken,
 }));
 
-vi.mock('../middleware/auth.js', () => ({
+vi.mock('../shared/middleware/auth.js', () => ({
   protect: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers.authorization === 'Bearer valid-token') {
       next();
@@ -61,21 +61,21 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }));
 
-vi.mock('../middleware/cacheControl.js', () => ({
+vi.mock('../shared/middleware/cacheControl.js', () => ({
   cacheControl: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
-vi.mock('../middleware/upload.js', () => ({
+vi.mock('../shared/middleware/upload.js', () => ({
   MAX_FILE_SIZE: 3 * 1024 * 1024,
   uploadSingle: (_req: express.Request, _res: express.Response, next: (err?: unknown) => void) => next(),
   validateMagicBytes: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
-vi.mock('../utils/cache.js', () => ({
+vi.mock('../shared/utils/cache.js', () => ({
   cacheWrap: vi.fn((_key: string, loader: () => Promise<unknown>) => loader()),
 }));
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   basePrisma: {
     lenderDocRequirement: {
       findMany: vi.fn().mockResolvedValue(reqDocRows),

@@ -14,7 +14,7 @@ import {
   updateLeadDocumentStatus,
   bulkUpdateLeadDocumentStatus,
 } from '../services/documentService.js';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 import crypto from 'crypto';
 import { logAuditEvent } from '../utils/auditLogger.js';
 

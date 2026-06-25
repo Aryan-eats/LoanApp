@@ -1,5 +1,5 @@
 /**
- * Refresh-token cookie configuration.
+ * Shared refresh-token cookie configuration.
  *
  * Centralises the cookie name and options so login, refresh, and logout
  * endpoints stay consistent.

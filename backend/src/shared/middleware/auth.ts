@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import type { User, UserRole } from '@prisma/client';
-import prisma from '../config/prisma.js';
-import { verifyAccessToken, extractTokenFromHeader } from '../utils/jwt.js';
-import { tokenBlacklist } from '../utils/tokenBlacklist.js';
+import prisma from '../db/prisma.js';
+import { verifyAccessToken, extractTokenFromHeader } from '../security/jwt.js';
+import { tokenBlacklist } from '../security/tokenBlacklist.js';
 import {
   isAdminRole,
   userHasPermission,
   type PermissionAction,
   type PermissionResource,
-} from '../services/adminPermissions.js';
+} from '../../services/adminPermissions.js';
 
 const AUTH_USER_CACHE_TTL_MS = Math.max(
   0,

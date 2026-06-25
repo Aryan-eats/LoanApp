@@ -1,5 +1,5 @@
 /**
- * Shared Redis client singleton.
+ * Shared Redis client singleton for backend infrastructure.
  *
  * Every module that needs Redis (token blacklist, rate limiter, OTP store,
  * cache layer) imports from here so we maintain a single connection pool.

@@ -10,7 +10,7 @@ import {
   REFRESH_COOKIE,
   getRefreshCookieOptions,
   getClearCookieOptions,
-} from '../utils/cookieConfig.js';
+} from '../shared/security/cookieConfig.js';
 
 // ---------------------------------------------------------------------------
 // Cookie name

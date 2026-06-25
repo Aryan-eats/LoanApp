@@ -1,5 +1,5 @@
 /**
- * AES-256-GCM field encryption service.
+ * Shared AES-256-GCM field encryption service.
  *
  * Replaces the Vault transit-encryption approach with a self-contained
  * Node.js crypto implementation. No external service required.

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cloudflare R2 integration tests.
  *
  * These tests exercise the R2 document storage service against the live
@@ -22,7 +22,7 @@ dotenv.config();
 import {
   HeadBucketCommand,
 } from '@aws-sdk/client-s3';
-import { getR2Client, R2_BUCKET, destroyR2Client } from '../config/r2.js';
+import { getR2Client, R2_BUCKET, destroyR2Client } from '../shared/storage/r2.js';
 import {
   uploadDocument,
   getDownloadUrl,

@@ -1,10 +1,10 @@
-﻿import { Request } from 'express';
+import { Request } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { Prisma } from '@prisma/client';
 import type { AuditEventType } from '@prisma/client';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 
 const EMAIL_HASH_KEY_ENV = 'EMAIL_HASH_KEY';
 

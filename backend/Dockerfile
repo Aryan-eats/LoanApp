@@ -19,11 +19,11 @@ RUN npx prisma generate
 
 # Copy source (exclude scripts/ — migration utilities import mongodb which is not a prod dep)
 COPY tsconfig.json ./
-COPY src/config ./src/config/
 COPY src/controllers ./src/controllers/
 COPY src/data ./src/data/
 COPY src/middleware ./src/middleware/
 COPY src/routes ./src/routes/
+COPY src/shared ./src/shared/
 COPY src/services ./src/services/
 COPY src/utils ./src/utils/
 COPY src/app.ts src/server.ts ./src/

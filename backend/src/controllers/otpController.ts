@@ -1,5 +1,5 @@
-﻿import { Request, Response } from 'express';
-import prisma from '../config/prisma.js';
+import { Request, Response } from 'express';
+import prisma from '../shared/db/prisma.js';
 import {
   logAuditEvent,
   redactPhone,
@@ -16,7 +16,7 @@ import {
   clearUserOTP,
   verifyUserOTP,
 } from '../services/userService.js';
-import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../services/smsService.js';
+import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../shared/integrations/msg91.service.js';
 import {
   createOtpChallenge,
   verifyOtpChallenge,

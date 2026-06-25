@@ -8,7 +8,7 @@ import {
   extractTokenFromHeader,
   parseExpiresInToSeconds,
   getAccessTokenTtlSeconds,
-} from '../utils/jwt.js';
+} from '../shared/security/jwt.js';
 import type { User } from '@prisma/client';
 
 beforeAll(() => {

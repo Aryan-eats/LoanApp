@@ -1,7 +1,7 @@
-﻿import { Router } from 'express';
-import { protect, authorizeAdmin, authorizeAdminOperator, requirePermission } from '../middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
-import { cacheControl } from '../middleware/cacheControl.js';
+import { Router } from 'express';
+import { protect, authorizeAdmin, authorizeAdminOperator, requirePermission } from '../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
+import { cacheControl } from '../shared/middleware/cacheControl.js';
 import {
   listUsers,
   listRoles,

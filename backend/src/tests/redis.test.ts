@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Redis integration tests.
  *
  * These tests exercise the four Redis use-cases against a live Redis
@@ -15,9 +15,9 @@ import dotenv from 'dotenv';
 dotenv.config();                     // load REDIS_URL early
 
 import { Redis } from 'ioredis';
-import { getRedisClient, isRedisAvailable, disconnectRedis } from '../config/redis.js';
-import { cacheGet, cacheSet, cacheDelete, cacheInvalidatePattern, cacheWrap } from '../utils/cache.js';
-import { tokenBlacklist } from '../utils/tokenBlacklist.js';
+import { getRedisClient, isRedisAvailable, disconnectRedis } from '../shared/config/redis.js';
+import { cacheGet, cacheSet, cacheDelete, cacheInvalidatePattern, cacheWrap } from '../shared/utils/cache.js';
+import { tokenBlacklist } from '../shared/security/tokenBlacklist.js';
 import {
   createOtpChallenge,
   verifyOtpChallenge,

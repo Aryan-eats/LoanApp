@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Seed script – populates banks and bank_commission_rates tables.
  * Safe to run multiple times (upsert by bank code).
  *
@@ -9,7 +9,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { basePrisma as prisma } from '../config/prisma.js';
+import { basePrisma as prisma } from '../shared/db/prisma.js';
 
 interface CommissionRate {
   loanType: string;

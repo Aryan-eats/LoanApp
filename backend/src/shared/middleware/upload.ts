@@ -1,5 +1,5 @@
 /**
- * Multer middleware for handling document uploads.
+ * Shared Multer middleware for handling document uploads.
  *
  * - Accepts PDFs and common image types
  * - Max file size: 3 MB

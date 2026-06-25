@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { protect, authorize } from '../middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../middleware/validateUUID.js';
-import { cacheControl } from '../middleware/cacheControl.js';
+import { protect, authorize } from '../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
+import { cacheControl } from '../shared/middleware/cacheControl.js';
 import { resolvePartnerOrg } from '../middleware/rlsContext.js';
 import {
   createLead,
@@ -98,8 +98,8 @@ router.get('/dashboard', async (req, res) => {
  */
 router.get('/banks', cacheControl(15), async (_req, res) => {
   // Inline handler rather than importing the full admin controller
-  const { cacheWrap } = await import('../utils/cache.js');
-  const { basePrisma } = await import('../config/prisma.js');
+  const { cacheWrap } = await import('../shared/utils/cache.js');
+  const { basePrisma } = await import('../shared/db/prisma.js');
   try {
     const banks = await cacheWrap(
       'banks:all',

@@ -5,25 +5,25 @@ const findUnique = vi.fn();
 const isBlacklisted = vi.fn();
 const verifyAccessToken = vi.fn();
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: {
     user: { findUnique },
   },
 }));
 
-vi.mock('../utils/tokenBlacklist.js', () => ({
+vi.mock('../shared/security/tokenBlacklist.js', () => ({
   tokenBlacklist: { isBlacklisted },
 }));
 
-vi.mock('../utils/jwt.js', async () => {
-  const actual = await vi.importActual<typeof import('../utils/jwt.js')>('../utils/jwt.js');
+vi.mock('../shared/security/jwt.js', async () => {
+  const actual = await vi.importActual<typeof import('../shared/security/jwt.js')>('../shared/security/jwt.js');
   return {
     ...actual,
     verifyAccessToken,
   };
 });
 
-const { protect } = await import('../middleware/auth.js');
+const { protect } = await import('../shared/middleware/auth.js');
 
 const activeUser = {
   id: '11111111-1111-4111-8111-111111111111',

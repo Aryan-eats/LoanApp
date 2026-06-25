@@ -13,7 +13,7 @@ const getLeadDocumentDownloadUrl = vi.fn();
 const uploadLeadDocument = vi.fn();
 const cacheDelete = vi.fn();
 
-vi.mock('../config/prisma.js', () => ({
+vi.mock('../shared/db/prisma.js', () => ({
   default: {
     lead: {
       findUnique: leadFindUnique,
@@ -43,7 +43,7 @@ vi.mock('../utils/auditLogger.js', () => ({
   logAuditEvent: vi.fn(),
 }));
 
-vi.mock('../utils/cache.js', () => ({
+vi.mock('../shared/utils/cache.js', () => ({
   cacheDelete,
   cacheWrap: vi.fn(),
 }));

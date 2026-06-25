@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import prisma from '../config/prisma.js';
+import prisma from '../shared/db/prisma.js';
 
 export const resolvePartnerOrg = async (
   req: Request,

@@ -39,7 +39,7 @@ vi.mock('../controllers/partnerController.js', () => ({
   getPartnerStats,
 }));
 
-vi.mock('../middleware/auth.js', () => ({
+vi.mock('../shared/middleware/auth.js', () => ({
   protect: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers.authorization === 'Bearer valid-token') {
       next();
