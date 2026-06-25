@@ -322,15 +322,15 @@ const buildCustomerActivity = (
   );
 };
 
-const resolveCustomerContext = async (partnerId: string, requestedId: string) => {
+const resolveCustomerContext = async (partnerOrgId: string, requestedId: string) => {
   const [storedClients, leads] = await Promise.all([
     prisma.partnerData.findMany({
-      where: { partnerId },
+      where: { partnerOrgId },
       orderBy: { createdAt: 'desc' },
       include: storedClientInclude,
     }) as Promise<StoredClientWithRelations[]>,
     prisma.lead.findMany({
-      where: { partnerId },
+      where: { partnerOrgId },
       orderBy: { createdAt: 'desc' },
       include: leadInclude,
     }) as Promise<LeadWithRelations[]>,
@@ -380,7 +380,7 @@ const resolveCustomerContext = async (partnerId: string, requestedId: string) =>
   const primaryLead = referenceLead ?? relatedLeads[0] ?? null;
   const customerIdentity = deriveCustomerIdentity({
     id: referenceStoredClient?.id ?? primaryLead?.id ?? requestedId,
-    partnerId,
+    partnerId: partnerOrgId,
     sourcePartnerDataId: referenceStoredClient?.id ?? primaryLead?.sourcePartnerDataId ?? null,
     phone: referenceStoredClient?.phone ?? primaryLead?.clientPhone ?? null,
     email: referenceStoredClient?.email ?? primaryLead?.clientEmail ?? null,
@@ -403,7 +403,7 @@ const resolveCustomerContext = async (partnerId: string, requestedId: string) =>
       })
     : computeLeadScore({
         id: primaryLead?.id ?? requestedId,
-        partnerId,
+        partnerId: partnerOrgId,
         sourcePartnerDataId: primaryLead?.sourcePartnerDataId ?? null,
         phone: primaryLead?.clientPhone ?? null,
         email: primaryLead?.clientEmail ?? null,
@@ -443,13 +443,17 @@ const resolveCustomerContext = async (partnerId: string, requestedId: string) =>
  */
 export const getStoredClients = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
 
     let entries: Array<Parameters<typeof formatEntry>[0]> = [];
 
     try {
       entries = await prisma.partnerData.findMany({
-        where: { partnerId },
+        where: { partnerOrgId },
         orderBy: { createdAt: 'desc' },
         include: storedClientInclude,
       });
@@ -460,7 +464,7 @@ export const getStoredClients = async (req: Request, res: Response): Promise<voi
 
       console.warn('getStoredClients fallback: partner_data_documents table is missing, returning stored clients without documents');
       entries = await prisma.partnerData.findMany({
-        where: { partnerId },
+        where: { partnerOrgId },
         orderBy: { createdAt: 'desc' },
         include: { consentGrants: true },
       });
@@ -551,7 +555,11 @@ export const createStoredClient = async (req: Request, res: Response): Promise<v
  */
 export const updateStoredClientStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
     const { localStatus } = req.body;
 
@@ -561,7 +569,7 @@ export const updateStoredClientStatus = async (req: Request, res: Response): Pro
     }
 
     const entry = await prisma.partnerData.updateMany({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
       data: { localStatus, updatedAt: new Date() },
     });
 
@@ -583,12 +591,16 @@ export const updateStoredClientStatus = async (req: Request, res: Response): Pro
  */
 export const updateStoredClientNotes = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
     const { notes } = req.body;
 
     const entry = await prisma.partnerData.updateMany({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
       data: { notes: notes ?? null, updatedAt: new Date() },
     });
 
@@ -610,12 +622,16 @@ export const updateStoredClientNotes = async (req: Request, res: Response): Prom
  */
 export const updateStoredClientPreferredBank = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
     const { preferredBank } = req.body;
 
     const entry = await prisma.partnerData.updateMany({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
       data: { preferredBank: preferredBank ?? null, updatedAt: new Date() },
     });
 
@@ -638,12 +654,16 @@ export const updateStoredClientPreferredBank = async (req: Request, res: Respons
  */
 export const updateStoredClientAssignedBank = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
     const assignedBank = (req.body.assignedBank ?? req.body.preferredBank ?? null) as string | null;
 
     const entry = await prisma.partnerData.updateMany({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
       data: { preferredBank: assignedBank, updatedAt: new Date() },
     });
 
@@ -665,7 +685,11 @@ export const updateStoredClientAssignedBank = async (req: Request, res: Response
  */
 export const saveStoredClientDocuments = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
     const { documents } = req.body as {
       documents?: Array<{
@@ -685,7 +709,7 @@ export const saveStoredClientDocuments = async (req: Request, res: Response): Pr
     }
 
     const entry = await prisma.partnerData.findFirst({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
       select: { id: true },
     });
 
@@ -805,9 +829,13 @@ export const submitStoredClientToGPS = async (req: Request, res: Response): Prom
  */
 export const getPartnerCustomerById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const requestedId = req.params.id as string;
-    const context = await resolveCustomerContext(partnerId, requestedId);
+    const context = await resolveCustomerContext(partnerOrgId, requestedId);
 
     if (!context) {
       res.status(404).json({ success: false, message: 'Customer not found' });
@@ -846,9 +874,13 @@ export const getPartnerCustomerById = async (req: Request, res: Response): Promi
  */
 export const getPartnerCustomerActivity = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const requestedId = req.params.id as string;
-    const context = await resolveCustomerContext(partnerId, requestedId);
+    const context = await resolveCustomerContext(partnerOrgId, requestedId);
 
     if (!context) {
       res.status(404).json({ success: false, message: 'Customer not found' });
@@ -896,10 +928,10 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
 
     const [storedClient, lead] = await Promise.all([
       storedClientId
-        ? prisma.partnerData.findFirst({ where: { id: storedClientId, partnerId } })
+        ? prisma.partnerData.findFirst({ where: { id: storedClientId, partnerOrgId } })
         : Promise.resolve(null),
       leadId
-        ? prisma.lead.findFirst({ where: { id: leadId, partnerId } })
+        ? prisma.lead.findFirst({ where: { id: leadId, partnerOrgId } })
         : Promise.resolve(null),
     ]);
 
@@ -974,11 +1006,15 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
  */
 export const deleteStoredClient = async (req: Request, res: Response): Promise<void> => {
   try {
-    const partnerId = req.user!.id;
+    const partnerOrgId = req.partnerOrgId;
+    if (!partnerOrgId) {
+      res.status(403).json({ success: false, message: 'Partner organisation not resolved' });
+      return;
+    }
     const id = req.params.id as string;
 
     const entry = await prisma.partnerData.deleteMany({
-      where: { id, partnerId },
+      where: { id, partnerOrgId },
     });
 
     if (entry.count === 0) {

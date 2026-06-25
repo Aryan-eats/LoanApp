@@ -18,6 +18,15 @@ import prisma from '../config/prisma.js';
 import crypto from 'crypto';
 import { logAuditEvent } from '../utils/auditLogger.js';
 
+const partnerOwnsLead = (
+  lead: { partnerId: string | null; partnerOrgId: string | null },
+  userId: string,
+  partnerOrgId: string | undefined,
+): boolean =>
+  lead.partnerOrgId
+    ? lead.partnerOrgId === partnerOrgId
+    : lead.partnerId === userId;
+
 /**
  * POST /api/documents/upload
  * Upload a single document for the authenticated user.
@@ -158,13 +167,16 @@ export const getLeadDocUrl = async (req: Request, res: Response): Promise<void> 
     // Authorization: resolve the document's lead and verify ownership / admin
     const docRecord = await prisma.leadDocument.findUnique({
       where: { id: documentId },
-      include: { lead: { select: { partnerId: true } } },
+      include: { lead: { select: { partnerId: true, partnerOrgId: true } } },
     });
     if (!docRecord) {
       res.status(404).json({ success: false, message: 'Document not found' });
       return;
     }
-    if (docRecord.lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+    if (
+      currentUser.role !== 'admin'
+      && !partnerOwnsLead(docRecord.lead, currentUser.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Access denied' });
       return;
     }
@@ -210,13 +222,16 @@ export const deleteLeadDoc = async (req: Request, res: Response): Promise<void> 
 
     const docRecord = await prisma.leadDocument.findUnique({
       where: { id: documentId },
-      include: { lead: { select: { partnerId: true } } },
+      include: { lead: { select: { partnerId: true, partnerOrgId: true } } },
     });
     if (!docRecord) {
       res.status(404).json({ success: false, message: 'Document not found' });
       return;
     }
-    if (docRecord.lead.partnerId !== currentUser.id && currentUser.role !== 'admin') {
+    if (
+      currentUser.role !== 'admin'
+      && !partnerOwnsLead(docRecord.lead, currentUser.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Access denied' });
       return;
     }

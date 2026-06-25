@@ -21,6 +21,28 @@ const leadInclude = {
   consentGrants: true,
 } as const;
 
+const partnerOwnsLead = (
+  lead: { partnerId: string | null; partnerOrgId: string | null },
+  userId: string,
+  partnerOrgId: string | undefined,
+): boolean =>
+  lead.partnerOrgId
+    ? lead.partnerOrgId === partnerOrgId
+    : lead.partnerId === userId;
+
+const partnerLeadWhere = (
+  userId: string,
+  partnerOrgId: string | undefined,
+): Record<string, unknown> =>
+  partnerOrgId
+    ? {
+        OR: [
+          { partnerOrgId },
+          { partnerOrgId: null, partnerId: userId },
+        ],
+      }
+    : { partnerId: userId };
+
 const redactLeadPII = <T extends {
   clientFullName: string;
   clientPhone: string;
@@ -313,7 +335,9 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     }
 
     const baseWhere: Record<string, unknown> = {};
-    if (req.user.role === 'partner') baseWhere.partnerId = req.user.id;
+    if (req.user.role === 'partner') {
+      Object.assign(baseWhere, partnerLeadWhere(req.user.id, req.partnerOrgId));
+    }
     if (req.query.status) baseWhere.status = req.query.status;
     if (req.query.loanType) baseWhere.loanType = req.query.loanType;
     const search =
@@ -437,7 +461,10 @@ export const getLeadById = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    if (req.user.role === 'partner' && lead.partnerId !== req.user.id) {
+    if (
+      req.user.role === 'partner'
+      && !partnerOwnsLead(lead, req.user.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Not authorized to access this lead' });
       return;
     }
@@ -483,7 +510,10 @@ export const updateLead = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    if (req.user.role === 'partner' && lead.partnerId !== req.user.id) {
+    if (
+      req.user.role === 'partner'
+      && !partnerOwnsLead(lead, req.user.id, req.partnerOrgId)
+    ) {
       res.status(403).json({ success: false, message: 'Not authorized to update this lead' });
       return;
     }
@@ -621,9 +651,11 @@ export const getLeadStats = async (req: Request, res: Response): Promise<void> =
     }
 
     const isPartner = req.user.role === 'partner';
-    const cacheKey = `lead:stats:${isPartner ? req.user.id : 'all'}`;
+    const cacheKey = `lead:stats:${isPartner ? req.partnerOrgId ?? req.user.id : 'all'}`;
     const where: Record<string, unknown> = {};
-    if (isPartner) where.partnerId = req.user.id;
+    if (isPartner) {
+      Object.assign(where, partnerLeadWhere(req.user.id, req.partnerOrgId));
+    }
 
     const data = await cacheWrap(
       cacheKey,
@@ -712,7 +744,7 @@ export const updateLeadStatus = async (req: Request, res: Response): Promise<voi
     }
 
     if (req.user.role === 'partner') {
-      if (lead.partnerId !== req.user.id) {
+      if (!partnerOwnsLead(lead, req.user.id, req.partnerOrgId)) {
         res.status(403).json({ success: false, message: 'Not authorized to update this lead' });
         return;
       }

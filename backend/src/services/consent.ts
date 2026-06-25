@@ -68,7 +68,6 @@ export const grantAccess = async (params: GrantAccessInput) => {
   const partnerData = await prisma.partnerData.findFirst({
     where: {
       id: params.partnerDataId,
-      partnerId: params.partnerId,
       partnerOrgId: params.partnerOrgId,
     },
     select: {
