@@ -20,6 +20,7 @@ describe('admin permissions', () => {
     expect(hasRolePermission(defaultRolePermissions.super_admin, 'roles', 'read')).toBe(true);
     expect(hasRolePermission(defaultRolePermissions.super_admin, 'roles', 'update')).toBe(true);
     expect(hasRolePermission(defaultRolePermissions.super_admin, 'roles', 'delete')).toBe(true);
+    expect(hasRolePermission(defaultRolePermissions.super_admin, 'eligibility_rules', 'update')).toBe(true);
   });
 
   it('normalizes permission payloads to known resources and actions only', () => {
@@ -32,6 +33,7 @@ describe('admin permissions', () => {
       banks: { read: false, create: false, update: false, delete: false },
       users: { read: false, create: false, update: false, delete: false },
       roles: { read: false, create: false, update: false, delete: false },
+      eligibility_rules: { read: false, create: false, update: false, delete: false },
     });
   });
 });
