@@ -1,8 +1,8 @@
 import type { Request } from 'express';
-import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { getRedisClient, isRedisAvailable } from '../config/redis.js';
+import { buildBorrowerHash } from '../../modules/soft-check/softCheckIntegrity.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
 const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
@@ -135,11 +135,11 @@ export const otpLimiter = rateLimit({
 const softCheckBorrowerKey = (req: Request): string => {
   const partnerOrgId = req.partnerOrgId ?? 'unknown-partner';
   const borrowerIdentifier = String(req.body?.phone ?? req.body?.storedClientId ?? req.body?.leadId ?? req.ip ?? 'unknown');
-  return crypto
-    .createHash('sha256')
-    .update(`${partnerOrgId}|${borrowerIdentifier.trim().toLowerCase()}`)
-    .digest('hex');
+  return buildBorrowerHash(partnerOrgId, borrowerIdentifier);
 };
+
+export const buildSoftCheckRateLimitKey = (req: Request): string =>
+  `soft-check:${req.partnerOrgId ?? 'unknown'}:${softCheckBorrowerKey(req)}`;
 
 export const softCheckLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -151,6 +151,6 @@ export const softCheckLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `soft-check:${req.partnerOrgId ?? 'unknown'}:${softCheckBorrowerKey(req)}`,
+  keyGenerator: buildSoftCheckRateLimitKey,
   store: buildStore('soft_check'),
 });

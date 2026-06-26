@@ -17,6 +17,37 @@ const EMPLOYMENT_TYPES = new Set([
   'SELF_EMPLOYED_NON_PROFESSIONAL',
   'UNKNOWN',
 ]);
+const V2_FIELDS = new Set([
+  'storedClientId',
+  'leadId',
+  'requestId',
+  'schemaVersion',
+  'fullName',
+  'phone',
+  'monthlyIncome',
+  'existingEMI',
+  'employmentType',
+  'loanType',
+  'productCode',
+  'loanAmount',
+  'consentCredit',
+  'age',
+  'requestedTenureMonths',
+  'propertyValue',
+  'propertyType',
+  'declaredCibilRange',
+  'purpose',
+  'cityTier',
+  'residenceType',
+  'businessProfile',
+  'goldProfile',
+]);
+const V2_PRODUCTS = new Set(['home_loan', 'lap', 'personal_loan', 'business_loan', 'gold_loan']);
+const CITY_TIERS = new Set(['TIER_1', 'TIER_2', 'TIER_3', 'UNKNOWN']);
+const CIBIL_RANGES = new Set(['NO_HISTORY', 'LT_650', '650_699', '700_749', '750_799', '800_PLUS']);
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const numericIssue = (
   payload: Record<string, unknown>,
@@ -37,6 +68,15 @@ export const validateSoftCheckPayload = (raw: unknown): SoftCheckValidationIssue
 
   const payload = raw as Record<string, unknown>;
   const issues: SoftCheckValidationIssue[] = [];
+  const isV2 = payload.schemaVersion === '2.0' || process.env.SOFT_CHECK_ENGINE_MODE === 'v2';
+
+  if (isV2) {
+    for (const field of Object.keys(payload)) {
+      if (!V2_FIELDS.has(field)) {
+        issues.push({ field, code: 'UNKNOWN_FIELD', message: `${field} is not allowed` });
+      }
+    }
+  }
 
   for (const field of ['storedClientId', 'leadId', 'requestId']) {
     const value = payload[field];
@@ -88,16 +128,63 @@ export const validateSoftCheckPayload = (raw: unknown): SoftCheckValidationIssue
     });
   }
 
-  if (payload.schemaVersion === '2.0') {
+  if (isV2) {
     const product = String(payload.productCode ?? payload.loanType ?? '');
+    if (!V2_PRODUCTS.has(product)) {
+      issues.push({ field: 'loanType', code: 'INVALID_ENUM', message: 'loanType is not supported for V2 soft checks' });
+    }
+    if (payload.cityTier !== undefined && !CITY_TIERS.has(String(payload.cityTier))) {
+      issues.push({ field: 'cityTier', code: 'INVALID_ENUM', message: 'cityTier is not supported' });
+    }
+    if (payload.declaredCibilRange !== undefined && !CIBIL_RANGES.has(String(payload.declaredCibilRange))) {
+      issues.push({ field: 'declaredCibilRange', code: 'INVALID_ENUM', message: 'declaredCibilRange is not supported' });
+    }
     if ((product === 'home_loan' || product === 'lap') && payload.propertyValue === undefined) {
       issues.push({ field: 'propertyValue', code: 'REQUIRED', message: 'propertyValue is required for this product' });
+    }
+    if ((product === 'home_loan' || product === 'lap') && payload.propertyType === undefined) {
+      issues.push({ field: 'propertyType', code: 'REQUIRED', message: 'propertyType is required for this product' });
     }
     if (product === 'business_loan' && !payload.businessProfile) {
       issues.push({ field: 'businessProfile', code: 'REQUIRED', message: 'businessProfile is required for business loans' });
     }
+    if (product === 'business_loan' && payload.businessProfile !== undefined) {
+      const profile = payload.businessProfile;
+      if (!isPlainObject(profile)) {
+        issues.push({ field: 'businessProfile', code: 'INVALID_OBJECT', message: 'businessProfile must be an object' });
+      } else {
+        for (const field of ['businessVintageMonths', 'annualTurnover']) {
+          const issue = numericIssue(profile, field, { min: 0, max: 10_000_000_000 });
+          if (issue) issues.push({ ...issue, field: `businessProfile.${field}` });
+        }
+        for (const field of ['businessVintageMonths', 'annualTurnover', 'businessType', 'gstRegistrationStatus']) {
+          if (profile[field] === undefined) {
+            issues.push({ field: `businessProfile.${field}`, code: 'REQUIRED', message: `${field} is required for business loans` });
+          }
+        }
+      }
+    }
     if (product === 'gold_loan' && !payload.goldProfile) {
       issues.push({ field: 'goldProfile', code: 'REQUIRED', message: 'goldProfile is required for gold loans' });
+    }
+    if (product === 'gold_loan' && payload.goldProfile !== undefined) {
+      const profile = payload.goldProfile;
+      if (!isPlainObject(profile)) {
+        issues.push({ field: 'goldProfile', code: 'INVALID_OBJECT', message: 'goldProfile must be an object' });
+      } else {
+        for (const issue of [
+          numericIssue(profile, 'goldWeightGrams', { min: 0.01, max: 100_000 }),
+          numericIssue(profile, 'goldPurityCarat', { min: 18, max: 24 }),
+          numericIssue(profile, 'declaredGoldValue', { min: 1, max: 100_000_000_000 }),
+        ]) {
+          if (issue) issues.push({ ...issue, field: `goldProfile.${issue.field}` });
+        }
+        for (const field of ['goldWeightGrams', 'goldPurityCarat', 'declaredGoldValue', 'goldForm']) {
+          if (profile[field] === undefined) {
+            issues.push({ field: `goldProfile.${field}`, code: 'REQUIRED', message: `${field} is required for gold loans` });
+          }
+        }
+      }
     }
   }
 

@@ -193,4 +193,59 @@ describe('runSoftCheck', () => {
       threshold: 50,
     }));
   });
+
+  it('maps V2 ineligibility back into legacy fields consistently', () => {
+    const result = runConfiguredSoftCheck({
+      input: {
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        consentCredit: true,
+        age: 35,
+        requestedTenureMonths: 60,
+      },
+      banks,
+      configuration: {
+        productId: 'product-1',
+        ruleSetId: 'ruleset-1',
+        ruleSetVersion: 1,
+        configHash: 'hash-1',
+        lenders: [{
+          id: 'bank-1',
+          code: 'HDFC',
+          name: 'HDFC Bank',
+          productCode: 'personal_loan',
+          ticketMin: 50_000,
+          ticketMax: 1_000_000,
+          rateMin: 10,
+          rateMax: 12,
+          tenureMinMonths: 12,
+          tenureMaxMonths: 60,
+        }],
+        rules: [{
+          id: 'rule-1',
+          ruleCode: 'PL_MAX_FOIR',
+          name: 'Maximum FOIR',
+          productCode: 'personal_loan',
+          fieldPath: 'derived.foirPercent',
+          operator: 'LTE',
+          threshold: 10,
+          severity: 'HARD_FAIL',
+          priority: 1,
+          regulatoryClass: 'LENDER_VARIABLE',
+          confidenceWeight: 2,
+        }],
+      },
+    });
+
+    expect(result.eligibilityStatus).toBe('INELIGIBLE');
+    expect(result.isEligible).toBe(false);
+    expect(result.eligibleBanks).toEqual([]);
+    expect(result.maxLoanAmount).toBe(0);
+    expect(result.score).toBe(25);
+  });
 });

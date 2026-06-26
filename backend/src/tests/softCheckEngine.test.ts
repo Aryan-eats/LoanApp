@@ -233,6 +233,7 @@ describe('evaluateSoftCheck', () => {
         expect.objectContaining({ ruleCode: 'HL_LTV_LARGE', outcome: 'NOT_APPLICABLE' }),
       ])
     );
+    expect(result.matchedLenders[0].estimatedEligibleAmount).toBe(2_000_000);
   });
 
   it('distinguishes an empty lender panel from borrower ineligibility', () => {
@@ -304,6 +305,24 @@ describe('evaluateSoftCheck', () => {
         ],
       })
     ).toThrow('Contradictory soft-check rules');
+  });
+
+  it('rejects duplicate effective base rules instead of silently overwriting one', () => {
+    expect(() =>
+      evaluateSoftCheck({
+        input,
+        lenders,
+        rules: [
+          baseRules[0],
+          {
+            ...baseRules[0],
+            id: 'rule-income-salaried',
+            employmentScopes: ['SALARIED'],
+            priority: 11,
+          },
+        ],
+      })
+    ).toThrow('Duplicate effective soft-check rule');
   });
 
   it('rejects an RBI rule relaxation overlay', () => {

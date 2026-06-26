@@ -368,15 +368,25 @@ const effectiveRules = (
   lenderId: string
 ): EligibilityRule[] => {
   const selected = new Map<string, EligibilityRule>();
+  const overlays = new Set<string>();
   rules
     .filter((rule) => rule.productCode === input.productCode)
     .filter((rule) => !rule.employmentScopes?.length || rule.employmentScopes.includes(input.employmentType))
     .filter((rule) => !rule.lenderId)
-    .forEach((rule) => selected.set(rule.ruleCode, rule));
+    .forEach((rule) => {
+      if (selected.has(rule.ruleCode)) {
+        throw new Error(`Duplicate effective soft-check rule: ${rule.ruleCode}`);
+      }
+      selected.set(rule.ruleCode, rule);
+    });
   rules
     .filter((rule) => rule.productCode === input.productCode && rule.lenderId === lenderId)
     .filter((rule) => !rule.employmentScopes?.length || rule.employmentScopes.includes(input.employmentType))
     .forEach((rule) => {
+      if (overlays.has(rule.ruleCode)) {
+        throw new Error(`Duplicate effective soft-check overlay: ${rule.ruleCode}`);
+      }
+      overlays.add(rule.ruleCode);
       if (rule.overrideMode === 'DISABLE') selected.delete(rule.ruleCode);
       else selected.set(rule.ruleCode, rule);
     });
@@ -397,11 +407,18 @@ const tierForMargins = (traces: RuleTrace[]): Exclude<ConfidenceTier, 'INELIGIBL
 const supportedPrincipal = (
   input: NormalizedSoftCheckInput,
   lender: SoftCheckLender,
-  rules: EligibilityRule[]
+  rules: EligibilityRule[],
+  traces: RuleTrace[]
 ): number => {
   const tenure = input.requestedTenureMonths ?? lender.tenureMaxMonths;
   const caps = [input.requestedAmount, lender.ticketMax];
+  const applicableRuleCodes = new Set(
+    traces
+      .filter((trace) => trace.outcome !== 'NOT_APPLICABLE')
+      .map((trace) => trace.ruleCode)
+  );
   const foirCaps = rules
+    .filter((rule) => applicableRuleCodes.has(rule.ruleCode))
     .filter((rule) => rule.fieldPath === 'derived.foirPercent' && rule.operator === 'LTE')
     .map((rule) => Number(rule.threshold))
     .filter(Number.isFinite);
@@ -416,6 +433,7 @@ const supportedPrincipal = (
 
   const collateralValue = input.propertyValue ?? input.goldProfile?.declaredGoldValue;
   const ltvCaps = rules
+    .filter((rule) => applicableRuleCodes.has(rule.ruleCode))
     .filter((rule) => rule.fieldPath === 'derived.ltvPercent' && rule.operator === 'LTE')
     .map((rule) => Number(rule.threshold))
     .filter(Number.isFinite);
@@ -562,7 +580,7 @@ export const evaluateSoftCheck = ({
       code: lender.code,
       name: lender.name,
       productCode: input.productCode,
-      estimatedEligibleAmount: supportedPrincipal(input, lender, lenderRules),
+      estimatedEligibleAmount: supportedPrincipal(input, lender, lenderRules, traces),
       estimatedRateBand: { min: lender.rateMin, max: lender.rateMax, type: 'indicative' },
       estimatedEmi: derived.proposedEmi,
       confidenceTier,

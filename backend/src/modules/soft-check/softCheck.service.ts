@@ -109,6 +109,36 @@ const estimateEmi = (amount: number, annualRate = 12, months = 60) => {
   );
 };
 
+const scoreForConfidence = (tier: SoftCheckEngineResult['confidenceTier']): number =>
+  ({ STRONG: 90, MODERATE: 70, WEAK: 50, INELIGIBLE: 25 })[tier];
+
+const projectMatchedBanks = (
+  matchedLenders: SoftCheckEngineResult['matchedLenders'],
+  banks: SoftCheckBank[]
+): SoftCheckResult['eligibleBanks'] =>
+  matchedLenders.map((lender) => {
+    const bank = banks.find((candidate) => candidate.id === lender.lenderId || candidate.code === lender.code);
+    return {
+      ...(bank ?? {
+        id: lender.lenderId,
+        name: lender.name,
+        code: lender.code,
+        status: 'active',
+        supportedLoanTypes: [lender.productCode],
+        interestRateMin: lender.estimatedRateBand.min,
+        interestRateMax: lender.estimatedRateBand.max,
+        processingFee: '',
+        maxTenure: 0,
+        minAmount: 0,
+        maxAmount: lender.estimatedEligibleAmount,
+        processingTime: '',
+        isPopular: false,
+        features: [],
+      }),
+      displayAmount: lender.estimatedEligibleAmount,
+    };
+  });
+
 export function runSoftCheck({
   input,
   banks,
@@ -233,9 +263,25 @@ export const runConfiguredSoftCheck = ({
     configId: configuration.ruleSetId,
     configVersion: configuration.ruleSetVersion,
   });
+  const eligibleBanks = projectMatchedBanks(engine.matchedLenders, banks);
+  const maxLoanAmount = engine.matchedLenders.length
+    ? Math.max(...engine.matchedLenders.map((lender) => lender.estimatedEligibleAmount))
+    : 0;
+  const minLoanAmount = engine.matchedLenders.length
+    ? Math.min(...engine.matchedLenders.map((lender) => lender.estimatedEligibleAmount))
+    : 0;
+  const estimatedEMI = engine.matchedLenders.length
+    ? Math.min(...engine.matchedLenders.map((lender) => lender.estimatedEmi))
+    : legacy.estimatedEMI;
 
   return {
     ...legacy,
+    isEligible: engine.eligibilityStatus === 'ELIGIBLE',
+    score: scoreForConfidence(engine.confidenceTier),
+    maxLoanAmount,
+    minLoanAmount,
+    estimatedEMI,
+    eligibleBanks,
     ...engine,
     schemaVersion: '2.0',
     ruleConfigReleaseId: configuration.ruleSetId,

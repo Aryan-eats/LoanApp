@@ -64,7 +64,9 @@ export const sanitiseFilename = (original: string): string => {
   const scrubbed = original
     .replace(/\.{2,}/g, '_')
     .replace(/on[a-z]+/gi, '_')
-    .replace(/[<>"'`;$\\/\x00\r\n]/g, '_');
+    .replaceAll(String.fromCharCode(0), '_')
+    .replace(/[<>"'`;$\\/]/g, '_')
+    .replace(/[\r\n]/g, '_');
   // Keep only alphanumerics, dots, hyphens, underscores
   const safe = scrubbed.replace(/[^a-zA-Z0-9.\-_]/g, '_').substring(0, 200);
   // Fallback when the sanitised name is empty or contains no meaningful chars

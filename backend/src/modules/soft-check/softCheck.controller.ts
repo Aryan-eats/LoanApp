@@ -6,11 +6,13 @@ import { logAuditEvent } from '../audit/auditLogger.js';
 import { getSoftCheckConfiguration, persistSoftCheckDecision } from './softCheckRepository.js';
 import { buildBorrowerHash, buildInputHash, buildResultChecksum } from './softCheckIntegrity.js';
 import {
+  getSoftCheckEngineMode,
   normalizeSoftCheckInput,
   runSoftCheckForMode,
   type SoftCheckBank,
   type SoftCheckInput,
 } from './softCheck.service.js';
+import { decryptLeadSoftCheckPii, decryptStoredClientSoftCheckPii } from './softCheckPiiContext.js';
 
 type BankRow = Prisma.BankGetPayload<object>;
 
@@ -62,9 +64,25 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       return;
     }
 
+    const [storedClientForCheck, leadForCheck] = await Promise.all([
+      decryptStoredClientSoftCheckPii(partnerOrgId, storedClient),
+      decryptLeadSoftCheckPii(lead),
+    ]).catch((error) => {
+      console.error(
+        'Soft-check source PII decrypt failed:',
+        error instanceof Error ? error.name : 'unknown error',
+      );
+      return [null, null] as const;
+    });
+
+    if ((storedClient && !storedClientForCheck) || (lead && !leadForCheck)) {
+      res.status(503).json({ success: false, message: 'Soft check source data unavailable' });
+      return;
+    }
+
     const input: SoftCheckInput = {
-      fullName: storedClient?.fullName ?? lead?.clientFullName ?? String(req.body.fullName ?? ''),
-      phone: storedClient?.phone ?? lead?.clientPhone ?? String(req.body.phone ?? ''),
+      fullName: storedClientForCheck?.fullName ?? leadForCheck?.clientFullName ?? String(req.body.fullName ?? ''),
+      phone: storedClientForCheck?.phone ?? leadForCheck?.clientPhone ?? String(req.body.phone ?? ''),
       monthlyIncome: Number(storedClient?.monthlyIncome ?? lead?.clientIncome ?? req.body.monthlyIncome ?? 0),
       existingEMI: Number(req.body.existingEMI ?? 0),
       employmentType:
@@ -99,18 +117,34 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const [bankRows, configuration] = await Promise.all([
+    const engineMode = getSoftCheckEngineMode();
+    const [bankRows, configurationResult] = await Promise.all([
       prisma.bank.findMany({ where: { status: 'active' } }),
-      getSoftCheckConfiguration(input.loanType).catch((error) => {
-        console.error(
-          'Soft-check configuration load failed:',
-          error instanceof Error ? error.message : 'unknown error',
-        );
-        return null;
-      }),
+      getSoftCheckConfiguration(input.loanType)
+        .then((configuration) => ({ configuration, error: null }))
+        .catch((error) => ({ configuration: null, error })),
     ]);
+    if (configurationResult.error) {
+      console.error(
+        'Soft-check configuration load failed:',
+        configurationResult.error instanceof Error ? configurationResult.error.message : 'unknown error',
+      );
+      if (engineMode === 'v2') {
+        res.status(503).json({ success: false, message: 'Soft check configuration unavailable' });
+        return;
+      }
+    }
+    if (engineMode === 'v2' && !configurationResult.configuration) {
+      res.status(503).json({ success: false, message: 'Soft check configuration unavailable' });
+      return;
+    }
     const banks = bankRows.map(toSoftCheckBank);
-    const softCheckRun = runSoftCheckForMode({ input, banks, configuration });
+    const softCheckRun = runSoftCheckForMode({
+      input,
+      banks,
+      configuration: configurationResult.configuration,
+      mode: engineMode,
+    });
     const result = softCheckRun.response;
     const isV2Result = 'schemaVersion' in result;
     const requestId = suppliedRequestId ?? randomUUID();
@@ -211,7 +245,7 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
 
     res.status(200).json({ success: true, data: responseResult });
   } catch (err) {
-    console.error('runPartnerSoftCheck error:', err);
+    console.error('runPartnerSoftCheck error:', err instanceof Error ? err.name : 'unknown error');
     res.status(500).json({ success: false, message: 'Failed to run soft check' });
   }
 };

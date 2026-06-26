@@ -125,6 +125,7 @@ model Partner {
   businessName     String?              @map("business_name")
   gstNumber        String?              @map("gst_number")
   panNumber        String?              @map("pan_number")
+  vaultKeyRef      String               @map("vault_key_ref")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   owner            User                 @relation("PartnerOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
