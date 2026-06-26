@@ -175,6 +175,27 @@ describe('partner routes', () => {
     expect(getCurrentPartnerProfile).not.toHaveBeenCalled();
   });
 
+  it('requires authentication before soft-check endpoint access', async () => {
+    const { response, json } = await requestJson('POST', '/api/partner/soft-check', {});
+
+    expect(response.status).toBe(401);
+    expect(json.success).toBe(false);
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
+  it('requires partner role before soft-check endpoint access', async () => {
+    const { response, json } = await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      {},
+      { authorization: 'Bearer valid-token', 'x-role': 'admin' },
+    );
+
+    expect(response.status).toBe(403);
+    expect(json.success).toBe(false);
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['GET', '/api/partner/profile', getCurrentPartnerProfile],
     ['GET', '/api/partner/leads/stats', getLeadStats],

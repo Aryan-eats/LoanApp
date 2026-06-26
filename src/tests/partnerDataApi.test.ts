@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import apiClient from '../api/apiClient';
 import { runSoftCheck } from '../api/partnerDataApi';
+import legacyResponse from '../../backend/src/tests/fixtures/softCheckLegacyResponse.json';
 
 vi.mock('../api/apiClient', () => ({
   default: {
@@ -16,7 +17,7 @@ describe('partnerDataApi', () => {
   it('runs a soft check through the partner endpoint', async () => {
     const apiResponse = {
       success: true,
-      data: { checkType: 'soft', creditImpact: 'none', isEligible: true },
+      data: legacyResponse,
     };
     (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       data: apiResponse,
@@ -34,6 +35,7 @@ describe('partnerDataApi', () => {
     const result = await runSoftCheck(payload);
 
     expect(result).toEqual(apiResponse);
+    expect(result.data).toEqual(legacyResponse);
     expect(apiClient.post).toHaveBeenCalledWith('/partner/soft-check', payload);
   });
 });

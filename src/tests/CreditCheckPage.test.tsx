@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CreditCheckPage from '../partner/pages/CreditCheckPage';
 import { runSoftCheck } from '../api/partnerDataApi';
+import legacyResponse from '../../backend/src/tests/fixtures/softCheckLegacyResponse.json';
 
 vi.mock('../api/partnerDataApi', () => ({
   runSoftCheck: vi.fn(),
@@ -49,19 +50,7 @@ describe('CreditCheckPage', () => {
   it('calls the softcheck API and renders the no-impact result banner', async () => {
     vi.mocked(runSoftCheck).mockResolvedValueOnce({
       success: true,
-      data: {
-        checkType: 'soft',
-        creditImpact: 'none',
-        isEligible: true,
-        score: 90,
-        maxLoanAmount: 1_000_000,
-        minLoanAmount: 50_000,
-        estimatedEMI: 11_122,
-        eligibleBanks: [],
-        factors: [],
-        disclaimer:
-          'Soft eligibility check only. No credit score impact. Final approval requires lender verification and may involve a hard inquiry.',
-      },
+      data: legacyResponse,
     });
 
     render(
@@ -104,5 +93,8 @@ describe('CreditCheckPage', () => {
       });
     });
     expect(await screen.findByText('Soft Check - No Credit Impact')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByText('HDFC Bank')).toBeInTheDocument();
+    expect(screen.getByText('Rs 50,000 - Rs 9.90 L')).toBeInTheDocument();
   });
 });

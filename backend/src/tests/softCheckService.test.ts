@@ -4,6 +4,7 @@ import {
   runSoftCheck,
   type SoftCheckBank,
 } from '../modules/soft-check/softCheck.service.js';
+import legacyResponse from './fixtures/softCheckLegacyResponse.json' with { type: 'json' };
 
 const banks: SoftCheckBank[] = [
   {
@@ -81,7 +82,7 @@ describe('runSoftCheck', () => {
     expect(result.eligibleBanks[0].code).toBe('HDFC');
   });
 
-  it('preserves the legacy calculation contract', () => {
+  it('preserves the exact legacy calculation contract', () => {
     const result = runSoftCheck({
       input: {
         fullName: 'Ravi Sharma',
@@ -96,20 +97,39 @@ describe('runSoftCheck', () => {
       banks,
     });
 
-    expect(result).toMatchObject({
+    expect(result).toEqual(legacyResponse);
+  });
+
+  it('preserves the no-lender legacy response shape', () => {
+    const result = runSoftCheck({
+      input: {
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        consentCredit: true,
+      },
+      banks: [],
+    });
+
+    expect(result).toEqual(expect.objectContaining({
       checkType: 'soft',
       creditImpact: 'none',
-      isEligible: true,
-      score: 100,
+      isEligible: false,
+      score: 75,
       maxLoanAmount: 990_000,
-      minLoanAmount: 50_000,
+      minLoanAmount: 0,
       estimatedEMI: 11_122,
-    });
-    expect(result.factors.map(({ factor, weight }) => ({ factor, weight }))).toEqual([
-      { factor: 'Income Level', weight: 30 },
-      { factor: 'Debt-to-Income Ratio', weight: 35 },
-      { factor: 'Bank Fit', weight: 35 },
-    ]);
+      eligibleBanks: [],
+      disclaimer: legacyResponse.disclaimer,
+    }));
+    expect(result.factors.at(-1)).toEqual(expect.objectContaining({
+      factor: 'Bank Fit',
+      status: 'negative',
+    }));
   });
 
   it('adds the configured engine result without removing legacy fields', () => {

@@ -42,6 +42,9 @@ const req = (body: Record<string, unknown>) =>
 describe('runPartnerSoftCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.partnerData.findFirst.mockResolvedValue(null);
+    prismaMock.lead.findFirst.mockResolvedValue(null);
+    prismaMock.lead.update.mockResolvedValue({});
     getSoftCheckConfigurationMock.mockResolvedValue(null);
     prismaMock.bank.findMany.mockResolvedValue([
       {
@@ -139,6 +142,92 @@ describe('runPartnerSoftCheck', () => {
     });
     expect(prismaMock.lead.findFirst).toHaveBeenCalledWith({
       where: { id: 'lead-1', partnerOrgId: 'partner-1' },
+    });
+  });
+
+  it('uses lead data before raw request data and persists the five legacy eligibility columns', async () => {
+    const res = response();
+    prismaMock.lead.findFirst.mockResolvedValue({
+      id: 'lead-1',
+      clientFullName: 'Lead Client',
+      clientPhone: '9876543210',
+      clientIncome: 75_000,
+      clientEmployment: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 500_000,
+      tenure: 60,
+    });
+
+    await runPartnerSoftCheck(
+      req({
+        leadId: 'lead-1',
+        fullName: 'Raw Client',
+        phone: '9999999999',
+        monthlyIncome: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 900_000,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(prismaMock.lead.update).toHaveBeenCalledWith({
+      where: { id: 'lead-1' },
+      data: {
+        isEligible: true,
+        maxLoanAmount: 1_350_000,
+        minLoanAmount: 50_000,
+        estimatedEMI: 11_122,
+        eligibilityCheckedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('uses stored client data before lead and raw request data', async () => {
+    const res = response();
+    prismaMock.partnerData.findFirst.mockResolvedValue({
+      id: 'stored-client-1',
+      fullName: 'Stored Client',
+      phone: '9876543210',
+      monthlyIncome: 100_000,
+      employmentType: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 500_000,
+      tenure: 60,
+      loanPurpose: 'working_capital',
+      residenceType: 'owned',
+    });
+    prismaMock.lead.findFirst.mockResolvedValue({
+      id: 'lead-1',
+      clientFullName: 'Lead Client',
+      clientPhone: '9999999999',
+      clientIncome: 20_000,
+      clientEmployment: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 900_000,
+      tenure: 12,
+    });
+
+    await runPartnerSoftCheck(
+      req({
+        storedClientId: 'stored-client-1',
+        leadId: 'lead-1',
+        monthlyIncome: 10_000,
+        loanAmount: 900_000,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(prismaMock.lead.update).toHaveBeenCalledWith({
+      where: { id: 'lead-1' },
+      data: expect.objectContaining({
+        isEligible: true,
+        maxLoanAmount: 1_800_000,
+        minLoanAmount: 50_000,
+        estimatedEMI: 11_122,
+      }),
     });
   });
 
