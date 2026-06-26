@@ -28,6 +28,7 @@ const submitStoredClientToGPS = ok('submitStoredClientToGPS');
 const getPartnerCustomerById = ok('getPartnerCustomerById');
 const getPartnerCustomerActivity = ok('getPartnerCustomerActivity');
 const runPartnerSoftCheck = ok('runPartnerSoftCheck');
+const softCheckLimiter = vi.fn((_req: express.Request, _res: express.Response, next: express.NextFunction) => next());
 
 vi.mock('../modules/leads/lead.controller.js', () => ({
   createLead,
@@ -85,6 +86,10 @@ vi.mock('../shared/middleware/partnerContext.js', () => ({
 
 vi.mock('../shared/middleware/cacheControl.js', () => ({
   cacheControl: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
+}));
+
+vi.mock('../shared/middleware/rateLimiter.js', () => ({
+  softCheckLimiter,
 }));
 
 vi.mock('../shared/utils/cache.js', () => ({
@@ -270,6 +275,18 @@ describe('partner routes', () => {
       message: 'Validation failed',
     }));
     expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
+  it('applies the dedicated soft-check rate limiter before the controller', async () => {
+    await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      { consentCredit: true },
+      partnerHeaders,
+    );
+
+    expect(softCheckLimiter).toHaveBeenCalledTimes(1);
+    expect(runPartnerSoftCheck).toHaveBeenCalledTimes(1);
   });
 
   it('redirects dashboard requests to partner lead stats', async () => {
