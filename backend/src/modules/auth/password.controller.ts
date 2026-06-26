@@ -1,14 +1,14 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
-import prisma from '../shared/db/prisma.js';
-import { logAuditEvent } from '../modules/audit/auditLogger.js';
-import { hashToken } from '../services/authService.js';
+import prisma from '../../shared/db/prisma.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
+import { hashToken } from './auth.service.js';
 import {
   hashPassword,
   generatePasswordResetToken,
   isPasswordReused,
   addToPasswordHistory,
-} from '../services/userService.js';
+} from '../../services/userService.js';
 
 const timingSafeCompare = (a: string, b: string): boolean => {
   const bufA = Buffer.from(a, 'utf8');

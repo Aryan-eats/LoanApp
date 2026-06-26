@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { Prisma, type User } from '@prisma/client';
-import prisma from '../shared/db/prisma.js';
-import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../shared/security/cookieConfig.js';
+import prisma from '../../shared/db/prisma.js';
+import { REFRESH_COOKIE, getRefreshCookieOptions, getClearCookieOptions } from '../../shared/security/cookieConfig.js';
 import {
   logAuditEvent,
   generateDeviceFingerprint,
   getClientIP,
   checkSuspiciousActivity,
-} from '../modules/audit/auditLogger.js';
+} from '../audit/auditLogger.js';
 import {
   signAccessToken,
   signRefreshToken,
@@ -15,8 +15,8 @@ import {
   getAccessTokenTtlSeconds,
   extractTokenFromHeader,
   getTokenExpirationMs,
-} from '../shared/security/jwt.js';
-import { tokenBlacklist } from '../shared/security/tokenBlacklist.js';
+} from '../../shared/security/jwt.js';
+import { tokenBlacklist } from '../../shared/security/tokenBlacklist.js';
 import {
   comparePassword,
   hashPassword,
@@ -24,9 +24,9 @@ import {
   incrementLoginAttempts,
   addSession,
   removeSession,
-} from '../services/userService.js';
-import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from '../services/authService.js';
-import { consumeVerificationToken } from '../services/otpChallengeService.js';
+} from '../../services/userService.js';
+import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from './auth.service.js';
+import { consumeVerificationToken } from './otpChallenge.service.js';
 
 const isMissingTableError = (error: unknown, tableName: string): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError &&

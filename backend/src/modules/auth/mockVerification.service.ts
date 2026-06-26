@@ -6,7 +6,7 @@
  * MOCK_VERIFICATION_ENABLED=true.
  *
  * Usage:
- *   import { matchesMockOtp } from './mockVerificationService.js';
+ *   import { matchesMockOtp } from './mockVerification.service.js';
  *   if (matchesMockOtp('phone', submittedOtp)) { ... }
  */
 

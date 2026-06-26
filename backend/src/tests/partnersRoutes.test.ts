@@ -22,7 +22,7 @@ const submitPartnerKYC = ok('submitPartnerKYC');
 const updatePartnerKYCStatus = ok('updatePartnerKYCStatus');
 const getPartnerStats = ok('getPartnerStats');
 
-vi.mock('../controllers/authController.js', () => ({
+vi.mock('../modules/auth/auth.controller.js', () => ({
   registerPartner,
 }));
 

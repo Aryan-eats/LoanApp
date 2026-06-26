@@ -6,9 +6,9 @@
  */
 
 import crypto from 'crypto';
-import prisma from '../shared/db/prisma.js';
-import { getRedisClient, isRedisAvailable } from '../shared/config/redis.js';
-import { matchesMockOtp } from './mockVerificationService.js';
+import prisma from '../../shared/db/prisma.js';
+import { getRedisClient, isRedisAvailable } from '../../shared/config/redis.js';
+import { matchesMockOtp } from './mockVerification.service.js';
 
 const OTP_TTL_SECONDS = 5 * 60; // 5 minutes
 const VERIFICATION_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { matchesMockOtp } from '../services/mockVerificationService.js';
+import { matchesMockOtp } from '../modules/auth/mockVerification.service.js';
 
 describe('mock verification', () => {
   const originalEnv = { ...process.env };

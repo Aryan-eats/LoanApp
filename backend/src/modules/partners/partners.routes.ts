@@ -13,7 +13,7 @@ import {
   updatePartnerKYCStatus,
   getPartnerStats,
 } from './partners.controller.js';
-import { registerPartner } from '../../controllers/authController.js';
+import { registerPartner } from '../auth/auth.controller.js';
 
 const router = Router();
 

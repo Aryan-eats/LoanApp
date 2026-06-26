@@ -52,18 +52,18 @@ vi.mock('../services/userService.js', () => ({
   removeSession,
 }));
 
-vi.mock('../services/authService.js', () => ({
+vi.mock('../modules/auth/auth.service.js', () => ({
   formatUserResponse: vi.fn(),
   hashToken: vi.fn((token: string) => `hash:${token}`),
   normalizePhone: vi.fn(),
   verifyMsg91VerificationToken: vi.fn(),
 }));
 
-vi.mock('../services/otpChallengeService.js', () => ({
+vi.mock('../modules/auth/otpChallenge.service.js', () => ({
   consumeVerificationToken: vi.fn(),
 }));
 
-const { refreshAccessToken, logout } = await import('../controllers/authController.js');
+const { refreshAccessToken, logout } = await import('../modules/auth/auth.controller.js');
 
 const user = {
   id: '11111111-1111-4111-8111-111111111111',

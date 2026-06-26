@@ -14,7 +14,7 @@ import {
   signMsg91VerificationToken,
   verifyMsg91VerificationToken,
   getMsg91VerificationSecret,
-} from '../services/authService.js';
+} from '../modules/auth/auth.service.js';
 
 // Ensure a test-safe JWT secret is set
 beforeAll(() => {

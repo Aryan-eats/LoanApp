@@ -20,7 +20,7 @@ const forgotPassword = vi.fn((_req: express.Request, res: express.Response) => r
 const resetPassword = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
 type JsonObject = Record<string, any>;
 
-vi.mock('../controllers/authController.js', () => ({
+vi.mock('../modules/auth/auth.controller.js', () => ({
   register,
   registerPartner,
   login,
@@ -29,7 +29,7 @@ vi.mock('../controllers/authController.js', () => ({
   refreshAccessToken,
 }));
 
-vi.mock('../controllers/otpController.js', () => ({
+vi.mock('../modules/auth/otp.controller.js', () => ({
   sendOTP,
   verifyOTP,
   verifyMsg91OTP,
@@ -38,7 +38,7 @@ vi.mock('../controllers/otpController.js', () => ({
   msg91ResendOTP,
 }));
 
-vi.mock('../controllers/passwordController.js', () => ({
+vi.mock('../modules/auth/password.controller.js', () => ({
   forgotPassword,
   resetPassword,
 }));
@@ -62,7 +62,7 @@ vi.mock('../shared/middleware/auth.js', () => ({
   },
 }));
 
-const authRoutes = (await import('../routes/authRoutes.js')).default;
+const authRoutes = (await import('../modules/auth/auth.routes.js')).default;
 
 const createApp = () => {
   const app = express();

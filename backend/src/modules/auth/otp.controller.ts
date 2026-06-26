@@ -1,28 +1,28 @@
 import { Request, Response } from 'express';
-import prisma from '../shared/db/prisma.js';
+import prisma from '../../shared/db/prisma.js';
 import {
   logAuditEvent,
   redactPhone,
-} from '../modules/audit/auditLogger.js';
+} from '../audit/auditLogger.js';
 import {
   formatUserResponse,
   hashToken,
   normalizePhone,
   verifyMsg91VerificationToken,
   signMsg91VerificationToken,
-} from '../services/authService.js';
+} from './auth.service.js';
 import {
   generateOTP,
   clearUserOTP,
   verifyUserOTP,
-} from '../services/userService.js';
-import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../shared/integrations/msg91.service.js';
+} from '../../services/userService.js';
+import { sendOTP as sendMsg91OTP, verifyOTP as verifyMsg91OTPService, resendOTP as resendMsg91OTP } from '../../shared/integrations/msg91.service.js';
 import {
   createOtpChallenge,
   verifyOtpChallenge,
-} from '../services/otpChallengeService.js';
-import { sendVerificationCode } from '../services/emailVerificationService.js';
-import { matchesMockOtp } from '../services/mockVerificationService.js';
+} from './otpChallenge.service.js';
+import { sendVerificationCode } from './emailVerification.service.js';
+import { matchesMockOtp } from './mockVerification.service.js';
 
 export const sendOTP = async (req: Request, res: Response): Promise<void> => {
   try {

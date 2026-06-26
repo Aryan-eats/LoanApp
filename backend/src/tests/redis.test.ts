@@ -22,7 +22,7 @@ import {
   createOtpChallenge,
   verifyOtpChallenge,
   consumeVerificationToken,
-} from '../services/otpChallengeService.js';
+} from '../modules/auth/otpChallenge.service.js';
 import { generateOTP, verifyUserOTP } from '../services/userService.js';
 
 // --- helpers -----------------------------------------------

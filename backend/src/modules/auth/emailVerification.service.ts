@@ -1,4 +1,4 @@
-import { getMockOtp, isMockVerificationEnabled } from './mockVerificationService.js';
+import { getMockOtp, isMockVerificationEnabled } from './mockVerification.service.js';
 
 interface EmailVerificationResult {
   success: boolean;

@@ -5,7 +5,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import helmet from "helmet";
 import { apiLimiter } from "./shared/middleware/rateLimiter.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
-import authRoutes from "./routes/authRoutes.js";
+import authRoutes from "./modules/auth/auth.routes.js";
 import documentRoutes from "./modules/documents/document.routes.js";
 import leadsRoutes from "./modules/leads/publicLead.routes.js";
 import partnerRoutes from "./routes/partnerRoutes.js";

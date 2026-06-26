@@ -1,33 +1,32 @@
 import { Router } from 'express';
 import {
-  register,
-  registerPartner,
-  login,
   getMe,
+  login,
   logout,
   refreshAccessToken,
-} from '../controllers/authController.js';
+  register,
+  registerPartner,
+} from './auth.controller.js';
 import {
-  sendOTP,
-  verifyOTP,
-  verifyMsg91OTP,
-  // MSG91 REST API handlers
+  msg91ResendOTP,
   msg91SendOTP,
   msg91VerifyOTP,
-  msg91ResendOTP,
-} from '../controllers/otpController.js';
+  sendOTP,
+  verifyMsg91OTP,
+  verifyOTP,
+} from './otp.controller.js';
 import {
   forgotPassword,
   resetPassword,
-} from '../controllers/passwordController.js';
-import { optionalAuth, protect } from '../shared/middleware/auth.js';
+} from './password.controller.js';
+import { optionalAuth, protect } from '../../shared/middleware/auth.js';
 import {
   loginLimiter,
   registerLimiter,
   passwordResetLimiter,
   otpLimiter,
   refreshLimiter,
-} from '../shared/middleware/rateLimiter.js';
+} from '../../shared/middleware/rateLimiter.js';
 import {
   validateLogin,
   validateRegister,
@@ -40,7 +39,7 @@ import {
   validateMsg91SendOTP,
   validateMsg91VerifyOTP,
   validateMsg91ResendOTP,
-} from '../shared/middleware/validators.js';
+} from '../../shared/middleware/validators.js';
 
 const router = Router();
 

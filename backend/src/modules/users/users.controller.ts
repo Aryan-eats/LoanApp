@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../../shared/db/prisma.js';
 import { hashPassword } from '../../services/userService.js';
-import { sanitizeAdminUserResponse } from '../../services/authService.js';
+import { sanitizeAdminUserResponse } from '../auth/auth.service.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
 import {
   ADMIN_ROLES,

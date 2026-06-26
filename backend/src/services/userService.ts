@@ -6,7 +6,7 @@ import { getRedisClient, isRedisAvailable } from '../shared/config/redis.js';
 import {
   matchesMockOtp,
   type VerificationChannel,
-} from './mockVerificationService.js';
+} from '../modules/auth/mockVerification.service.js';
 
 const PASSWORD_HISTORY_LIMIT = 5;
 const SESSION_LIMIT = 10;
