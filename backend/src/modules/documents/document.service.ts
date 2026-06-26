@@ -18,8 +18,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { getR2Client, R2_BUCKET } from '../shared/storage/r2.js';
-import prisma from '../shared/db/prisma.js';
+import { getR2Client, R2_BUCKET } from '../../shared/storage/r2.js';
+import prisma from '../../shared/db/prisma.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

@@ -13,10 +13,10 @@ import {
   getLeadDocumentDownloadUrl,
   updateLeadDocumentStatus,
   bulkUpdateLeadDocumentStatus,
-} from '../services/documentService.js';
-import prisma from '../shared/db/prisma.js';
+} from './document.service.js';
+import prisma from '../../shared/db/prisma.js';
 import crypto from 'crypto';
-import { logAuditEvent } from '../modules/audit/auditLogger.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
 
 const partnerOwnsLead = (
   lead: { partnerId: string | null; partnerOrgId: string | null },

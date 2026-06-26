@@ -2,14 +2,15 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/client';
 import type { LeadStatus } from '@prisma/client';
-import prisma, { basePrisma } from '../shared/db/prisma.js';
-import { cacheWrap, cacheDelete } from '../shared/utils/cache.js';
-import { logAuditEvent } from '../modules/audit/auditLogger.js';
-import { getRequiredDocTypes } from '../modules/doc-requirements/loanDocsMap.js';
-import { formatLeadResponse } from '../utils/leadHelpers.js';
-import { getNextGpsifsLeadId } from '../utils/leadId.js';
-import { canViewLeadPII, grantAccess } from '../modules/partner-data/consent.service.js';
-import { isAdminRole } from '../modules/users/adminPermissions.service.js';
+import prisma, { basePrisma } from '../../shared/db/prisma.js';
+import { cacheWrap, cacheDelete } from '../../shared/utils/cache.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
+import { getRequiredDocTypes } from '../doc-requirements/loanDocsMap.js';
+import { matchLeadOffers } from '../banks/bankMatching.service.js';
+import { formatLeadResponse, getNextGpsifsLeadId } from './lead.helpers.js';
+import { generateLeadToken, getSystemPartnerId, verifyLeadToken } from './lead.service.js';
+import { canViewLeadPII, grantAccess } from '../partner-data/consent.service.js';
+import { isAdminRole } from '../users/adminPermissions.service.js';
 
 type LeadWithRelations = Prisma.LeadGetPayload<{
   include: { documents: true; timeline: true; consentGrants: true };
@@ -109,6 +110,198 @@ const matchesLeadFilters = (
   }
 
   return true;
+};
+
+/**
+ * @desc    Create a public website lead
+ * @route   POST /api/leads
+ * @access  Public
+ */
+export const createPublicLead = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      fullName,
+      phone,
+      email,
+      city,
+      loanType,
+      loanAmount,
+      employmentType,
+    } = req.body;
+
+    // Strip commas from Indian-formatted numbers (e.g., 5,00,000)
+    const parsedLoanAmount = Number(String(loanAmount).replace(/,/g, ''));
+    if (!Number.isFinite(parsedLoanAmount) || parsedLoanAmount <= 0) {
+      res.status(400).json({
+        success: false,
+        message: 'loanAmount must be a valid positive number',
+      });
+      return;
+    }
+
+    const systemPartnerId = getSystemPartnerId();
+    if (!systemPartnerId) {
+      res.status(500).json({
+        success: false,
+        message: 'System partner is not configured',
+      });
+      return;
+    }
+
+    const lead = await prisma.lead.create({
+      data: {
+        clientFullName: fullName,
+        clientPhone: phone,
+        clientEmail: email || null,
+        clientCity: city || null,
+        clientEmployment: employmentType || null,
+        loanType,
+        loanAmount: parsedLoanAmount,
+        status: 'submitted',
+        partnerId: systemPartnerId,
+        partnerName: 'Website Direct',
+        encryptionVersion: 1,
+        timeline: {
+          create: {
+            status: 'submitted',
+            timestamp: new Date(),
+            updatedBy: 'Website',
+            note: 'Lead submitted via website form',
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Lead submitted successfully',
+      data: { lead, leadToken: generateLeadToken(lead.id) },
+    });
+  } catch (error) {
+    console.error('Create public lead error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit lead. Please try again.',
+    });
+  }
+};
+
+/**
+ * @desc    Match public lead to bank offers
+ * @route   POST /api/leads/match-offers
+ * @access  Public
+ */
+export const matchOffers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { loanType, loanSubType, loanAmount } = req.body as {
+      loanType?: string;
+      loanSubType?: string;
+      loanAmount?: number;
+    };
+
+    if ((!loanType || loanType.trim().length === 0) && (!loanSubType || loanSubType.trim().length === 0)) {
+      res.status(400).json({
+        success: false,
+        message: 'loanType or loanSubType is required',
+      });
+      return;
+    }
+
+    if (loanAmount !== undefined) {
+      const parsedLoanAmount = Number(loanAmount);
+      if (!Number.isFinite(parsedLoanAmount) || parsedLoanAmount <= 0) {
+        res.status(400).json({
+          success: false,
+          message: 'loanAmount must be a valid positive number',
+        });
+        return;
+      }
+    }
+
+    const data = await matchLeadOffers({
+      loanType,
+      loanSubType,
+      loanAmount: loanAmount !== undefined ? Number(loanAmount) : undefined,
+    });
+
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error('Match offers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to match bank offers. Please try again.',
+    });
+  }
+};
+
+/**
+ * @desc    Set public preferred bank with signed lead token
+ * @route   PATCH /api/leads/:id/preferred-bank
+ * @access  Public token
+ */
+export const updatePreferredBank = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { preferredBank } = req.body;
+    const leadId = req.params.id as string;
+
+    if (!preferredBank) {
+      res.status(400).json({
+        success: false,
+        message: 'Preferred bank is required',
+      });
+      return;
+    }
+
+    const existingLead = await prisma.lead.findUnique({
+      where: { id: leadId },
+    });
+
+    if (!existingLead) {
+      res.status(404).json({
+        success: false,
+        message: 'Lead not found',
+      });
+      return;
+    }
+
+    const leadToken = req.headers['x-lead-token'] as string | undefined;
+    if (!leadToken || !verifyLeadToken(leadId, leadToken)) {
+      res.status(403).json({
+        success: false,
+        message: 'Invalid or missing lead token',
+      });
+      return;
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    if (existingLead.createdAt < oneHourAgo) {
+      res.status(403).json({
+        success: false,
+        message: 'Preferred bank can only be set within 1 hour of lead submission. Please contact support.',
+      });
+      return;
+    }
+
+    const lead = await prisma.lead.update({
+      where: { id: leadId },
+      data: { preferredBank },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Preferred bank updated successfully',
+      data: { lead },
+    });
+  } catch (error) {
+    console.error('Update preferred bank error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update preferred bank. Please try again.',
+    });
+  }
 };
 
 /**

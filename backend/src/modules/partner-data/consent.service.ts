@@ -5,7 +5,7 @@ import {
   encryptForGPSIndia,
   isEncryptedCiphertext,
 } from '../../shared/security/encryption.js';
-import { getNextGpsifsLeadId } from '../../utils/leadId.js';
+import { getNextGpsifsLeadId } from '../leads/lead.helpers.js';
 import { decryptResultWithBridge } from '../../utils/fieldEncryption.js';
 
 const GPS_INDIA_GRANTED_TO = 'gps_india';

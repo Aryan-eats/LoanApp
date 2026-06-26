@@ -4,6 +4,94 @@ import { cacheWrap, cacheInvalidatePattern } from '../../shared/utils/cache.js';
 
 // -- Lender Document Requirements --------------------------------------------
 
+export const listPublicDocRequirements = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { loanCode } = req.query;
+    const lco = typeof loanCode === 'string' ? loanCode : '';
+    const where: Record<string, unknown> = {};
+    if (lco) where.loanCode = lco;
+
+    const rows = await cacheWrap(
+      `docs:reqdoc:public:${lco}`,
+      () => basePrisma.lenderDocRequirement.findMany({
+        where,
+        orderBy: [{ lenderCode: 'asc' }, { loanCode: 'asc' }, { sortOrder: 'asc' }],
+      }),
+      600,
+    );
+
+    const byLender: Record<string, {
+      lenderCode: string; lenderName: string;
+      loanCodes: string[];
+      docs: typeof rows;
+    }> = {};
+
+    for (const row of rows) {
+      if (!byLender[row.lenderCode]) {
+        byLender[row.lenderCode] = {
+          lenderCode: row.lenderCode,
+          lenderName: row.lenderName,
+          loanCodes: [],
+          docs: [],
+        };
+      }
+      byLender[row.lenderCode].docs.push(row);
+      if (!byLender[row.lenderCode].loanCodes.includes(row.loanCode)) {
+        byLender[row.lenderCode].loanCodes.push(row.loanCode);
+      }
+    }
+
+    res.status(200).json({ success: true, data: Object.values(byLender) });
+  } catch (error) {
+    console.error('Get req-docs error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const listFlatDocRequirements = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { loanCode, lenderCode } = req.query;
+    if (!loanCode || typeof loanCode !== 'string') {
+      res.status(400).json({ success: false, message: 'loanCode query parameter is required' });
+      return;
+    }
+
+    const lc = typeof lenderCode === 'string' ? lenderCode : '';
+    const where: Record<string, string> = { loanCode };
+    if (lc) where.lenderCode = lc;
+
+    const rows = await cacheWrap(
+      `docs:reqdoc:flat:${lc || 'all'}:${loanCode}`,
+      () => basePrisma.lenderDocRequirement.findMany({
+        where,
+        orderBy: [{ mandatory: 'desc' }, { sortOrder: 'asc' }],
+      }),
+      600,
+    );
+
+    const seen = new Set<string>();
+    const flat = rows
+      .filter((row) => {
+        if (seen.has(row.docId)) return false;
+        seen.add(row.docId);
+        return true;
+      })
+      .map((row) => ({
+        id: row.docId,
+        name: row.docName,
+        description: row.description,
+        mandatory: row.mandatory,
+        acceptedFormats: row.acceptedFormats,
+        maxSizeMB: row.maxSizeMB,
+      }));
+
+    res.status(200).json({ success: true, count: flat.length, data: flat });
+  } catch (error) {
+    console.error('Get req-docs/flat error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 export const listDocRequirements = async (req: Request, res: Response): Promise<void> => {
   try {
     const { lenderCode, loanCode } = req.query;

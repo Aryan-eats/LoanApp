@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import prisma from '../../shared/db/prisma.js';
 import { grantAccess } from './consent.service.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
-import { formatLeadResponse } from '../../utils/leadHelpers.js';
+import { formatLeadResponse } from '../leads/lead.helpers.js';
 import {
   computeLeadScore,
   deriveCustomerIdentity,

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { sanitiseFilename } from '../services/documentService.js';
+import { sanitiseFilename } from '../modules/documents/document.service.js';
 import { MAX_FILE_SIZE } from '../shared/middleware/upload.js';
 
 // --- sanitiseFilename -------------------------------------

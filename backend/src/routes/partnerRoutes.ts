@@ -3,15 +3,8 @@ import { protect, authorize } from '../shared/middleware/auth.js';
 import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
 import { cacheControl } from '../shared/middleware/cacheControl.js';
 import { resolvePartnerOrg } from '../shared/middleware/partnerContext.js';
-import {
-  createLead,
-  getLeads,
-  getLeadById,
-  updateLead,
-  getLeadStats,
-  updateLeadStatus,
-} from '../controllers/leadController.js';
 import { getCurrentPartnerProfile } from '../modules/partners/partners.controller.js';
+import partnerLeadRoutes from '../modules/leads/partnerLead.routes.js';
 import partnerDataRoutes from '../modules/partner-data/partnerData.routes.js';
 
 const router = Router();
@@ -31,21 +24,7 @@ router.use(validateUUID);
 // GET /api/partner/profile - Get current partner profile
 router.get('/profile', getCurrentPartnerProfile);
 
-// Get lead statistics (must be before /:id route)
-router.get('/leads/stats', getLeadStats);
-
-// Lead CRUD operations
-router.route('/leads')
-  .get(getLeads)      // GET /api/partner/leads - Get all leads for this partner
-  .post(createLead);  // POST /api/partner/leads - Submit a lead via consent-backed handoff
-
-router.route('/leads/:id')
-  .get(getLeadById)   // GET /api/partner/leads/:id - Get single lead
-  .put(updateLead);   // PUT /api/partner/leads/:id - Update lead
-
-// Update lead status with timeline entry
-router.patch('/leads/:id/status', updateLeadStatus);
-
+router.use(partnerLeadRoutes);
 router.use(partnerDataRoutes);
 
 /**

@@ -31,7 +31,7 @@ import {
   listUserDocuments,
   buildObjectKey,
   sanitiseFilename,
-} from '../services/documentService.js';
+} from '../modules/documents/document.service.js';
 
 // --- constants ---------------------------------------------
 

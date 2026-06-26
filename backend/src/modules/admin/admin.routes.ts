@@ -32,16 +32,7 @@ import {
   toggleBankStatus,
   updateBank,
 } from '../banks/banks.controller.js';
-import {
-  getLeads,
-  getLeadById,
-  createLead,
-  updateLead,
-  deleteLead,
-  getLeadStats,
-  updateLeadStatus,
-  assignBank,
-} from '../../controllers/leadController.js';
+import adminLeadRoutes from '../leads/adminLead.routes.js';
 
 const router = Router();
 
@@ -77,16 +68,7 @@ router.get('/audit-logs/export/jobs/:jobId', authorizeAdminOperator, getAuditLog
 router.get('/audit-logs/export/jobs/:jobId/download', authorizeAdminOperator, downloadAuditLogsExportJob);
 
 // -- Leads -------------------------------------------------------------------
-router.get('/leads/stats', requirePermission('leads', 'read'), getLeadStats);
-router.route('/leads')
-  .get(requirePermission('leads', 'read'), getLeads)
-  .post(requirePermission('leads', 'create'), createLead);
-router.route('/leads/:id')
-  .get(requirePermission('leads', 'read'), getLeadById)
-  .put(requirePermission('leads', 'update'), updateLead)
-  .delete(requirePermission('leads', 'delete'), deleteLead);
-router.patch('/leads/:id/status', requirePermission('leads', 'update'), updateLeadStatus);
-router.patch('/leads/:id/assign-bank', requirePermission('leads', 'update'), assignBank);
+router.use(adminLeadRoutes);
 
 // -- Lender Document Requirements --------------------------------------------
 router.get('/docs/reqdoc', authorizeAdminOperator, cacheControl(30), listDocRequirements);

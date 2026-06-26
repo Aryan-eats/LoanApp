@@ -14,7 +14,7 @@ vi.mock('../shared/security/encryption.js', () => ({
   isEncryptedCiphertext: vi.fn(),
 }));
 
-vi.mock('../utils/leadId.js', () => ({
+vi.mock('../modules/leads/lead.helpers.js', () => ({
   getNextGpsifsLeadId: vi.fn(),
 }));
 

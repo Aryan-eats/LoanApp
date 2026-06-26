@@ -29,7 +29,7 @@ const getPartnerCustomerById = ok('getPartnerCustomerById');
 const getPartnerCustomerActivity = ok('getPartnerCustomerActivity');
 const runPartnerSoftCheck = ok('runPartnerSoftCheck');
 
-vi.mock('../controllers/leadController.js', () => ({
+vi.mock('../modules/leads/lead.controller.js', () => ({
   createLead,
   getLeads,
   getLeadById,

@@ -35,7 +35,7 @@ const prisma = (await import('../shared/db/prisma.js')).default as unknown as {
 const { matchLeadOffers } = await import('../modules/banks/bankMatching.service.js') as {
   matchLeadOffers: ReturnType<typeof vi.fn>;
 };
-const leadsRoutes = (await import('../routes/leadsRoutes.js')).default;
+const leadsRoutes = (await import('../modules/leads/publicLead.routes.js')).default;
 
 const createApp = () => {
   const app = express();

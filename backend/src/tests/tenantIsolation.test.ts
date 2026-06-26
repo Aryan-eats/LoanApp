@@ -48,11 +48,8 @@ vi.mock('../shared/utils/cache.js', () => ({
   cacheWrap: vi.fn(),
 }));
 
-vi.mock('../utils/leadHelpers.js', () => ({
+vi.mock('../modules/leads/lead.helpers.js', () => ({
   formatLeadResponse: (lead: unknown) => lead,
-}));
-
-vi.mock('../utils/leadId.js', () => ({
   getNextGpsifsLeadId: vi.fn(),
 }));
 
@@ -73,7 +70,7 @@ vi.mock('../utils/crmHelpers.js', () => ({
   summarizeConsentGrants: vi.fn(),
 }));
 
-vi.mock('../services/documentService.js', () => ({
+vi.mock('../modules/documents/document.service.js', () => ({
   uploadDocument: vi.fn(),
   getDownloadUrl: vi.fn(),
   deleteDocument: vi.fn(),
@@ -85,13 +82,13 @@ vi.mock('../services/documentService.js', () => ({
   bulkUpdateLeadDocumentStatus: vi.fn(),
 }));
 
-const { getLeadById, getLeads, updateLead } = await import('../controllers/leadController.js');
+const { getLeadById, getLeads, updateLead } = await import('../modules/leads/lead.controller.js');
 const { updateStoredClientStatus } = await import('../modules/partner-data/partnerData.controller.js');
 const {
   generateUploadToken,
   getLeadDocUrl,
   uploadLeadDoc,
-} = await import('../controllers/documentController.js');
+} = await import('../modules/documents/document.controller.js');
 
 const partnerUser = {
   id: '11111111-1111-4111-8111-111111111111',

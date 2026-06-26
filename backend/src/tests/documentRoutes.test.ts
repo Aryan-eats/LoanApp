@@ -36,7 +36,7 @@ const reqDocRows = [
   },
 ];
 
-vi.mock('../controllers/documentController.js', () => ({
+vi.mock('../modules/documents/document.controller.js', () => ({
   upload,
   list,
   download,
@@ -83,7 +83,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   },
 }));
 
-const documentRoutes = (await import('../routes/documentRoutes.js')).default;
+const documentRoutes = (await import('../modules/documents/document.routes.js')).default;
 
 const createApp = () => {
   const app = express();

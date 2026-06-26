@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatLeadResponse } from '../utils/leadHelpers.js';
+import { formatLeadResponse } from '../modules/leads/lead.helpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers – build mock lead objects

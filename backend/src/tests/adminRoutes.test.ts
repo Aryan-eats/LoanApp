@@ -79,7 +79,7 @@ vi.mock('../modules/banks/banks.controller.js', () => ({
   updateBank,
 }));
 
-vi.mock('../controllers/leadController.js', () => ({
+vi.mock('../modules/leads/lead.controller.js', () => ({
   getLeads,
   getLeadById,
   createLead,
