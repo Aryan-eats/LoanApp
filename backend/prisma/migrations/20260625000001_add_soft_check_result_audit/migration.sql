@@ -82,3 +82,12 @@ CREATE TRIGGER rule_change_audit_no_update
 CREATE TRIGGER soft_check_result_no_update
   BEFORE UPDATE OR DELETE ON "soft_check_result_logs"
   FOR EACH ROW EXECUTE FUNCTION prevent_soft_check_audit_mutation();
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+    GRANT INSERT, SELECT ON "soft_check_result_logs" TO app_user;
+    GRANT INSERT, SELECT ON "rule_change_audit_logs" TO app_user;
+  END IF;
+END;
+$$;
