@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPartnerSoftCheck } from '../modules/soft-check/softCheck.controller.js';
 
-const { prismaMock, logAuditEventMock, getSoftCheckConfigurationMock } = vi.hoisted(() => ({
+const { prismaMock, logAuditEventMock, getSoftCheckConfigurationMock, persistSoftCheckDecisionMock } = vi.hoisted(() => ({
   prismaMock: {
     bank: { findMany: vi.fn() },
     partnerData: { findFirst: vi.fn() },
@@ -9,6 +9,7 @@ const { prismaMock, logAuditEventMock, getSoftCheckConfigurationMock } = vi.hois
   },
   logAuditEventMock: vi.fn(),
   getSoftCheckConfigurationMock: vi.fn(),
+  persistSoftCheckDecisionMock: vi.fn(),
 }));
 
 vi.mock('../shared/db/prisma.js', () => ({
@@ -21,6 +22,7 @@ vi.mock('../modules/audit/auditLogger.js', () => ({
 
 vi.mock('../modules/soft-check/softCheckRepository.js', () => ({
   getSoftCheckConfiguration: getSoftCheckConfigurationMock,
+  persistSoftCheckDecision: persistSoftCheckDecisionMock,
 }));
 
 const response = () => {
@@ -43,10 +45,16 @@ describe('runPartnerSoftCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.SOFT_CHECK_ENGINE_MODE;
+    process.env.SOFT_CHECK_HMAC_KEY = 'borrower-secret';
+    process.env.SOFT_CHECK_CHECKSUM_KEY = 'checksum-secret';
     prismaMock.partnerData.findFirst.mockResolvedValue(null);
     prismaMock.lead.findFirst.mockResolvedValue(null);
     prismaMock.lead.update.mockResolvedValue({});
     getSoftCheckConfigurationMock.mockResolvedValue(null);
+    persistSoftCheckDecisionMock.mockResolvedValue({
+      created: true,
+      record: { id: 'result-1', result: {} },
+    });
     prismaMock.bank.findMany.mockResolvedValue([
       {
         id: 'bank-1',
@@ -290,7 +298,77 @@ describe('runPartnerSoftCheck', () => {
         schemaVersion: '2.0',
         ruleConfigReleaseId: 'ruleset-1',
         eligibilityStatus: 'ELIGIBLE',
+        requestId: expect.any(String),
+        resultId: 'result-1',
       }),
     }));
+    expect(persistSoftCheckDecisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      partnerOrgId: 'partner-1',
+      actorUserId: 'user-1',
+      sourceType: 'RAW',
+      borrowerHash: expect.not.stringContaining('9876543210'),
+      inputHash: expect.any(String),
+      checksum: expect.any(String),
+    }));
+  });
+
+  it('fails closed for V2 when immutable persistence fails', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
+    getSoftCheckConfigurationMock.mockResolvedValue({
+      productId: 'product-1',
+      ruleSetId: 'ruleset-1',
+      ruleSetVersion: 1,
+      configHash: 'hash-1',
+      lenders: [{
+        id: 'bank-1',
+        code: 'HDFC',
+        name: 'HDFC Bank',
+        productCode: 'personal_loan',
+        ticketMin: 50_000,
+        ticketMax: 1_000_000,
+        rateMin: 10,
+        rateMax: 12,
+        tenureMinMonths: 12,
+        tenureMaxMonths: 60,
+      }],
+      rules: [{
+        id: 'rule-1',
+        ruleCode: 'PL_MAX_FOIR',
+        name: 'Maximum FOIR',
+        productCode: 'personal_loan',
+        fieldPath: 'derived.foirPercent',
+        operator: 'LTE',
+        threshold: 50,
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: 2,
+      }],
+    });
+    persistSoftCheckDecisionMock.mockRejectedValue(new Error('db down'));
+    const res = response();
+
+    await runPartnerSoftCheck(
+      req({
+        requestId: '11111111-1111-4111-8111-111111111111',
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        requestedTenureMonths: 60,
+        age: 35,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Soft check result persistence failed',
+    });
   });
 });

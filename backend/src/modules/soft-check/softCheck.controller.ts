@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import prisma from '../../shared/db/prisma.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
-import { getSoftCheckConfiguration } from './softCheckRepository.js';
+import { getSoftCheckConfiguration, persistSoftCheckDecision } from './softCheckRepository.js';
+import { buildBorrowerHash, buildInputHash, buildResultChecksum } from './softCheckIntegrity.js';
 import {
+  normalizeSoftCheckInput,
   runSoftCheckForMode,
   type SoftCheckBank,
   type SoftCheckInput,
@@ -28,10 +31,11 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const { storedClientId, leadId, consentCredit } = req.body as {
+    const { storedClientId, leadId, consentCredit, requestId: suppliedRequestId } = req.body as {
       storedClientId?: string;
       leadId?: string;
       consentCredit?: boolean;
+      requestId?: string;
     };
 
     if (consentCredit !== true) {
@@ -108,8 +112,76 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
     const banks = bankRows.map(toSoftCheckBank);
     const softCheckRun = runSoftCheckForMode({ input, banks, configuration });
     const result = softCheckRun.response;
+    const isV2Result = 'schemaVersion' in result;
+    const requestId = suppliedRequestId ?? randomUUID();
+    let responseResult: typeof result | Record<string, unknown> = result;
 
-    if (lead) {
+    if (isV2Result) {
+      const normalizedInput = normalizeSoftCheckInput(input);
+      const inputHash = buildInputHash(normalizedInput);
+      const resultPayload = { ...result, requestId };
+      const checksum = buildResultChecksum({
+        inputHash,
+        result: resultPayload,
+        ruleConfigReleaseId: result.ruleConfigReleaseId,
+      });
+
+      try {
+        const persisted = await persistSoftCheckDecision({
+          requestId,
+          partnerOrgId,
+          actorUserId: req.user!.id,
+          sourceType: lead ? 'LEAD' : storedClient ? 'PARTNER_DATA' : 'RAW',
+          sourceId: lead?.id ?? storedClient?.id ?? null,
+          borrowerHash: buildBorrowerHash(partnerOrgId, input.phone),
+          inputHash,
+          normalizedInput,
+          result: resultPayload,
+          ruleTrace: result.auditTrail,
+          ruleSetIds: [result.ruleConfigReleaseId],
+          eligibilityStatus: result.eligibilityStatus,
+          confidenceTier: result.confidenceTier,
+          schemaVersion: result.schemaVersion,
+          engineVersion: 'soft-check-engine-v2',
+          consentNoticeVersion: 'soft-check-v1',
+          retentionPolicyCode: 'RBI_CREDIT_DECISION_AUDIT_5Y',
+          retentionUntil: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000),
+          checksum,
+          leadUpdate: lead
+            ? {
+                leadId: lead.id,
+                data: {
+                  isEligible: result.isEligible,
+                  maxLoanAmount: result.maxLoanAmount,
+                  minLoanAmount: result.minLoanAmount,
+                  estimatedEMI: result.estimatedEMI,
+                  eligibilityCheckedAt: new Date(),
+                },
+              }
+            : undefined,
+        });
+
+        const existingResult =
+          !persisted.created &&
+          persisted.record.result &&
+          typeof persisted.record.result === 'object' &&
+          !Array.isArray(persisted.record.result)
+            ? persisted.record.result as Record<string, unknown>
+            : resultPayload;
+        responseResult = {
+          ...existingResult,
+          requestId,
+          resultId: persisted.record.id,
+          engineVersion: 'soft-check-engine-v2',
+        } as typeof responseResult;
+      } catch {
+        res.status(503).json({
+          success: false,
+          message: 'Soft check result persistence failed',
+        });
+        return;
+      }
+    } else if (lead) {
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
@@ -137,7 +209,7 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       },
     });
 
-    res.status(200).json({ success: true, data: result });
+    res.status(200).json({ success: true, data: responseResult });
   } catch (err) {
     console.error('runPartnerSoftCheck error:', err);
     res.status(500).json({ success: false, message: 'Failed to run soft check' });

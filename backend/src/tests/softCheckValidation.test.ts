@@ -6,6 +6,9 @@ describe('validateSoftCheckPayload', () => {
     expect(validateSoftCheckPayload({ storedClientId: 'not-a-uuid' })).toContainEqual(
       expect.objectContaining({ field: 'storedClientId', code: 'INVALID_UUID' })
     );
+    expect(validateSoftCheckPayload({ requestId: 'not-a-uuid' })).toContainEqual(
+      expect.objectContaining({ field: 'requestId', code: 'INVALID_UUID' })
+    );
   });
 
   it('rejects ambiguous source records', () => {

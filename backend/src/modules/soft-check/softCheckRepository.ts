@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../shared/db/prisma.js';
 import type {
   EligibilityRule,
@@ -14,6 +15,137 @@ export interface SoftCheckConfiguration {
   lenders: SoftCheckLender[];
   rules: EligibilityRule[];
 }
+
+type PersistedStatus = 'ELIGIBLE' | 'REFER_TO_UNDERWRITER' | 'INELIGIBLE';
+type PersistedConfidence = 'STRONG' | 'MODERATE' | 'WEAK' | 'INELIGIBLE';
+type PersistedSource = 'RAW' | 'PARTNER_DATA' | 'LEAD';
+
+export interface SoftCheckLegacyLeadUpdate {
+  leadId: string;
+  data: {
+    isEligible: boolean;
+    maxLoanAmount: number;
+    minLoanAmount: number;
+    estimatedEMI: number;
+    eligibilityCheckedAt: Date;
+  };
+}
+
+export interface PersistSoftCheckDecisionInput {
+  requestId: string;
+  partnerOrgId: string;
+  actorUserId: string;
+  sourceType: PersistedSource;
+  sourceId?: string | null;
+  borrowerHash: string;
+  inputHash: string;
+  normalizedInput: unknown;
+  result: unknown;
+  ruleTrace: unknown;
+  ruleSetIds: string[];
+  eligibilityStatus: PersistedStatus;
+  confidenceTier: PersistedConfidence;
+  schemaVersion: string;
+  engineVersion: string;
+  consentNoticeVersion: string;
+  retentionPolicyCode: string;
+  retentionUntil: Date;
+  checksum: string;
+  leadUpdate?: SoftCheckLegacyLeadUpdate;
+}
+
+const piiKeys = new Set([
+  'fullName',
+  'name',
+  'phone',
+  'email',
+  'pan',
+  'panNumber',
+  'aadhaar',
+  'aadhaarNumber',
+  'dateOfBirth',
+  'clientFullName',
+  'clientPhone',
+  'clientEmail',
+  'clientPanNumber',
+  'clientAadhaar',
+]);
+
+const stripPii = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stripPii);
+  if (!value || typeof value !== 'object' || value instanceof Date) return value;
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, entry]) => {
+    if (!piiKeys.has(key)) acc[key] = stripPii(entry);
+    return acc;
+  }, {});
+};
+
+export const persistSoftCheckDecision = async (
+  input: PersistSoftCheckDecisionInput
+) =>
+  prisma.$transaction(async (tx) => {
+    const existing = await tx.softCheckResultLog.findUnique({
+      where: {
+        partnerOrgId_requestId: {
+          partnerOrgId: input.partnerOrgId,
+          requestId: input.requestId,
+        },
+      },
+    });
+    if (existing) return { created: false, record: existing };
+
+    const record = await tx.softCheckResultLog.create({
+      data: {
+        requestId: input.requestId,
+        partnerOrgId: input.partnerOrgId,
+        actorUserId: input.actorUserId,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId ?? undefined,
+        borrowerHash: input.borrowerHash,
+        inputHash: input.inputHash,
+        normalizedInput: stripPii(input.normalizedInput) as Prisma.InputJsonValue,
+        result: stripPii(input.result) as Prisma.InputJsonValue,
+        ruleTrace: stripPii(input.ruleTrace) as Prisma.InputJsonValue,
+        ruleSetIds: input.ruleSetIds,
+        eligibilityStatus: input.eligibilityStatus,
+        confidenceTier: input.confidenceTier,
+        schemaVersion: input.schemaVersion,
+        engineVersion: input.engineVersion,
+        consentNoticeVersion: input.consentNoticeVersion,
+        bureauPulled: false,
+        retentionPolicyCode: input.retentionPolicyCode,
+        retentionUntil: input.retentionUntil,
+        checksum: input.checksum,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        event: 'SOFT_CHECK_RUN',
+        userId: input.actorUserId,
+        entityId: record.id,
+        entityType: 'soft_check_result',
+        metadata: {
+          requestId: input.requestId,
+          partnerOrgId: input.partnerOrgId,
+          ruleSetIds: input.ruleSetIds,
+          schemaVersion: input.schemaVersion,
+          engineVersion: input.engineVersion,
+        },
+        severity: 'LOW',
+        checksum: input.checksum,
+      },
+    });
+
+    if (input.leadUpdate) {
+      await tx.lead.update({
+        where: { id: input.leadUpdate.leadId },
+        data: input.leadUpdate.data,
+      });
+    }
+
+    return { created: true, record };
+  });
 
 export const validateSoftCheckConfiguration = (
   configuration: SoftCheckConfiguration

@@ -38,7 +38,7 @@ export const validateSoftCheckPayload = (raw: unknown): SoftCheckValidationIssue
   const payload = raw as Record<string, unknown>;
   const issues: SoftCheckValidationIssue[] = [];
 
-  for (const field of ['storedClientId', 'leadId']) {
+  for (const field of ['storedClientId', 'leadId', 'requestId']) {
     const value = payload[field];
     if (value !== undefined && (typeof value !== 'string' || !UUID_RE.test(value))) {
       issues.push({ field, code: 'INVALID_UUID', message: `${field} must be a valid UUID` });
