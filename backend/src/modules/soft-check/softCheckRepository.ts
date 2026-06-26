@@ -8,6 +8,7 @@ import type {
 export interface SoftCheckConfiguration {
   productId: string;
   ruleSetId: string;
+  ruleSetVersion: number;
   configHash: string;
   lenders: SoftCheckLender[];
   rules: EligibilityRule[];
@@ -58,6 +59,7 @@ export const getSoftCheckConfiguration = async (
       ruleCode: entry.ruleCode,
       name: entry.name,
       productCode: product.code,
+      ruleSetId: ruleSet.id,
       fieldPath: entry.fieldPath,
       operator: entry.operator,
       threshold: entry.threshold,
@@ -71,13 +73,17 @@ export const getSoftCheckConfiguration = async (
       suggestionTemplate: entry.suggestionTemplate ?? undefined,
     })),
     ...ruleSet.overrides
-      .filter((entry) => entry.overrideMode !== 'DISABLE')
       .map((entry) => ({
         id: entry.id,
         ruleCode: entry.ruleCode,
-        name: entry.reasonTemplate ?? entry.ruleCode,
+        name:
+          ruleSet.rules.find((base) => base.id === entry.baseRuleId)?.name ??
+          ruleSet.rules.find((base) => base.ruleCode === entry.ruleCode)?.name ??
+          entry.ruleCode,
         productCode: product.code,
         lenderId: entry.bankId,
+        ruleSetId: ruleSet.id,
+        overrideMode: entry.overrideMode,
         fieldPath:
           ruleSet.rules.find((base) => base.id === entry.baseRuleId)?.fieldPath ??
           ruleSet.rules.find((base) => base.ruleCode === entry.ruleCode)?.fieldPath ??
@@ -98,6 +104,7 @@ export const getSoftCheckConfiguration = async (
   return {
     productId: product.id,
     ruleSetId: ruleSet.id,
+    ruleSetVersion: ruleSet.version,
     configHash: ruleSet.configHash,
     rules,
     lenders: product.lenderEligibility.map((entry) => ({

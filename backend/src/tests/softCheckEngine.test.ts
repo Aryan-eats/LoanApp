@@ -241,4 +241,152 @@ describe('evaluateSoftCheck', () => {
     expect(result.eligibilityStatus).toBe('REFER_TO_UNDERWRITER');
     expect(result.reasonCode).toBe('NO_LENDER_PANEL_MATCH');
   });
+
+  it('records failed warning rules as warnings without approving them as passes', () => {
+    const warningRule: EligibilityRule = {
+      id: 'rule-city',
+      ruleCode: 'PL_CITY_TIER_WARNING',
+      name: 'Preferred city tier',
+      productCode: 'personal_loan',
+      fieldPath: 'cityTier',
+      operator: 'IN',
+      threshold: ['TIER_1'],
+      severity: 'WARNING',
+      priority: 30,
+      regulatoryClass: 'LENDER_VARIABLE',
+      confidenceWeight: 1,
+      suggestionTemplate: 'Add a tier-1 co-applicant address if available.',
+    };
+
+    const result = evaluateSoftCheck({
+      input: { ...input, cityTier: 'TIER_3' },
+      lenders,
+      rules: [...baseRules, warningRule],
+      configId: 'release-1',
+      configVersion: 3,
+    });
+
+    expect(result.eligibilityStatus).toBe('ELIGIBLE');
+    expect(result.auditTrail).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ruleCode: 'PL_CITY_TIER_WARNING',
+        outcome: 'WARNING',
+        configId: 'release-1',
+        configVersion: 3,
+        ruleScope: 'BASE',
+      }),
+    ]));
+    expect(result.improvementSuggestions).toContain('Add a tier-1 co-applicant address if available.');
+  });
+
+  it('rejects unsupported rule field paths before evaluation', () => {
+    expect(() =>
+      evaluateSoftCheck({
+        input,
+        lenders,
+        rules: [{ ...baseRules[0], fieldPath: 'panNumber' }],
+      })
+    ).toThrow('Unsupported soft-check rule field path');
+  });
+
+  it('rejects contradictory equal-priority base rules', () => {
+    expect(() =>
+      evaluateSoftCheck({
+        input,
+        lenders,
+        rules: [
+          baseRules[0],
+          {
+            ...baseRules[0],
+            id: 'rule-income-conflict',
+            threshold: 50_000,
+          },
+        ],
+      })
+    ).toThrow('Contradictory soft-check rules');
+  });
+
+  it('rejects an RBI rule relaxation overlay', () => {
+    const rbiRule: EligibilityRule = {
+      ...baseRules[1],
+      regulatoryClass: 'RBI_REGULATORY',
+    };
+    const relaxedOverlay: EligibilityRule = {
+      ...rbiRule,
+      id: 'rbi-relax',
+      lenderId: 'bank-1',
+      threshold: 90,
+      overrideMode: 'RELAX',
+    };
+
+    expect(() =>
+      evaluateSoftCheck({ input, lenders, rules: [rbiRule, relaxedOverlay] })
+    ).toThrow('RBI soft-check rules cannot be relaxed or disabled');
+  });
+
+  it('rejects a TIGHTEN overlay that is not stricter than the base rule', () => {
+    const looseOverlay: EligibilityRule = {
+      ...baseRules[1],
+      id: 'loose-overlay',
+      lenderId: 'bank-1',
+      threshold: 60,
+      overrideMode: 'TIGHTEN',
+    };
+
+    expect(() =>
+      evaluateSoftCheck({ input, lenders, rules: [...baseRules, looseOverlay] })
+    ).toThrow('TIGHTEN overlay must be stricter');
+  });
+
+  it('caps lender eligible amount by request, affordability, collateral, and ticket limits', () => {
+    const homeInput: NormalizedSoftCheckInput = {
+      ...input,
+      productCode: 'home_loan',
+      requestedAmount: 7_200_000,
+      propertyValue: 10_000_000,
+      monthlyIncome: 500_000,
+      existingEmiObligations: 10_000,
+    };
+    const homeLender: SoftCheckLender = {
+      ...lenders[0],
+      productCode: 'home_loan',
+      ticketMax: 7_000_000,
+      rateMin: 9,
+      rateMax: 11,
+      tenureMaxMonths: 240,
+    };
+    const rules: EligibilityRule[] = [
+      {
+        id: 'foir',
+        ruleCode: 'HL_MAX_FOIR',
+        name: 'Maximum FOIR',
+        productCode: 'home_loan',
+        fieldPath: 'derived.foirPercent',
+        operator: 'LTE',
+        threshold: 50,
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: 3,
+      },
+      {
+        id: 'ltv',
+        ruleCode: 'HL_MAX_LTV',
+        name: 'Maximum LTV',
+        productCode: 'home_loan',
+        fieldPath: 'derived.ltvPercent',
+        operator: 'LTE',
+        threshold: 75,
+        severity: 'HARD_FAIL',
+        priority: 2,
+        regulatoryClass: 'RBI_REGULATORY',
+        confidenceWeight: 3,
+      },
+    ];
+
+    const result = evaluateSoftCheck({ input: homeInput, lenders: [homeLender], rules });
+
+    expect(result.eligibilityStatus).toBe('ELIGIBLE');
+    expect(result.matchedLenders[0].estimatedEligibleAmount).toBe(7_000_000);
+  });
 });

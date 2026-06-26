@@ -204,6 +204,8 @@ export const runConfiguredSoftCheck = ({
     input: normalizeSoftCheckInput(input),
     lenders: configuration.lenders,
     rules: configuration.rules,
+    configId: configuration.ruleSetId,
+    configVersion: configuration.ruleSetVersion,
   });
 
   return {

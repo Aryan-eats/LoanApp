@@ -150,6 +150,7 @@ describe('runSoftCheck', () => {
       configuration: {
         productId: 'product-1',
         ruleSetId: 'ruleset-1',
+        ruleSetVersion: 1,
         configHash: 'hash-1',
         lenders: [{
           id: 'bank-1',

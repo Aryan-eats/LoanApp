@@ -24,6 +24,7 @@ describe('getSoftCheckConfiguration', () => {
       code: 'personal_loan',
       ruleSets: [{
         id: 'ruleset-1',
+        version: 1,
         configHash: 'hash-1',
         rules: [{
           id: 'rule-1',

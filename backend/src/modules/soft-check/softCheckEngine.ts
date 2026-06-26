@@ -10,7 +10,8 @@ export type EligibilityStatus = 'ELIGIBLE' | 'REFER_TO_UNDERWRITER' | 'INELIGIBL
 export type ConfidenceTier = 'STRONG' | 'MODERATE' | 'WEAK' | 'INELIGIBLE';
 export type RuleOperator = 'REQUIRED' | 'EQ' | 'NEQ' | 'GT' | 'GTE' | 'LT' | 'LTE' | 'BETWEEN' | 'IN' | 'NOT_IN';
 export type RuleSeverity = 'HARD_FAIL' | 'REFER' | 'WARNING';
-export type RuleOutcome = 'PASS' | 'FAIL' | 'REFER' | 'NOT_APPLICABLE';
+export type RuleOutcome = 'PASS' | 'FAIL' | 'REFER' | 'WARNING' | 'NOT_APPLICABLE';
+export type RuleScope = 'BASE' | 'LENDER_OVERLAY';
 
 export interface NormalizedSoftCheckInput {
   employmentType: EmploymentType;
@@ -60,6 +61,8 @@ export interface EligibilityRule {
   name: string;
   productCode: string;
   lenderId?: string;
+  ruleSetId?: string;
+  overrideMode?: 'REPLACE' | 'DISABLE' | 'TIGHTEN' | 'RELAX';
   employmentScopes?: EmploymentType[];
   conditions?: Array<{
     fieldPath: string;
@@ -88,6 +91,9 @@ export interface RuleTrace {
   threshold: unknown;
   outcome: RuleOutcome;
   severity: RuleSeverity;
+  ruleScope: RuleScope;
+  configId?: string;
+  configVersion?: number;
   marginPercent?: number;
 }
 
@@ -140,6 +146,34 @@ type DerivedValues = {
   ageAtMaturity?: number;
 };
 
+const allowedFieldPaths = new Set([
+  'employmentType',
+  'monthlyIncome',
+  'existingEmiObligations',
+  'age',
+  'cityTier',
+  'residenceType',
+  'productCode',
+  'requestedAmount',
+  'requestedTenureMonths',
+  'propertyValue',
+  'propertyType',
+  'declaredCibilRange',
+  'purpose',
+  'derived.proposedEmi',
+  'derived.foirPercent',
+  'derived.ltvPercent',
+  'derived.ageAtMaturity',
+  'businessProfile.businessVintageMonths',
+  'businessProfile.annualTurnover',
+  'businessProfile.businessType',
+  'businessProfile.gstRegistrationStatus',
+  'goldProfile.goldWeightGrams',
+  'goldProfile.goldPurityCarat',
+  'goldProfile.declaredGoldValue',
+  'goldProfile.goldForm',
+]);
+
 const calculateEmi = (principal: number, annualRate: number, months: number): number => {
   if (principal <= 0 || months <= 0) return 0;
   const rate = new Decimal(annualRate).div(1200);
@@ -149,6 +183,18 @@ const calculateEmi = (principal: number, annualRate: number, months: number): nu
     .mul(rate)
     .mul(growth)
     .div(growth.minus(1))
+    .round()
+    .toNumber();
+};
+
+const principalForEmi = (emi: number, annualRate: number, months: number): number => {
+  if (emi <= 0 || months <= 0) return 0;
+  const rate = new Decimal(annualRate).div(1200);
+  if (rate.isZero()) return new Decimal(emi).mul(months).round().toNumber();
+  const growth = rate.plus(1).pow(months);
+  return new Decimal(emi)
+    .mul(growth.minus(1))
+    .div(rate.mul(growth))
     .round()
     .toNumber();
 };
@@ -231,6 +277,91 @@ const marginPercent = (
   return undefined;
 };
 
+const thresholdsEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const validateThreshold = (rule: Pick<EligibilityRule, 'operator' | 'threshold' | 'ruleCode'>): void => {
+  if (['GT', 'GTE', 'LT', 'LTE'].includes(rule.operator) && !Number.isFinite(Number(rule.threshold))) {
+    throw new Error(`Malformed soft-check rule threshold: ${rule.ruleCode}`);
+  }
+  if (rule.operator === 'BETWEEN') {
+    const pair = rule.threshold as unknown[];
+    if (!Array.isArray(pair) || pair.length !== 2 || pair.some((value) => !Number.isFinite(Number(value)))) {
+      throw new Error(`Malformed soft-check rule threshold: ${rule.ruleCode}`);
+    }
+  }
+  if ((rule.operator === 'IN' || rule.operator === 'NOT_IN') && !Array.isArray(rule.threshold)) {
+    throw new Error(`Malformed soft-check rule threshold: ${rule.ruleCode}`);
+  }
+};
+
+const isStricter = (base: EligibilityRule, overlay: EligibilityRule): boolean => {
+  if (base.operator !== overlay.operator) return false;
+  if (['LTE', 'LT'].includes(base.operator)) return Number(overlay.threshold) <= Number(base.threshold);
+  if (['GTE', 'GT'].includes(base.operator)) return Number(overlay.threshold) >= Number(base.threshold);
+  if (base.operator === 'BETWEEN') {
+    const [baseMin, baseMax] = base.threshold as [number, number];
+    const [overMin, overMax] = overlay.threshold as [number, number];
+    return overMin >= baseMin && overMax <= baseMax;
+  }
+  return thresholdsEqual(base.threshold, overlay.threshold);
+};
+
+const validateRules = (rules: EligibilityRule[]): void => {
+  const baseRules = rules.filter((rule) => !rule.lenderId);
+  const seenBase = new Map<string, EligibilityRule>();
+
+  for (const rule of rules) {
+    if (!allowedFieldPaths.has(rule.fieldPath)) {
+      throw new Error(`Unsupported soft-check rule field path: ${rule.fieldPath}`);
+    }
+    validateThreshold(rule);
+    for (const condition of rule.conditions ?? []) {
+      if (!allowedFieldPaths.has(condition.fieldPath)) {
+        throw new Error(`Unsupported soft-check rule field path: ${condition.fieldPath}`);
+      }
+      validateThreshold({ ...condition, ruleCode: rule.ruleCode });
+    }
+
+    if (!rule.lenderId) {
+      const key = [
+        rule.productCode,
+        rule.ruleCode,
+        rule.priority,
+        [...(rule.employmentScopes ?? [])].sort().join(','),
+      ].join('|');
+      const existing = seenBase.get(key);
+      if (
+        existing &&
+        (existing.fieldPath !== rule.fieldPath ||
+          existing.operator !== rule.operator ||
+          !thresholdsEqual(existing.threshold, rule.threshold))
+      ) {
+        throw new Error(`Contradictory soft-check rules: ${rule.ruleCode}`);
+      }
+      seenBase.set(key, rule);
+    }
+  }
+
+  for (const overlay of rules.filter((rule) => rule.lenderId && rule.overrideMode)) {
+    const base = baseRules.find((rule) =>
+      rule.productCode === overlay.productCode && rule.ruleCode === overlay.ruleCode
+    );
+    if (!base && overlay.overrideMode !== 'REPLACE') {
+      throw new Error(`Soft-check overlay has no base rule: ${overlay.ruleCode}`);
+    }
+    if (
+      base?.regulatoryClass === 'RBI_REGULATORY' &&
+      (overlay.overrideMode === 'RELAX' || overlay.overrideMode === 'DISABLE')
+    ) {
+      throw new Error('RBI soft-check rules cannot be relaxed or disabled');
+    }
+    if (overlay.overrideMode === 'TIGHTEN' && base && !isStricter(base, overlay)) {
+      throw new Error('TIGHTEN overlay must be stricter than the base rule');
+    }
+  }
+};
+
 const effectiveRules = (
   rules: EligibilityRule[],
   input: NormalizedSoftCheckInput,
@@ -245,11 +376,15 @@ const effectiveRules = (
   rules
     .filter((rule) => rule.productCode === input.productCode && rule.lenderId === lenderId)
     .filter((rule) => !rule.employmentScopes?.length || rule.employmentScopes.includes(input.employmentType))
-    .forEach((rule) => selected.set(rule.ruleCode, rule));
+    .forEach((rule) => {
+      if (rule.overrideMode === 'DISABLE') selected.delete(rule.ruleCode);
+      else selected.set(rule.ruleCode, rule);
+    });
   return [...selected.values()].sort((a, b) => a.priority - b.priority || a.ruleCode.localeCompare(b.ruleCode));
 };
 
 const tierForMargins = (traces: RuleTrace[]): Exclude<ConfidenceTier, 'INELIGIBLE'> => {
+  if (traces.some((trace) => trace.outcome === 'WARNING' && isMissing(trace.inputValue))) return 'WEAK';
   const margins = traces
     .filter((trace) => trace.outcome === 'PASS' && trace.marginPercent !== undefined)
     .map((trace) => trace.marginPercent as number);
@@ -259,15 +394,52 @@ const tierForMargins = (traces: RuleTrace[]): Exclude<ConfidenceTier, 'INELIGIBL
   return 'WEAK';
 };
 
+const supportedPrincipal = (
+  input: NormalizedSoftCheckInput,
+  lender: SoftCheckLender,
+  rules: EligibilityRule[]
+): number => {
+  const tenure = input.requestedTenureMonths ?? lender.tenureMaxMonths;
+  const caps = [input.requestedAmount, lender.ticketMax];
+  const foirCaps = rules
+    .filter((rule) => rule.fieldPath === 'derived.foirPercent' && rule.operator === 'LTE')
+    .map((rule) => Number(rule.threshold))
+    .filter(Number.isFinite);
+  if (foirCaps.length) {
+    const availableEmi = new Decimal(input.monthlyIncome)
+      .mul(Math.min(...foirCaps))
+      .div(100)
+      .minus(input.existingEmiObligations)
+      .toNumber();
+    caps.push(principalForEmi(availableEmi, lender.rateMin, tenure));
+  }
+
+  const collateralValue = input.propertyValue ?? input.goldProfile?.declaredGoldValue;
+  const ltvCaps = rules
+    .filter((rule) => rule.fieldPath === 'derived.ltvPercent' && rule.operator === 'LTE')
+    .map((rule) => Number(rule.threshold))
+    .filter(Number.isFinite);
+  if (collateralValue && ltvCaps.length) {
+    caps.push(new Decimal(collateralValue).mul(Math.min(...ltvCaps)).div(100).round().toNumber());
+  }
+
+  return Math.max(0, Math.min(...caps.map((cap) => Math.max(0, Math.round(cap)))));
+};
+
 export const evaluateSoftCheck = ({
   input,
   lenders,
   rules,
+  configId,
+  configVersion,
 }: {
   input: NormalizedSoftCheckInput;
   lenders: SoftCheckLender[];
   rules: EligibilityRule[];
+  configId?: string;
+  configVersion?: number;
 }): SoftCheckEngineResult => {
+  validateRules(rules);
   const candidates = lenders.filter((lender) => lender.productCode === input.productCode);
   if (!candidates.length) {
     return {
@@ -290,7 +462,8 @@ export const evaluateSoftCheck = ({
 
   for (const lender of candidates) {
     const derived = deriveValues(input, lender);
-    const traces = effectiveRules(rules, input, lender.id).map((rule): RuleTrace => {
+    const lenderRules = effectiveRules(rules, input, lender.id);
+    const traces = lenderRules.map((rule): RuleTrace => {
       const inputValue = getValue(input, derived, rule.fieldPath);
       const applies = !rule.conditions?.length || rule.conditions.every((condition) =>
         compare(
@@ -311,6 +484,9 @@ export const evaluateSoftCheck = ({
           threshold: rule.threshold,
           outcome: 'NOT_APPLICABLE',
           severity: rule.severity,
+          ruleScope: rule.lenderId ? 'LENDER_OVERLAY' : 'BASE',
+          configId,
+          configVersion,
         };
       }
       const passed = compare(inputValue, rule.operator, rule.threshold);
@@ -320,7 +496,7 @@ export const evaluateSoftCheck = ({
           ? 'FAIL'
           : rule.severity === 'REFER'
             ? 'REFER'
-            : 'PASS';
+            : 'WARNING';
       if (!passed && rule.suggestionTemplate) improvementSuggestions.add(rule.suggestionTemplate);
       return {
         ruleId: rule.id,
@@ -333,6 +509,9 @@ export const evaluateSoftCheck = ({
         threshold: rule.threshold,
         outcome,
         severity: rule.severity,
+        ruleScope: rule.lenderId ? 'LENDER_OVERLAY' : 'BASE',
+        configId,
+        configVersion,
         marginPercent: marginPercent(inputValue, rule.operator, rule.threshold),
       };
     });
@@ -340,7 +519,6 @@ export const evaluateSoftCheck = ({
 
     const ticketFailed =
       input.requestedAmount < lender.ticketMin ||
-      input.requestedAmount > lender.ticketMax ||
       (input.requestedTenureMonths !== undefined &&
         (input.requestedTenureMonths < lender.tenureMinMonths ||
           input.requestedTenureMonths > lender.tenureMaxMonths)) ||
@@ -384,7 +562,7 @@ export const evaluateSoftCheck = ({
       code: lender.code,
       name: lender.name,
       productCode: input.productCode,
-      estimatedEligibleAmount: Math.min(input.requestedAmount, lender.ticketMax),
+      estimatedEligibleAmount: supportedPrincipal(input, lender, lenderRules),
       estimatedRateBand: { min: lender.rateMin, max: lender.rateMax, type: 'indicative' },
       estimatedEmi: derived.proposedEmi,
       confidenceTier,
@@ -405,7 +583,7 @@ export const evaluateSoftCheck = ({
         ? 'INELIGIBLE'
         : matchedLenders.length
           ? matchedLenders.map((lender) => lender.confidenceTier).sort(
-              (a, b) => ['STRONG', 'MODERATE', 'WEAK'].indexOf(a) - ['STRONG', 'MODERATE', 'WEAK'].indexOf(b)
+              (a, b) => ['WEAK', 'MODERATE', 'STRONG'].indexOf(a) - ['WEAK', 'MODERATE', 'STRONG'].indexOf(b)
             )[0]
           : 'WEAK',
     matchedLenders,

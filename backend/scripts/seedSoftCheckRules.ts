@@ -251,33 +251,25 @@ const main = async () => {
       .update(JSON.stringify(productSeed.rules))
       .digest('hex');
 
-    await prisma.eligibilityRuleSet.updateMany({
-      where: { productId: product.id, status: 'ACTIVE', version: { not: 1 } },
-      data: { status: 'RETIRED', effectiveTo: new Date() },
-    });
     const ruleSet = await prisma.eligibilityRuleSet.upsert({
       where: { productId_version: { productId: product.id, version: 1 } },
       update: {
-        status: 'ACTIVE',
+        status: 'DRAFT',
         configHash,
-        approvedBy: actor.id,
-        activatedBy: actor.id,
-        approvedAt: new Date(),
-        activatedAt: new Date(),
-        effectiveFrom: new Date(),
+        approvedBy: null,
+        activatedBy: null,
+        approvedAt: null,
+        activatedAt: null,
+        effectiveFrom: null,
+        effectiveTo: null,
       },
       create: {
         productId: product.id,
         version: 1,
-        status: 'ACTIVE',
+        status: 'DRAFT',
         configHash,
         createdBy: actor.id,
-        approvedBy: actor.id,
-        activatedBy: actor.id,
         changeReason: 'Initial industry-grade soft-check policy seed',
-        approvedAt: new Date(),
-        activatedAt: new Date(),
-        effectiveFrom: new Date(),
       },
     });
 
