@@ -99,7 +99,7 @@ vi.mock('../shared/db/prisma.js', () => ({
   },
 }));
 
-const partnerRoutes = (await import('../routes/partnerRoutes.js')).default;
+const partnerRoutes = (await import('../modules/partners/partner.routes.js')).default;
 const softCheckRoutes = (await import('../modules/soft-check/softCheck.routes.js')).default;
 
 const createApp = () => {

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import prisma from '../src/shared/db/prisma.js';
-import { hashPassword } from '../src/services/userService.js';
+import { hashPassword } from '../src/modules/auth/user.service.js';
 
 dotenv.config();
 

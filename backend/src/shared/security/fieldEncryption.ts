@@ -5,7 +5,7 @@ import {
   encryptField,
   encryptForGPSIndia,
   isEncryptedCiphertext,
-} from '../shared/security/encryption.js';
+} from './encryption.js';
 
 export const ENCRYPTED_FIELDS: Record<string, string[]> = {
   User: [

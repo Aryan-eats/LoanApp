@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { User } from '@prisma/client';
-import prisma, { type ExtendedTransactionClient } from '../shared/db/prisma.js';
-import { getRedisClient, isRedisAvailable } from '../shared/config/redis.js';
+import prisma, { type ExtendedTransactionClient } from '../../shared/db/prisma.js';
+import { getRedisClient, isRedisAvailable } from '../../shared/config/redis.js';
 import {
   matchesMockOtp,
   type VerificationChannel,
-} from '../modules/auth/mockVerification.service.js';
+} from './mockVerification.service.js';
 
 const PASSWORD_HISTORY_LIMIT = 5;
 const SESSION_LIMIT = 10;

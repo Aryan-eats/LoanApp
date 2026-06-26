@@ -43,7 +43,7 @@ vi.mock('../modules/audit/auditLogger.js', () => ({
   checkSuspiciousActivity: vi.fn(),
 }));
 
-vi.mock('../services/userService.js', () => ({
+vi.mock('../modules/auth/user.service.js', () => ({
   comparePassword: vi.fn(),
   hashPassword: vi.fn(),
   isLocked: vi.fn(),

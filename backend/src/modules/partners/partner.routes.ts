@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { protect, authorize } from '../shared/middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
-import { cacheControl } from '../shared/middleware/cacheControl.js';
-import { resolvePartnerOrg } from '../shared/middleware/partnerContext.js';
-import { getCurrentPartnerProfile } from '../modules/partners/partners.controller.js';
-import partnerLeadRoutes from '../modules/leads/partnerLead.routes.js';
-import partnerDataRoutes from '../modules/partner-data/partnerData.routes.js';
+import { protect, authorize } from '../../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../../shared/middleware/validateUUID.js';
+import { cacheControl } from '../../shared/middleware/cacheControl.js';
+import { resolvePartnerOrg } from '../../shared/middleware/partnerContext.js';
+import { getCurrentPartnerProfile } from './partners.controller.js';
+import partnerLeadRoutes from '../leads/partnerLead.routes.js';
+import partnerDataRoutes from '../partner-data/partnerData.routes.js';
 
 const router = Router();
 
@@ -42,8 +42,8 @@ router.get('/dashboard', async (req, res) => {
  */
 router.get('/banks', cacheControl(15), async (_req, res) => {
   // Inline handler rather than importing the full admin controller
-  const { cacheWrap } = await import('../shared/utils/cache.js');
-  const { basePrisma } = await import('../shared/db/prisma.js');
+  const { cacheWrap } = await import('../../shared/utils/cache.js');
+  const { basePrisma } = await import('../../shared/db/prisma.js');
   try {
     const banks = await cacheWrap(
       'banks:all',

@@ -6,7 +6,7 @@ import {
   scoreBandForLeadScore,
   summarizeConsentGrants,
   type ConsentGrantLike,
-} from '../../utils/crmHelpers.js';
+} from '../../shared/utils/crmHelpers.js';
 
 type LeadWithRelations = Lead & {
   documents: LeadDocument[];

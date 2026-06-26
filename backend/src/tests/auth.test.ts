@@ -4,7 +4,7 @@ import {
   comparePassword,
   isLocked,
   validatePassword,
-} from '../services/userService.js';
+} from '../modules/auth/user.service.js';
 
 describe('Password Validation', () => {
   it('should reject a short password', () => {

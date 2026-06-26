@@ -18,7 +18,7 @@ vi.mock('../modules/leads/lead.helpers.js', () => ({
   getNextGpsifsLeadId: vi.fn(),
 }));
 
-vi.mock('../utils/fieldEncryption.js', () => ({
+vi.mock('../shared/security/fieldEncryption.js', () => ({
   decryptResultWithBridge: vi.fn(),
 }));
 

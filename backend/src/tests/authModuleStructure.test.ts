@@ -10,6 +10,8 @@ import * as otpChallenge from '../modules/auth/otpChallenge.service.js';
 import * as passwordController from '../modules/auth/password.controller.js';
 
 describe('auth module', () => {
+  const oldPath = (...parts: string[]) => parts.join('/');
+
   it('exposes auth through module-local files', () => {
     expect(authRoutes).toBeDefined();
     expect(authController.login).toBeTypeOf('function');
@@ -22,13 +24,13 @@ describe('auth module', () => {
   });
 
   it('removes old auth route/controller/service files', () => {
-    expect(existsSync('src/routes/authRoutes.ts')).toBe(false);
-    expect(existsSync('src/controllers/authController.ts')).toBe(false);
-    expect(existsSync('src/controllers/passwordController.ts')).toBe(false);
-    expect(existsSync('src/controllers/otpController.ts')).toBe(false);
-    expect(existsSync('src/services/authService.ts')).toBe(false);
-    expect(existsSync('src/services/otpChallengeService.ts')).toBe(false);
-    expect(existsSync('src/services/emailVerificationService.ts')).toBe(false);
-    expect(existsSync('src/services/mockVerificationService.ts')).toBe(false);
+    expect(existsSync(oldPath('src', 'routes', 'authRoutes.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'controllers', 'authController.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'controllers', 'passwordController.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'controllers', 'otpController.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'services', 'authService.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'services', 'otpChallengeService.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'services', 'emailVerificationService.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'services', 'mockVerificationService.ts'))).toBe(false);
   });
 });

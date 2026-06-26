@@ -8,7 +8,7 @@ import adminRoutes from "./modules/admin/admin.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import documentRoutes from "./modules/documents/document.routes.js";
 import leadsRoutes from "./modules/leads/publicLead.routes.js";
-import partnerRoutes from "./routes/partnerRoutes.js";
+import partnerRoutes from "./modules/partners/partner.routes.js";
 import partnersRoutes from "./modules/partners/partners.routes.js";
 import profileRoutes from "./modules/profile/profile.routes.js";
 import softCheckRoutes from "./modules/soft-check/softCheck.routes.js";

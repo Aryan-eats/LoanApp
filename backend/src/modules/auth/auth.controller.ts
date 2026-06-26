@@ -24,7 +24,7 @@ import {
   incrementLoginAttempts,
   addSession,
   removeSession,
-} from '../../services/userService.js';
+} from './user.service.js';
 import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from './auth.service.js';
 import { consumeVerificationToken } from './otpChallenge.service.js';
 

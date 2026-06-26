@@ -11,6 +11,8 @@ import documentRoutes from '../modules/documents/document.routes.js';
 import * as documentService from '../modules/documents/document.service.js';
 
 describe('lead and document modules', () => {
+  const oldPath = (...parts: string[]) => parts.join('/');
+
   it('exposes leads and documents from module-local files', () => {
     expect(publicLeadRoutes).toBeDefined();
     expect(adminLeadRoutes).toBeDefined();
@@ -24,12 +26,12 @@ describe('lead and document modules', () => {
   });
 
   it('removes old lead and document route/controller/service files', () => {
-    expect(existsSync('src/routes/leadsRoutes.ts')).toBe(false);
-    expect(existsSync('src/routes/documentRoutes.ts')).toBe(false);
-    expect(existsSync('src/controllers/leadController.ts')).toBe(false);
-    expect(existsSync('src/controllers/documentController.ts')).toBe(false);
-    expect(existsSync('src/services/documentService.ts')).toBe(false);
-    expect(existsSync('src/utils/leadHelpers.ts')).toBe(false);
-    expect(existsSync('src/utils/leadId.ts')).toBe(false);
+    expect(existsSync(oldPath('src', 'routes', 'leadsRoutes.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'routes', 'documentRoutes.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'controllers', 'leadController.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'controllers', 'documentController.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'services', 'documentService.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'utils', 'leadHelpers.ts'))).toBe(false);
+    expect(existsSync(oldPath('src', 'utils', 'leadId.ts'))).toBe(false);
   });
 });

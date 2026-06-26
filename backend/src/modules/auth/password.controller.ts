@@ -8,7 +8,7 @@ import {
   generatePasswordResetToken,
   isPasswordReused,
   addToPasswordHistory,
-} from '../../services/userService.js';
+} from './user.service.js';
 
 const timingSafeCompare = (a: string, b: string): boolean => {
   const bufA = Buffer.from(a, 'utf8');

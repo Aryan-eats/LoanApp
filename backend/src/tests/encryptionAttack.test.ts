@@ -4,7 +4,7 @@ import {
   decryptResultWithBridge,
   encryptFields,
   encryptWhere,
-} from '../utils/fieldEncryption.js';
+} from '../shared/security/fieldEncryption.js';
 import { encryptField, encryptForGPSIndia } from '../shared/security/encryption.js';
 
 const TEST_FIELD_KEY = Buffer.alloc(32, 7).toString('base64');

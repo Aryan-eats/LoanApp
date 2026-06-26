@@ -62,7 +62,7 @@ vi.mock('../modules/users/adminPermissions.service.js', () => ({
   isAdminRole: (role: string) => role === 'admin',
 }));
 
-vi.mock('../utils/crmHelpers.js', () => ({
+vi.mock('../shared/utils/crmHelpers.js', () => ({
   computeLeadScore: vi.fn(),
   deriveCustomerIdentity: vi.fn(),
   matchesCustomerIdentity: vi.fn(),

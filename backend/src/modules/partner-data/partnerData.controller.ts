@@ -11,7 +11,7 @@ import {
   scoreBandForLeadScore,
   summarizeConsentGrants,
   type ConsentGrantLike,
-} from '../../utils/crmHelpers.js';
+} from '../../shared/utils/crmHelpers.js';
 
 type StoredClientWithRelations = Prisma.PartnerDataGetPayload<{
   include: { documents: true; consentGrants: true };

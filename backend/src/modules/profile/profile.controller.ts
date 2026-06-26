@@ -6,7 +6,7 @@ import {
   hashPassword,
   isPasswordReused,
   addToPasswordHistory,
-} from '../../services/userService.js';
+} from '../auth/user.service.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
 
 // Format user response (exclude sensitive data)
