@@ -47,6 +47,7 @@ export interface SubmitStoredClientResponse {
 }
 
 export interface SoftCheckPayload {
+  requestId?: string;
   storedClientId?: string;
   leadId?: string;
   fullName?: string;
@@ -89,6 +90,35 @@ export interface SoftCheckResult {
     weight: number;
   }>;
   disclaimer: string;
+  schemaVersion?: '2.0';
+  requestId?: string;
+  resultId?: string;
+  engineVersion?: string;
+  eligibilityStatus?: 'ELIGIBLE' | 'REFER_TO_UNDERWRITER' | 'INELIGIBLE';
+  confidenceTier?: 'STRONG' | 'MODERATE' | 'WEAK' | 'INELIGIBLE';
+  matchedLenders?: Array<{
+    lenderId: string;
+    name: string;
+    productCode: string;
+    estimatedEligibleAmount: number;
+    estimatedRateBand: { min: number; max: number; type: 'indicative' };
+    matchReason: string;
+  }>;
+  borderlineLenders?: Array<{
+    lenderId: string;
+    name: string;
+    productCode: string;
+    thresholdDelta: string;
+    reason: string;
+  }>;
+  disqualifiedLenders?: Array<{
+    lenderId: string;
+    name: string;
+    productCode: string;
+    disqualificationReason: string;
+    triggeredRuleCode: string;
+  }>;
+  improvementSuggestions?: string[];
 }
 
 // ─── API Functions ──────────────────────────────────────────────────────────

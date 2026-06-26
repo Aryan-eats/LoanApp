@@ -38,4 +38,38 @@ describe('partnerDataApi', () => {
     expect(result.data).toEqual(legacyResponse);
     expect(apiClient.post).toHaveBeenCalledWith('/partner/soft-check', payload);
   });
+
+  it('deserializes additive V2 soft-check fields without breaking legacy fields', async () => {
+    const apiResponse = {
+      success: true,
+      data: {
+        ...legacyResponse,
+        schemaVersion: '2.0',
+        eligibilityStatus: 'ELIGIBLE',
+        confidenceTier: 'STRONG',
+        requestId: '11111111-1111-4111-8111-111111111111',
+        resultId: 'result-1',
+        matchedLenders: [{
+          lenderId: 'bank-1',
+          name: 'HDFC Bank',
+          productCode: 'personal_loan',
+          estimatedEligibleAmount: 500_000,
+          estimatedRateBand: { min: 10, max: 12, type: 'indicative' },
+          matchReason: 'Indicative match based on declared profile',
+        }],
+        borderlineLenders: [],
+        disqualifiedLenders: [],
+        improvementSuggestions: ['Reduce existing EMI obligations.'],
+      },
+    };
+    (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: apiResponse,
+    });
+
+    const result = await runSoftCheck({ consentCredit: true });
+
+    expect(result.data?.schemaVersion).toBe('2.0');
+    expect(result.data?.matchedLenders?.[0].estimatedRateBand.type).toBe('indicative');
+    expect(result.data?.eligibleBanks).toEqual(legacyResponse.eligibleBanks);
+  });
 });
