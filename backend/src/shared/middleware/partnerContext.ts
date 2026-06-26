@@ -16,6 +16,7 @@ export const resolvePartnerOrg = async (
       where: {
         userId: req.user.id,
         isActive: true,
+        partner: { status: 'active' },
       },
       select: { partnerId: true },
       orderBy: { createdAt: 'asc' },
@@ -28,7 +29,7 @@ export const resolvePartnerOrg = async (
     }
 
     const ownedPartner = await prisma.partner.findFirst({
-      where: { ownerUserId: req.user.id },
+      where: { ownerUserId: req.user.id, status: 'active' },
       select: { id: true },
       orderBy: { createdAt: 'asc' },
     });

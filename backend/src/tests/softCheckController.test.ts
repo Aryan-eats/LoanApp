@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { encryptField } from '../shared/security/encryption.js';
+import { buildBorrowerHash } from '../modules/soft-check/softCheckIntegrity.js';
 import { runPartnerSoftCheck } from '../modules/soft-check/softCheck.controller.js';
 
-const { prismaMock, logAuditEventMock } = vi.hoisted(() => ({
+const { prismaMock, logAuditEventMock, getSoftCheckConfigurationMock, persistSoftCheckDecisionMock } = vi.hoisted(() => ({
   prismaMock: {
     bank: { findMany: vi.fn() },
     partnerData: { findFirst: vi.fn() },
     lead: { findFirst: vi.fn(), update: vi.fn() },
   },
   logAuditEventMock: vi.fn(),
+  getSoftCheckConfigurationMock: vi.fn(),
+  persistSoftCheckDecisionMock: vi.fn(),
 }));
 
 vi.mock('../shared/db/prisma.js', () => ({
@@ -16,6 +20,11 @@ vi.mock('../shared/db/prisma.js', () => ({
 
 vi.mock('../modules/audit/auditLogger.js', () => ({
   logAuditEvent: logAuditEventMock,
+}));
+
+vi.mock('../modules/soft-check/softCheckRepository.js', () => ({
+  getSoftCheckConfiguration: getSoftCheckConfigurationMock,
+  persistSoftCheckDecision: persistSoftCheckDecisionMock,
 }));
 
 const response = () => {
@@ -37,6 +46,18 @@ const req = (body: Record<string, unknown>) =>
 describe('runPartnerSoftCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.SOFT_CHECK_ENGINE_MODE;
+    process.env.SOFT_CHECK_HMAC_KEY = 'borrower-secret';
+    process.env.SOFT_CHECK_CHECKSUM_KEY = 'checksum-secret';
+    process.env.FIELD_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+    prismaMock.partnerData.findFirst.mockResolvedValue(null);
+    prismaMock.lead.findFirst.mockResolvedValue(null);
+    prismaMock.lead.update.mockResolvedValue({});
+    getSoftCheckConfigurationMock.mockResolvedValue(null);
+    persistSoftCheckDecisionMock.mockResolvedValue({
+      created: true,
+      record: { id: 'result-1', result: {} },
+    });
     prismaMock.bank.findMany.mockResolvedValue([
       {
         id: 'bank-1',
@@ -112,5 +133,338 @@ describe('runPartnerSoftCheck', () => {
         metadata: expect.objectContaining({ action: 'soft_check', creditImpact: 'none' }),
       })
     );
+  });
+
+  it('scopes stored client and lead lookups to the resolved partner organization', async () => {
+    const res = response();
+    prismaMock.partnerData.findFirst.mockResolvedValue(null);
+    prismaMock.lead.findFirst.mockResolvedValue(null);
+
+    await runPartnerSoftCheck(
+      req({
+        storedClientId: 'stored-client-1',
+        leadId: 'lead-1',
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(prismaMock.partnerData.findFirst).toHaveBeenCalledWith({
+      where: { id: 'stored-client-1', partnerOrgId: 'partner-1' },
+    });
+    expect(prismaMock.lead.findFirst).toHaveBeenCalledWith({
+      where: { id: 'lead-1', partnerOrgId: 'partner-1' },
+    });
+  });
+
+  it('uses lead data before raw request data and persists the five legacy eligibility columns', async () => {
+    const res = response();
+    prismaMock.lead.findFirst.mockResolvedValue({
+      id: 'lead-1',
+      clientFullName: 'Lead Client',
+      clientPhone: '9876543210',
+      clientIncome: 75_000,
+      clientEmployment: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 500_000,
+      tenure: 60,
+    });
+
+    await runPartnerSoftCheck(
+      req({
+        leadId: 'lead-1',
+        fullName: 'Raw Client',
+        phone: '9999999999',
+        monthlyIncome: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 900_000,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(prismaMock.lead.update).toHaveBeenCalledWith({
+      where: { id: 'lead-1' },
+      data: {
+        isEligible: true,
+        maxLoanAmount: 1_350_000,
+        minLoanAmount: 50_000,
+        estimatedEMI: 11_122,
+        eligibilityCheckedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('uses stored client data before lead and raw request data', async () => {
+    const res = response();
+    prismaMock.partnerData.findFirst.mockResolvedValue({
+      id: 'stored-client-1',
+      fullName: 'Stored Client',
+      phone: '9876543210',
+      monthlyIncome: 100_000,
+      employmentType: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 500_000,
+      tenure: 60,
+      loanPurpose: 'working_capital',
+      residenceType: 'owned',
+    });
+    prismaMock.lead.findFirst.mockResolvedValue({
+      id: 'lead-1',
+      clientFullName: 'Lead Client',
+      clientPhone: '9999999999',
+      clientIncome: 20_000,
+      clientEmployment: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 900_000,
+      tenure: 12,
+    });
+
+    await runPartnerSoftCheck(
+      req({
+        storedClientId: 'stored-client-1',
+        leadId: 'lead-1',
+        monthlyIncome: 10_000,
+        loanAmount: 900_000,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(prismaMock.lead.update).toHaveBeenCalledWith({
+      where: { id: 'lead-1' },
+      data: expect.objectContaining({
+        isEligible: true,
+        maxLoanAmount: 1_800_000,
+        minLoanAmount: 50_000,
+        estimatedEMI: 11_122,
+      }),
+    });
+  });
+
+  it('returns additive V2 fields when an active rule configuration exists', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
+    getSoftCheckConfigurationMock.mockResolvedValue({
+      productId: 'product-1',
+      ruleSetId: 'ruleset-1',
+      ruleSetVersion: 1,
+      configHash: 'hash-1',
+      lenders: [{
+        id: 'bank-1',
+        code: 'HDFC',
+        name: 'HDFC Bank',
+        productCode: 'personal_loan',
+        ticketMin: 50_000,
+        ticketMax: 1_000_000,
+        rateMin: 10,
+        rateMax: 12,
+        tenureMinMonths: 12,
+        tenureMaxMonths: 60,
+      }],
+      rules: [{
+        id: 'rule-1',
+        ruleCode: 'PL_MAX_FOIR',
+        name: 'Maximum FOIR',
+        productCode: 'personal_loan',
+        fieldPath: 'derived.foirPercent',
+        operator: 'LTE',
+        threshold: 50,
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: 2,
+      }],
+    });
+    const res = response();
+
+    await runPartnerSoftCheck(
+      req({
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        requestedTenureMonths: 60,
+        age: 35,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(getSoftCheckConfigurationMock).toHaveBeenCalledWith('personal_loan');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        schemaVersion: '2.0',
+        ruleConfigReleaseId: 'ruleset-1',
+        eligibilityStatus: 'ELIGIBLE',
+        requestId: expect.any(String),
+        resultId: 'result-1',
+      }),
+    }));
+    expect(persistSoftCheckDecisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      partnerOrgId: 'partner-1',
+      actorUserId: 'user-1',
+      sourceType: 'RAW',
+      borrowerHash: expect.not.stringContaining('9876543210'),
+      inputHash: expect.any(String),
+      checksum: expect.any(String),
+    }));
+  });
+
+  it('decrypts mixed encrypted stored-client source data without persisting direct PII', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
+    prismaMock.partnerData.findFirst.mockResolvedValue({
+      id: 'stored-client-1',
+      partnerOrgId: 'partner-1',
+      fullName: await encryptField('partner-1', 'Stored Client'),
+      phone: await encryptField('partner-1', '9876543210'),
+      monthlyIncome: 75_000,
+      employmentType: 'salaried',
+      loanType: 'personal_loan',
+      loanAmount: 500_000,
+      tenure: 60,
+    });
+    getSoftCheckConfigurationMock.mockResolvedValue({
+      productId: 'product-1',
+      ruleSetId: 'ruleset-1',
+      ruleSetVersion: 1,
+      configHash: 'hash-1',
+      lenders: [{
+        id: 'bank-1',
+        code: 'HDFC',
+        name: 'HDFC Bank',
+        productCode: 'personal_loan',
+        ticketMin: 50_000,
+        ticketMax: 1_000_000,
+        rateMin: 10,
+        rateMax: 12,
+        tenureMinMonths: 12,
+        tenureMaxMonths: 60,
+      }],
+      rules: [{
+        id: 'rule-1',
+        ruleCode: 'PL_MAX_FOIR',
+        name: 'Maximum FOIR',
+        productCode: 'personal_loan',
+        fieldPath: 'derived.foirPercent',
+        operator: 'LTE',
+        threshold: 50,
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: 2,
+      }],
+    });
+    const res = response();
+
+    await runPartnerSoftCheck(
+      req({
+        storedClientId: '11111111-1111-4111-8111-111111111111',
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(persistSoftCheckDecisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceType: 'PARTNER_DATA',
+      sourceId: 'stored-client-1',
+      normalizedInput: expect.not.objectContaining({
+        fullName: 'Stored Client',
+        phone: '9876543210',
+      }),
+      borrowerHash: buildBorrowerHash('partner-1', '9876543210'),
+    }));
+  });
+
+  it('fails closed in V2 mode when no active rule configuration exists', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
+    getSoftCheckConfigurationMock.mockResolvedValue(null);
+    const res = response();
+
+    await runPartnerSoftCheck(
+      req({
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Soft check configuration unavailable',
+    });
+    expect(persistSoftCheckDecisionMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for V2 when immutable persistence fails', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
+    getSoftCheckConfigurationMock.mockResolvedValue({
+      productId: 'product-1',
+      ruleSetId: 'ruleset-1',
+      ruleSetVersion: 1,
+      configHash: 'hash-1',
+      lenders: [{
+        id: 'bank-1',
+        code: 'HDFC',
+        name: 'HDFC Bank',
+        productCode: 'personal_loan',
+        ticketMin: 50_000,
+        ticketMax: 1_000_000,
+        rateMin: 10,
+        rateMax: 12,
+        tenureMinMonths: 12,
+        tenureMaxMonths: 60,
+      }],
+      rules: [{
+        id: 'rule-1',
+        ruleCode: 'PL_MAX_FOIR',
+        name: 'Maximum FOIR',
+        productCode: 'personal_loan',
+        fieldPath: 'derived.foirPercent',
+        operator: 'LTE',
+        threshold: 50,
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: 2,
+      }],
+    });
+    persistSoftCheckDecisionMock.mockRejectedValue(new Error('db down'));
+    const res = response();
+
+    await runPartnerSoftCheck(
+      req({
+        requestId: '11111111-1111-4111-8111-111111111111',
+        fullName: 'Ravi Sharma',
+        phone: '9876543210',
+        monthlyIncome: 75_000,
+        existingEMI: 10_000,
+        employmentType: 'salaried',
+        loanType: 'personal_loan',
+        loanAmount: 500_000,
+        requestedTenureMonths: 60,
+        age: 35,
+        consentCredit: true,
+      }),
+      res as any
+    );
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Soft check result persistence failed',
+    });
   });
 });

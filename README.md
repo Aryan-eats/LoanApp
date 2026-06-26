@@ -89,6 +89,36 @@ Supporting:
 
 ---
 
+## Soft Check Engine Operations
+
+The partner soft-check endpoint remains `POST /api/partner/soft-check`. It is backward-compatible by default and returns the legacy response unless explicitly switched.
+
+### Required backend environment
+
+| Variable | Purpose |
+|---|---|
+| `SOFT_CHECK_ENGINE_MODE` | `legacy`, `shadow`, or `v2`. Defaults to `legacy`. |
+| `SOFT_CHECK_HMAC_KEY` | Dedicated key for partner-scoped borrower HMACs. Required for `v2`. |
+| `SOFT_CHECK_CHECKSUM_KEY` | Dedicated key for input/result checksums. Required for `v2`. |
+| `SOFT_CHECK_RATE_LIMIT_MAX` | Optional per-window soft-check request limit. Defaults to 20 in production. |
+| `FIELD_ENCRYPTION_KEY` | Existing AES-256-GCM field encryption key for encrypted PII rows. |
+| `REDIS_URL` | Enables distributed rate limiting; limiter degrades open if Redis is unavailable. |
+
+### Cutover order
+
+1. Deploy with `SOFT_CHECK_ENGINE_MODE=legacy`.
+2. Switch selected partners to `shadow` only after rule releases and audit tables are migrated.
+3. Review shadow metrics and malformed-config logs.
+4. Switch internal/test partner to `v2`.
+5. Expand `v2` to a limited partner cohort.
+6. Enable `v2` globally after compliance and operational approval.
+
+Rollback is configuration-only: set `SOFT_CHECK_ENGINE_MODE=legacy`. Do not roll back migrations that have already written immutable decision/audit records.
+
+The soft-check stage must never call a credit bureau. V2 outputs are indicative pre-qualification results only; final lender review, KYC, and separate bureau consent remain downstream.
+
+---
+
 ## Design Decisions
 
 **PostgreSQL + Prisma over MongoDB** — The workflow-driven nature of the product (leads, documents, timelines, approvals, commissions, audit events) required strong relational integrity and queryable status transitions.

@@ -560,33 +560,29 @@ export const getLeads = async (req: Request, res: Response): Promise<void> => {
     let leads: LeadWithRelations[];
     let total: number;
 
-    try {
-      if (search || source || scoreBand) {
-        const allLeads = await prisma.lead.findMany({
+    if (search || source || scoreBand) {
+      const allLeads = await prisma.lead.findMany({
+        where: baseWhere,
+        orderBy: { [sortField]: sortOrder },
+        include: leadInclude,
+      });
+
+      const filteredLeads = allLeads.filter((lead) =>
+        matchesLeadFilters(formatLeadResponse(lead), { source, scoreBand, search })
+      );
+      total = filteredLeads.length;
+      leads = filteredLeads.slice(skip, skip + limit);
+    } else {
+      [leads, total] = await Promise.all([
+        prisma.lead.findMany({
           where: baseWhere,
           orderBy: { [sortField]: sortOrder },
+          skip,
+          take: limit,
           include: leadInclude,
-        });
-
-        const filteredLeads = allLeads.filter((lead) =>
-          matchesLeadFilters(formatLeadResponse(lead), { source, scoreBand, search })
-        );
-        total = filteredLeads.length;
-        leads = filteredLeads.slice(skip, skip + limit);
-      } else {
-        [leads, total] = await Promise.all([
-          prisma.lead.findMany({
-            where: baseWhere,
-            orderBy: { [sortField]: sortOrder },
-            skip,
-            take: limit,
-            include: leadInclude,
-          }),
-          prisma.lead.count({ where: baseWhere }),
-        ]);
-      }
-    } catch (error) {
-        throw error;
+        }),
+        prisma.lead.count({ where: baseWhere }),
+      ]);
     }
 
     const leadsForResponse = req.user.role === 'partner'

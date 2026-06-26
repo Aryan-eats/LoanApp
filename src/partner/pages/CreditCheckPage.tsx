@@ -32,7 +32,7 @@ const formatCurrency = (amount: number): string => {
 };
 
 const softCheckCopy =
-  "This preliminary eligibility check uses declared information and lender rules. It does not affect the client's credit score. Final approval may require lender verification and a hard inquiry.";
+  "This indicative pre-qualification uses declared information and lender rules. It does not affect the client's credit score. Final credit decisions require lender verification, KYC, and separate bureau consent.";
 
 export default function CreditCheckPage() {
   const location = useLocation();
@@ -96,6 +96,18 @@ export default function CreditCheckPage() {
   };
 
   if (result) {
+    const isV2 = result.schemaVersion === '2.0';
+    const statusLabel = isV2
+      ? 'Indicative pre-qualification'
+      : result.isEligible
+        ? 'Indicative lender match'
+        : 'No current match';
+    const statusDescription = isV2
+      ? 'Based only on declared profile and configured lender rules'
+      : result.isEligible
+        ? 'Declared profile matches one or more lender rule sets'
+        : 'Declared profile does not currently meet lender rules';
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -131,23 +143,28 @@ export default function CreditCheckPage() {
               </div>
               <div>
                 <h2 className={`text-xl font-bold ${result.isEligible ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {result.isEligible ? 'Eligible for Loan' : 'Not Eligible'}
+                  {statusLabel}
                 </h2>
                 <p className={`text-sm ${result.isEligible ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {result.isEligible ? 'Client qualifies for matching lender offers' : 'Current profile does not meet lender rules'}
+                  {statusDescription}
                 </p>
+                {result.confidenceTier && (
+                  <p className="mt-1 text-xs font-semibold tracking-wide text-slate-300">
+                    {result.confidenceTier}
+                  </p>
+                )}
               </div>
             </div>
             <div className="text-center">
               <p className="text-3xl font-bold text-slate-100">{result.score}</p>
-              <p className="text-xs text-slate-400">Eligibility Score</p>
+              <p className="text-xs text-slate-400">Profile Strength</p>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 border-t border-white/10 pt-6 sm:grid-cols-3">
-            <Summary label="Eligible Loan Range" value={`${formatCurrency(result.minLoanAmount)} - ${formatCurrency(result.maxLoanAmount)}`} />
+            <Summary label="Indicative Loan Range" value={`${formatCurrency(result.minLoanAmount)} - ${formatCurrency(result.maxLoanAmount)}`} />
             <Summary label="Estimated EMI" value={`${formatCurrency(result.estimatedEMI)}/month`} />
-            <Summary label="Banks Available" value={`${result.eligibleBanks.length} Options`} />
+            <Summary label="Lender Matches" value={`${result.eligibleBanks.length} Options`} />
           </div>
         </div>
 
@@ -168,7 +185,7 @@ export default function CreditCheckPage() {
 
         {result.eligibleBanks.length > 0 && (
           <section className="rounded-xl border border-white/10 bg-slate-900/50 p-6">
-            <h3 className="mb-4 text-lg font-semibold text-slate-100">Eligible Banks & NBFCs</h3>
+            <h3 className="mb-4 text-lg font-semibold text-slate-100">Indicative Lender Matches</h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {result.eligibleBanks.map((bank) => (
                 <div key={bank.id} className="rounded-xl border border-white/10 bg-slate-800/50 p-4">
@@ -197,9 +214,20 @@ export default function CreditCheckPage() {
           </section>
         )}
 
+        {Boolean(result.improvementSuggestions?.length) && (
+          <section className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-6">
+            <h3 className="mb-3 text-lg font-semibold text-amber-100">Profile improvement suggestions</h3>
+            <ul className="list-disc space-y-2 pl-5 text-sm text-amber-100/80">
+              {result.improvementSuggestions!.map((suggestion) => (
+                <li key={suggestion}>{suggestion}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <div className="rounded-xl border border-indigo-700/50 bg-indigo-900 p-6 text-indigo-50">
           <h3 className="mb-2 text-lg font-semibold text-indigo-100">Ready to Proceed?</h3>
-          <p className="mb-4 text-sm text-indigo-200/80">Submit this lead with required documents to get formal lender offers.</p>
+          <p className="mb-4 text-sm text-indigo-200/80">Submit this lead with required documents for formal lender review.</p>
           <button className="inline-flex items-center gap-2 rounded-lg border border-indigo-400/30 bg-indigo-500 px-4 py-2 font-medium text-white transition-colors hover:bg-indigo-600">
             Submit Lead
             <ArrowRight size={16} />

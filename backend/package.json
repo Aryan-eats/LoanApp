@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "dev": "npx tsx watch src/server.ts",
     "test": "vitest run",
+    "seed:soft-check": "tsx scripts/seedSoftCheckRules.ts",
     "test:security": "vitest run src/tests/documentController.test.ts",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"

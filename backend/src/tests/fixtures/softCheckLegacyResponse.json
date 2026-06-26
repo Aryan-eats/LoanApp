@@ -1,0 +1,49 @@
+{
+  "checkType": "soft",
+  "creditImpact": "none",
+  "isEligible": true,
+  "score": 100,
+  "maxLoanAmount": 990000,
+  "minLoanAmount": 50000,
+  "estimatedEMI": 11122,
+  "eligibleBanks": [
+    {
+      "id": "bank-1",
+      "name": "HDFC Bank",
+      "code": "HDFC",
+      "status": "active",
+      "supportedLoanTypes": ["personal_loan"],
+      "interestRateMin": 10,
+      "interestRateMax": 12,
+      "processingFee": "1%",
+      "maxTenure": 60,
+      "minAmount": 50000,
+      "maxAmount": 1000000,
+      "processingTime": "3 days",
+      "isPopular": true,
+      "features": ["Fast approval"],
+      "displayAmount": 990000
+    }
+  ],
+  "factors": [
+    {
+      "factor": "Income Level",
+      "status": "positive",
+      "description": "Based on declared monthly income",
+      "weight": 30
+    },
+    {
+      "factor": "Debt-to-Income Ratio",
+      "status": "positive",
+      "description": "Based on declared existing EMI obligations",
+      "weight": 35
+    },
+    {
+      "factor": "Bank Fit",
+      "status": "positive",
+      "description": "Matched against active lender limits",
+      "weight": 35
+    }
+  ],
+  "disclaimer": "Soft eligibility check only. No credit score impact. Final approval requires lender verification and may involve a hard inquiry."
+}

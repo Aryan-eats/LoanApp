@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../shared/db/prisma.js';
 
 export const ADMIN_ROLES = ['super_admin', 'admin', 'manager', 'agent', 'viewer'] as const;
-export const PERMISSION_RESOURCES = ['leads', 'partners', 'banks', 'users', 'roles'] as const;
+export const PERMISSION_RESOURCES = ['leads', 'partners', 'banks', 'users', 'roles', 'eligibility_rules'] as const;
 export const PERMISSION_ACTIONS = ['read', 'create', 'update', 'delete'] as const;
 
 export type AdminRole = typeof ADMIN_ROLES[number];

@@ -6,66 +6,67 @@ datasource db {
   provider = "postgresql"
 }
 
-
 model User {
-  id                     String            @id @default(uuid()) @db.Uuid
-  email                  String            @unique
-  password               String?
-  firstName              String            @map("first_name")
-  lastName               String            @map("last_name")
-  phone                  String?
-  role                   UserRole          @default(partner)
-  isActive               Boolean           @default(true) @map("is_active")
-  isEmailVerified        Boolean           @default(false) @map("is_email_verified")
-  isPhoneVerified        Boolean           @default(false) @map("is_phone_verified")
-  lastLogin              DateTime?         @map("last_login")
-  resetPasswordToken     String?           @map("reset_password_token")
-  resetPasswordExpires   DateTime?         @map("reset_password_expires")
-  otpHash                 String?           @map("otp")
-  otpExpires             DateTime?         @map("otp_expires")
-  failedLoginAttempts    Int               @default(0) @map("failed_login_attempts")
-  lockUntil              DateTime?         @map("lock_until")
-  refreshToken           String?           @map("refresh_token")
-  refreshTokenExpires    DateTime?         @map("refresh_token_expires")
-  partnerType            PartnerType?      @map("partner_type")
-  city                   String?
-  state                  String?
-  pincode                String?
-  aadhaarNumber          String?           @map("aadhaar_number")
-  businessName           String?           @map("business_name")
-  businessAddress        String?           @map("business_address")
-  yearsInOperation       String?           @map("years_in_operation")
-  panNumber              String?           @map("pan_number")
-  gstNumber              String?           @map("gst_number")
-  hasExperience          String?           @map("has_experience")
-  expectedLeads          String?           @map("expected_leads")
-  accountHolderName      String?           @map("account_holder_name")
-  bankName               String?           @map("bank_name")
-  accountNumber          String?           @map("account_number")
-  ifscCode               String?           @map("ifsc_code")
-  upiId                  String?           @map("upi_id")
-  encryptionVersion      Int               @default(0) @map("encryption_version")
-  consentDataShare       Boolean           @default(false) @map("consent_data_share")
-  consentCommission      Boolean           @default(false) @map("consent_commission")
-  declarationNotEmployed Boolean           @default(false) @map("declaration_not_employed")
-  consentPrivacyPolicy   Boolean           @default(false) @map("consent_privacy_policy")
-  onboardingStatus       OnboardingStatus? @default(pending) @map("onboarding_status")
-  onboardingCompletedAt  DateTime?         @map("onboarding_completed_at")
-  kycStatus              KycStatus?        @default(pending) @map("kyc_status")
-  kycRejectionReason     String?           @map("kyc_rejection_reason")
-  internalNotes          String?           @map("internal_notes")
-  createdAt              DateTime          @default(now()) @map("created_at")
-  updatedAt              DateTime          @updatedAt @map("updated_at")
-  activeSessions         ActiveSession[]
-  auditLogs              AuditLog[]
-  updatedRolePermissions RolePermission[] @relation("RolePermissionUpdatedBy")
-  leads                  Lead[]
-  partnerData            PartnerData[]
-  passwordHistory        PasswordHistory[]
-  ownedPartners          Partner[]         @relation("PartnerOwner")
-  partnerMemberships     PartnerUser[]
-  consentGrantsSubmitted ConsentGrant[]    @relation("ConsentGrantSubmittedBy")
-  submissionEventsChanged SubmissionEvent[] @relation("SubmissionEventChangedBy")
+  id                      String               @id @default(uuid()) @db.Uuid
+  email                   String               @unique
+  password                String?
+  firstName               String               @map("first_name")
+  lastName                String               @map("last_name")
+  phone                   String?
+  role                    UserRole             @default(partner)
+  isActive                Boolean              @default(true) @map("is_active")
+  isEmailVerified         Boolean              @default(false) @map("is_email_verified")
+  isPhoneVerified         Boolean              @default(false) @map("is_phone_verified")
+  lastLogin               DateTime?            @map("last_login")
+  resetPasswordToken      String?              @map("reset_password_token")
+  resetPasswordExpires    DateTime?            @map("reset_password_expires")
+  otpHash                 String?              @map("otp")
+  otpExpires              DateTime?            @map("otp_expires")
+  failedLoginAttempts     Int                  @default(0) @map("failed_login_attempts")
+  lockUntil               DateTime?            @map("lock_until")
+  refreshToken            String?              @map("refresh_token")
+  refreshTokenExpires     DateTime?            @map("refresh_token_expires")
+  partnerType             PartnerType?         @map("partner_type")
+  city                    String?
+  state                   String?
+  pincode                 String?
+  aadhaarNumber           String?              @map("aadhaar_number")
+  businessName            String?              @map("business_name")
+  businessAddress         String?              @map("business_address")
+  yearsInOperation        String?              @map("years_in_operation")
+  panNumber               String?              @map("pan_number")
+  gstNumber               String?              @map("gst_number")
+  hasExperience           String?              @map("has_experience")
+  expectedLeads           String?              @map("expected_leads")
+  accountHolderName       String?              @map("account_holder_name")
+  bankName                String?              @map("bank_name")
+  accountNumber           String?              @map("account_number")
+  ifscCode                String?              @map("ifsc_code")
+  upiId                   String?              @map("upi_id")
+  encryptionVersion       Int                  @default(0) @map("encryption_version")
+  consentDataShare        Boolean              @default(false) @map("consent_data_share")
+  consentCommission       Boolean              @default(false) @map("consent_commission")
+  declarationNotEmployed  Boolean              @default(false) @map("declaration_not_employed")
+  consentPrivacyPolicy    Boolean              @default(false) @map("consent_privacy_policy")
+  onboardingStatus        OnboardingStatus?    @default(pending) @map("onboarding_status")
+  onboardingCompletedAt   DateTime?            @map("onboarding_completed_at")
+  kycStatus               KycStatus?           @default(pending) @map("kyc_status")
+  kycRejectionReason      String?              @map("kyc_rejection_reason")
+  internalNotes           String?              @map("internal_notes")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  activeSessions          ActiveSession[]
+  auditLogs               AuditLog[]
+  updatedRolePermissions  RolePermission[]     @relation("RolePermissionUpdatedBy")
+  leads                   Lead[]
+  partnerData             PartnerData[]
+  passwordHistory         PasswordHistory[]
+  ownedPartners           Partner[]            @relation("PartnerOwner")
+  partnerMemberships      PartnerUser[]
+  consentGrantsSubmitted  ConsentGrant[]       @relation("ConsentGrantSubmittedBy")
+  submissionEventsChanged SubmissionEvent[]    @relation("SubmissionEventChangedBy")
+  softCheckResults        SoftCheckResultLog[]
+  ruleChangeAuditLogs     RuleChangeAuditLog[]
 
   @@index([role])
   @@index([phone])
@@ -100,38 +101,40 @@ model ActiveSession {
 }
 
 model RolePermission {
-  role        UserRole @id
-  permissions Json
-  updatedBy   String?  @map("updated_by") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  updatedByUser User?   @relation("RolePermissionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  role          UserRole @id
+  permissions   Json
+  updatedBy     String?  @map("updated_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedByUser User?    @relation("RolePermissionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("role_permissions")
 }
 
 model Partner {
-  id               String            @id @default(uuid()) @db.Uuid
+  id               String               @id @default(uuid()) @db.Uuid
   name             String
-  partnerType      String            @default("freelancer") @map("partner_type")
-  status           String            @default("active")
-  ownerUserId      String            @map("owner_user_id") @db.Uuid
-  contactEmail     String?           @map("contact_email")
-  contactPhone     String?           @map("contact_phone")
+  partnerType      String               @default("freelancer") @map("partner_type")
+  status           String               @default("active")
+  ownerUserId      String               @map("owner_user_id") @db.Uuid
+  contactEmail     String?              @map("contact_email")
+  contactPhone     String?              @map("contact_phone")
   city             String?
   state            String?
   pincode          String?
-  businessName     String?           @map("business_name")
-  gstNumber        String?           @map("gst_number")
-  panNumber        String?           @map("pan_number")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  owner            User              @relation("PartnerOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  businessName     String?              @map("business_name")
+  gstNumber        String?              @map("gst_number")
+  panNumber        String?              @map("pan_number")
+  vaultKeyRef      String               @map("vault_key_ref")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  owner            User                 @relation("PartnerOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   members          PartnerUser[]
   partnerData      PartnerData[]
   leads            Lead[]
   consentGrants    ConsentGrant[]
   submissionEvents SubmissionEvent[]
+  softCheckResults SoftCheckResultLog[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -176,55 +179,55 @@ model SubmissionEvent {
 }
 
 model Lead {
-  id                     String            @id @default(uuid()) @db.Uuid
-  clientFullName         String            @map("client_full_name")
-  clientPhone            String            @map("client_phone")
-  clientEmail            String?           @map("client_email")
-  clientDateOfBirth      String?           @map("client_date_of_birth")
-  clientPanNumber        String?           @map("client_pan_number")
-  clientAadhaar          String?           @map("client_aadhaar")
-  clientEmployment       EmploymentType?   @map("client_employment")
-  clientIncome           Decimal?          @map("client_income") @db.Decimal(15, 2)
-  clientCompany          String?           @map("client_company")
-  clientExperience       Int?              @map("client_experience")
-  clientCity             String?           @map("client_city")
-  clientPincode          String?           @map("client_pincode")
-  loanType               String            @map("loan_type")
-  loanAmount             Decimal           @map("loan_amount") @db.Decimal(15, 2)
-  tenure                 Int?
-  sanctionedAmount       Decimal?          @map("sanctioned_amount") @db.Decimal(15, 2)
-  disbursedAmount        Decimal?          @map("disbursed_amount") @db.Decimal(15, 2)
-  interestRate           Decimal?          @map("interest_rate") @db.Decimal(5, 2)
-  emi                    Decimal?          @db.Decimal(15, 2)
-  status                 LeadStatus        @default(submitted)
-  bankAssigned           String?           @map("bank_assigned")
-  bankCode               String?           @map("bank_code")
-  bankLogo               String?           @map("bank_logo")
-  preferredBank          String?           @map("preferred_bank")
-  partnerId              String?           @map("partner_id") @db.Uuid
-  partnerName            String            @map("partner_name")
-  partnerOrgId           String?           @map("partner_org_id") @db.Uuid
-  sourcePartnerDataId    String?           @map("source_partner_data_id") @db.Uuid
-  encryptionVersion      Int               @default(0) @map("encryption_version")
-  isEligible             Boolean?          @map("is_eligible")
-  maxLoanAmount          Decimal?          @map("max_loan_amount") @db.Decimal(15, 2)
-  minLoanAmount          Decimal?          @map("min_loan_amount") @db.Decimal(15, 2)
-  estimatedEMI           Decimal?          @map("estimated_emi") @db.Decimal(15, 2)
-  eligibilityCheckedAt   DateTime?         @map("eligibility_checked_at")
-  commissionAmount       Decimal?          @map("commission_amount") @db.Decimal(15, 2)
-  commissionRate         Decimal?          @map("commission_rate") @db.Decimal(5, 2)
-  commissionStatus       CommissionStatus? @map("commission_status")
-  commissionPaidAt       DateTime?         @map("commission_paid_at")
-  internalNotes          String?           @map("internal_notes")
-  createdAt              DateTime          @default(now()) @map("created_at")
-  updatedAt              DateTime          @updatedAt @map("updated_at")
-  documents              LeadDocument[]
-  timeline               LeadTimeline[]
-  submissionEvents       SubmissionEvent[]
-  consentGrants          ConsentGrant[]
-  partner                User?             @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerOrg             Partner?          @relation(fields: [partnerOrgId], references: [id], onDelete: SetNull)
-  sourcePartnerData      PartnerData?      @relation("LeadSource", fields: [sourcePartnerDataId], references: [id], onDelete: SetNull)
+  id                   String            @id @default(uuid()) @db.Uuid
+  clientFullName       String            @map("client_full_name")
+  clientPhone          String            @map("client_phone")
+  clientEmail          String?           @map("client_email")
+  clientDateOfBirth    String?           @map("client_date_of_birth")
+  clientPanNumber      String?           @map("client_pan_number")
+  clientAadhaar        String?           @map("client_aadhaar")
+  clientEmployment     EmploymentType?   @map("client_employment")
+  clientIncome         Decimal?          @map("client_income") @db.Decimal(15, 2)
+  clientCompany        String?           @map("client_company")
+  clientExperience     Int?              @map("client_experience")
+  clientCity           String?           @map("client_city")
+  clientPincode        String?           @map("client_pincode")
+  loanType             String            @map("loan_type")
+  loanAmount           Decimal           @map("loan_amount") @db.Decimal(15, 2)
+  tenure               Int?
+  sanctionedAmount     Decimal?          @map("sanctioned_amount") @db.Decimal(15, 2)
+  disbursedAmount      Decimal?          @map("disbursed_amount") @db.Decimal(15, 2)
+  interestRate         Decimal?          @map("interest_rate") @db.Decimal(5, 2)
+  emi                  Decimal?          @db.Decimal(15, 2)
+  status               LeadStatus        @default(submitted)
+  bankAssigned         String?           @map("bank_assigned")
+  bankCode             String?           @map("bank_code")
+  bankLogo             String?           @map("bank_logo")
+  preferredBank        String?           @map("preferred_bank")
+  partnerId            String?           @map("partner_id") @db.Uuid
+  partnerName          String            @map("partner_name")
+  partnerOrgId         String?           @map("partner_org_id") @db.Uuid
+  sourcePartnerDataId  String?           @map("source_partner_data_id") @db.Uuid
+  encryptionVersion    Int               @default(0) @map("encryption_version")
+  isEligible           Boolean?          @map("is_eligible")
+  maxLoanAmount        Decimal?          @map("max_loan_amount") @db.Decimal(15, 2)
+  minLoanAmount        Decimal?          @map("min_loan_amount") @db.Decimal(15, 2)
+  estimatedEMI         Decimal?          @map("estimated_emi") @db.Decimal(15, 2)
+  eligibilityCheckedAt DateTime?         @map("eligibility_checked_at")
+  commissionAmount     Decimal?          @map("commission_amount") @db.Decimal(15, 2)
+  commissionRate       Decimal?          @map("commission_rate") @db.Decimal(5, 2)
+  commissionStatus     CommissionStatus? @map("commission_status")
+  commissionPaidAt     DateTime?         @map("commission_paid_at")
+  internalNotes        String?           @map("internal_notes")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  documents            LeadDocument[]
+  timeline             LeadTimeline[]
+  submissionEvents     SubmissionEvent[]
+  consentGrants        ConsentGrant[]
+  partner              User?             @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerOrg           Partner?          @relation(fields: [partnerOrgId], references: [id], onDelete: SetNull)
+  sourcePartnerData    PartnerData?      @relation("LeadSource", fields: [sourcePartnerDataId], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([status])
@@ -238,19 +241,19 @@ model Lead {
 }
 
 model LeadDocument {
-  id              String                  @id @default(uuid()) @db.Uuid
-  leadId          String                  @map("lead_id") @db.Uuid
+  id              String                @id @default(uuid()) @db.Uuid
+  leadId          String                @map("lead_id") @db.Uuid
   type            String
-  fileName        String                  @map("file_name")
-  fileSize        String?                 @map("file_size")
-  fileUrl         String?                 @map("file_url")
-  r2ObjectKey     String?                 @map("r2_object_key")
-  mimeType        String?                 @map("mime_type")
-  uploadedBy      String?                 @map("uploaded_by")
-  uploadedAt      DateTime                @default(now()) @map("uploaded_at")
-  status          DocumentStatus          @default(pending)
-  rejectionReason String?                 @map("rejection_reason")
-  lead            Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fileName        String                @map("file_name")
+  fileSize        String?               @map("file_size")
+  fileUrl         String?               @map("file_url")
+  r2ObjectKey     String?               @map("r2_object_key")
+  mimeType        String?               @map("mime_type")
+  uploadedBy      String?               @map("uploaded_by")
+  uploadedAt      DateTime              @default(now()) @map("uploaded_at")
+  status          DocumentStatus        @default(pending)
+  rejectionReason String?               @map("rejection_reason")
+  lead            Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   uploadTokens    DocumentUploadToken[]
 
   @@index([leadId])
@@ -273,15 +276,15 @@ model DocumentUploadToken {
 }
 
 model StoredClientDocumentUploadToken {
-  id              String              @id @default(uuid()) @db.Uuid
-  token           String              @unique @default(uuid()) @db.Uuid
-  documentId      String              @map("document_id") @db.Uuid
-  partnerDataId   String              @map("partner_data_id") @db.Uuid
-  expiresAt       DateTime            @map("expires_at")
-  usedAt          DateTime?           @map("used_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  document        PartnerDataDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  partnerData     PartnerData         @relation(fields: [partnerDataId], references: [id], onDelete: Cascade)
+  id            String              @id @default(uuid()) @db.Uuid
+  token         String              @unique @default(uuid()) @db.Uuid
+  documentId    String              @map("document_id") @db.Uuid
+  partnerDataId String              @map("partner_data_id") @db.Uuid
+  expiresAt     DateTime            @map("expires_at")
+  usedAt        DateTime?           @map("used_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  document      PartnerDataDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  partnerData   PartnerData         @relation(fields: [partnerDataId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([documentId])
@@ -329,6 +332,57 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model RuleChangeAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String   @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  reason      String
+  requestId   String   @map("request_id") @db.Uuid
+  checksum    String
+  createdAt   DateTime @default(now()) @map("created_at")
+  actorUser   User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@map("rule_change_audit_logs")
+}
+
+model SoftCheckResultLog {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  requestId            String                     @map("request_id") @db.Uuid
+  partnerOrgId         String                     @map("partner_org_id") @db.Uuid
+  actorUserId          String                     @map("actor_user_id") @db.Uuid
+  sourceType           SoftCheckSourceType        @map("source_type")
+  sourceId             String?                    @map("source_id") @db.Uuid
+  borrowerHash         String                     @map("borrower_hash")
+  inputHash            String                     @map("input_hash")
+  normalizedInput      Json                       @map("normalized_input")
+  result               Json
+  ruleTrace            Json                       @map("rule_trace")
+  ruleSetIds           String[]                   @map("rule_set_ids") @db.Uuid
+  eligibilityStatus    SoftCheckEligibilityStatus @map("eligibility_status")
+  confidenceTier       SoftCheckConfidenceTier    @map("confidence_tier")
+  schemaVersion        String                     @map("schema_version")
+  engineVersion        String                     @map("engine_version")
+  consentNoticeVersion String                     @map("consent_notice_version")
+  bureauPulled         Boolean                    @default(false) @map("bureau_pulled")
+  retentionPolicyCode  String                     @map("retention_policy_code")
+  retentionUntil       DateTime                   @map("retention_until")
+  checksum             String
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  partnerOrg           Partner                    @relation(fields: [partnerOrgId], references: [id], onDelete: Restrict)
+  actorUser            User                       @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([partnerOrgId, requestId])
+  @@index([partnerOrgId, createdAt(sort: Desc)])
+  @@index([borrowerHash, createdAt(sort: Desc)])
+  @@map("soft_check_result_logs")
+}
+
 model OtpChallenge {
   id                       String    @id @default(uuid()) @db.Uuid
   phone                    String    @unique
@@ -369,34 +423,155 @@ model LenderDocRequirement {
 }
 
 model Bank {
-  id                String               @id @default(uuid()) @db.Uuid
-  name              String
-  code              String               @unique
-  logo              String?
-  status            BankStatus           @default(active)
-  supportedLoanTypes String[]            @map("supported_loan_types")
-  interestRateMin   Decimal              @map("interest_rate_min") @db.Decimal(5, 2)
-  interestRateMax   Decimal              @map("interest_rate_max") @db.Decimal(5, 2)
-  processingFee     String               @map("processing_fee")
-  maxTenure         Int                  @map("max_tenure")
-  minAmount         Decimal              @map("min_amount") @db.Decimal(15, 2)
-  maxAmount         Decimal              @map("max_amount") @db.Decimal(15, 2)
-  processingTime    String               @map("processing_time")
-  isPopular         Boolean              @default(false) @map("is_popular")
-  features          String[]
-  avgTat            Int                  @map("avg_tat")
-  activeLeads       Int                  @default(0) @map("active_leads")
-  approvalRate      Int                  @default(0) @map("approval_rate")
-  totalDisbursed    String               @default("₹0") @map("total_disbursed")
-  contactPerson     String               @map("contact_person")
-  contactEmail      String               @map("contact_email")
-  contactPhone      String               @map("contact_phone")
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  commissionRates   BankCommissionRate[]
+  id                 String                     @id @default(uuid()) @db.Uuid
+  name               String
+  code               String                     @unique
+  logo               String?
+  status             BankStatus                 @default(active)
+  supportedLoanTypes String[]                   @map("supported_loan_types")
+  interestRateMin    Decimal                    @map("interest_rate_min") @db.Decimal(5, 2)
+  interestRateMax    Decimal                    @map("interest_rate_max") @db.Decimal(5, 2)
+  processingFee      String                     @map("processing_fee")
+  maxTenure          Int                        @map("max_tenure")
+  minAmount          Decimal                    @map("min_amount") @db.Decimal(15, 2)
+  maxAmount          Decimal                    @map("max_amount") @db.Decimal(15, 2)
+  processingTime     String                     @map("processing_time")
+  isPopular          Boolean                    @default(false) @map("is_popular")
+  features           String[]
+  avgTat             Int                        @map("avg_tat")
+  activeLeads        Int                        @default(0) @map("active_leads")
+  approvalRate       Int                        @default(0) @map("approval_rate")
+  totalDisbursed     String                     @default("₹0") @map("total_disbursed")
+  contactPerson      String                     @map("contact_person")
+  contactEmail       String                     @map("contact_email")
+  contactPhone       String                     @map("contact_phone")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  commissionRates    BankCommissionRate[]
+  eligibilityMatrix  ProductLenderEligibility[]
+  ruleOverrides      LenderRuleOverride[]
 
   @@index([status])
   @@map("banks")
+}
+
+model LoanProduct {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  code               String                     @unique
+  name               String
+  active             Boolean                    @default(true)
+  inputSchemaVersion String                     @default("2.0") @map("input_schema_version")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  retiredAt          DateTime?                  @map("retired_at")
+  ruleSets           EligibilityRuleSet[]
+  lenderEligibility  ProductLenderEligibility[]
+
+  @@index([active])
+  @@map("loan_products")
+}
+
+model EligibilityRuleSet {
+  id            String                   @id @default(uuid()) @db.Uuid
+  productId     String                   @map("product_id") @db.Uuid
+  version       Int
+  status        EligibilityRuleSetStatus @default(DRAFT)
+  effectiveFrom DateTime?                @map("effective_from")
+  effectiveTo   DateTime?                @map("effective_to")
+  configHash    String                   @map("config_hash")
+  createdBy     String                   @map("created_by") @db.Uuid
+  approvedBy    String?                  @map("approved_by") @db.Uuid
+  activatedBy   String?                  @map("activated_by") @db.Uuid
+  changeReason  String                   @map("change_reason")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  approvedAt    DateTime?                @map("approved_at")
+  activatedAt   DateTime?                @map("activated_at")
+  product       LoanProduct              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  rules         BaseRuleDefinition[]
+  overrides     LenderRuleOverride[]
+
+  @@unique([productId, version])
+  @@index([productId, status])
+  @@map("eligibility_rule_sets")
+}
+
+model BaseRuleDefinition {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  ruleSetId          String                     @map("rule_set_id") @db.Uuid
+  ruleCode           String                     @map("rule_code")
+  name               String
+  fieldPath          String                     @map("field_path")
+  operator           EligibilityRuleOperator
+  threshold          Json
+  conditions         Json?
+  employmentScopes   String[]                   @default([]) @map("employment_scopes")
+  severity           EligibilityRuleSeverity
+  priority           Int                        @default(0)
+  regulatoryClass    EligibilityRegulatoryClass @map("regulatory_class")
+  confidenceWeight   Decimal                    @default(1) @map("confidence_weight") @db.Decimal(6, 3)
+  reasonTemplate     String?                    @map("reason_template")
+  suggestionTemplate String?                    @map("suggestion_template")
+  sourceReference    String?                    @map("source_reference")
+  active             Boolean                    @default(true)
+  ruleSet            EligibilityRuleSet         @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  overrides          LenderRuleOverride[]
+
+  @@unique([ruleSetId, ruleCode, employmentScopes])
+  @@index([ruleSetId, priority])
+  @@map("base_rule_definitions")
+}
+
+model LenderRuleOverride {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  ruleSetId          String                     @map("rule_set_id") @db.Uuid
+  bankId             String                     @map("bank_id") @db.Uuid
+  baseRuleId         String?                    @map("base_rule_id") @db.Uuid
+  ruleCode           String                     @map("rule_code")
+  overrideMode       EligibilityOverrideMode    @map("override_mode")
+  operator           EligibilityRuleOperator
+  threshold          Json
+  conditions         Json?
+  employmentScopes   String[]                   @default([]) @map("employment_scopes")
+  severity           EligibilityRuleSeverity
+  priority           Int                        @default(0)
+  regulatoryClass    EligibilityRegulatoryClass @map("regulatory_class")
+  confidenceWeight   Decimal                    @default(1) @map("confidence_weight") @db.Decimal(6, 3)
+  reasonTemplate     String?                    @map("reason_template")
+  suggestionTemplate String?                    @map("suggestion_template")
+  approvedBy         String                     @map("approved_by") @db.Uuid
+  approvedAt         DateTime                   @map("approved_at")
+  changeReason       String                     @map("change_reason")
+  ruleSet            EligibilityRuleSet         @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  bank               Bank                       @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  baseRule           BaseRuleDefinition?        @relation(fields: [baseRuleId], references: [id], onDelete: SetNull)
+
+  @@unique([ruleSetId, bankId, ruleCode, employmentScopes])
+  @@index([bankId, ruleSetId])
+  @@map("lender_rule_overrides")
+}
+
+model ProductLenderEligibility {
+  id              String      @id @default(uuid()) @db.Uuid
+  productId       String      @map("product_id") @db.Uuid
+  bankId          String      @map("bank_id") @db.Uuid
+  active          Boolean     @default(true)
+  ticketMin       Decimal     @map("ticket_min") @db.Decimal(15, 2)
+  ticketMax       Decimal     @map("ticket_max") @db.Decimal(15, 2)
+  rateMin         Decimal     @map("rate_min") @db.Decimal(7, 4)
+  rateMax         Decimal     @map("rate_max") @db.Decimal(7, 4)
+  tenureMinMonths Int         @map("tenure_min_months")
+  tenureMaxMonths Int         @map("tenure_max_months")
+  employmentTypes String[]    @default([]) @map("employment_types")
+  propertyTypes   String[]    @default([]) @map("property_types")
+  effectiveFrom   DateTime    @default(now()) @map("effective_from")
+  effectiveTo     DateTime?   @map("effective_to")
+  metadata        Json?
+  product         LoanProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  bank            Bank        @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, bankId, effectiveFrom])
+  @@index([productId, active])
+  @@index([bankId, active])
+  @@map("product_lender_eligibility")
 }
 
 model BankCommissionRate {
@@ -416,44 +591,44 @@ model BankCommissionRate {
 }
 
 model PartnerData {
-  id               String          @id @default(uuid()) @db.Uuid
-  partnerId        String          @map("partner_id") @db.Uuid
-  partnerOrgId     String          @map("partner_org_id") @db.Uuid
-  localStatus      LocalLeadStatus @default(new) @map("local_status")
-  notes            String?
+  id                String                            @id @default(uuid()) @db.Uuid
+  partnerId         String                            @map("partner_id") @db.Uuid
+  partnerOrgId      String                            @map("partner_org_id") @db.Uuid
+  localStatus       LocalLeadStatus                   @default(new) @map("local_status")
+  notes             String?
   // Client info
-  fullName         String          @map("full_name")
-  phone            String
-  email            String?
-  dateOfBirth      String?         @map("date_of_birth")
-  gender           String?
-  panNumber        String?         @map("pan_number")
-  employmentType   String?         @map("employment_type")
-  monthlyIncome    Decimal?        @map("monthly_income") @db.Decimal(15, 2)
-  companyName      String?         @map("company_name")
-  designation      String?
-  workExperience   String?         @map("work_experience")
-  city             String?
-  pincode          String?
-  state            String?
-  currentAddress   String?         @map("current_address")
-  residenceType    String?         @map("residence_type")
+  fullName          String                            @map("full_name")
+  phone             String
+  email             String?
+  dateOfBirth       String?                           @map("date_of_birth")
+  gender            String?
+  panNumber         String?                           @map("pan_number")
+  employmentType    String?                           @map("employment_type")
+  monthlyIncome     Decimal?                          @map("monthly_income") @db.Decimal(15, 2)
+  companyName       String?                           @map("company_name")
+  designation       String?
+  workExperience    String?                           @map("work_experience")
+  city              String?
+  pincode           String?
+  state             String?
+  currentAddress    String?                           @map("current_address")
+  residenceType     String?                           @map("residence_type")
   // Loan info
-  loanCategory     String?         @map("loan_category")
-  loanType         String          @map("loan_type")
-  loanAmount       Decimal         @map("loan_amount") @db.Decimal(15, 2)
-  tenure           Int?
-  loanPurpose      String?         @map("loan_purpose")
-  preferredBank    String?         @map("preferred_bank")
-  encryptionVersion Int            @default(0) @map("encryption_version")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  documents        PartnerDataDocument[]
-  uploadTokens     StoredClientDocumentUploadToken[]
-  submittedLeads   Lead[]          @relation("LeadSource")
-  consentGrants    ConsentGrant[]
-  partner          User            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  partnerOrg       Partner         @relation(fields: [partnerOrgId], references: [id], onDelete: Cascade)
+  loanCategory      String?                           @map("loan_category")
+  loanType          String                            @map("loan_type")
+  loanAmount        Decimal                           @map("loan_amount") @db.Decimal(15, 2)
+  tenure            Int?
+  loanPurpose       String?                           @map("loan_purpose")
+  preferredBank     String?                           @map("preferred_bank")
+  encryptionVersion Int                               @default(0) @map("encryption_version")
+  createdAt         DateTime                          @default(now()) @map("created_at")
+  updatedAt         DateTime                          @updatedAt @map("updated_at")
+  documents         PartnerDataDocument[]
+  uploadTokens      StoredClientDocumentUploadToken[]
+  submittedLeads    Lead[]                            @relation("LeadSource")
+  consentGrants     ConsentGrant[]
+  partner           User                              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partnerOrg        Partner                           @relation(fields: [partnerOrgId], references: [id], onDelete: Cascade)
 
   @@index([partnerId])
   @@index([partnerId, localStatus])
@@ -488,25 +663,25 @@ model ConsentGrant {
 }
 
 model PartnerDataDocument {
-  id              String                           @id @default(uuid()) @db.Uuid
-  partnerDataId   String                           @map("partner_data_id") @db.Uuid
+  id              String                            @id @default(uuid()) @db.Uuid
+  partnerDataId   String                            @map("partner_data_id") @db.Uuid
   type            String
-  displayName     String                           @map("display_name")
+  displayName     String                            @map("display_name")
   description     String?
-  mandatory       Boolean                          @default(true)
-  acceptedFormats String[]                         @default(["pdf", "jpg", "png"]) @map("accepted_formats")
-  maxSizeMB       Int                              @default(10) @map("max_size_mb")
-  sortOrder       Int                              @default(0) @map("sort_order")
-  fileName        String                           @default("") @map("file_name")
-  fileSize        String?                          @map("file_size")
-  fileUrl         String?                          @map("file_url")
-  r2ObjectKey     String?                          @map("r2_object_key")
-  mimeType        String?                          @map("mime_type")
-  uploadedBy      String?                          @map("uploaded_by")
-  uploadedAt      DateTime                         @default(now()) @map("uploaded_at")
-  status          DocumentStatus                   @default(pending)
-  rejectionReason String?                          @map("rejection_reason")
-  partnerData     PartnerData                      @relation(fields: [partnerDataId], references: [id], onDelete: Cascade)
+  mandatory       Boolean                           @default(true)
+  acceptedFormats String[]                          @default(["pdf", "jpg", "png"]) @map("accepted_formats")
+  maxSizeMB       Int                               @default(10) @map("max_size_mb")
+  sortOrder       Int                               @default(0) @map("sort_order")
+  fileName        String                            @default("") @map("file_name")
+  fileSize        String?                           @map("file_size")
+  fileUrl         String?                           @map("file_url")
+  r2ObjectKey     String?                           @map("r2_object_key")
+  mimeType        String?                           @map("mime_type")
+  uploadedBy      String?                           @map("uploaded_by")
+  uploadedAt      DateTime                          @default(now()) @map("uploaded_at")
+  status          DocumentStatus                    @default(pending)
+  rejectionReason String?                           @map("rejection_reason")
+  partnerData     PartnerData                       @relation(fields: [partnerDataId], references: [id], onDelete: Cascade)
   uploadTokens    StoredClientDocumentUploadToken[]
 
   @@index([partnerDataId])
@@ -665,4 +840,64 @@ enum AuditEventType {
   PARTNER_USER_REMOVED
   LEAD_SUBMITTED_TO_GPS
   SUBMISSION_STATUS_CHANGED
+  SOFT_CHECK_RUN
+  ELIGIBILITY_RULE_CHANGED
+}
+
+enum EligibilityRuleSetStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  RETIRED
+}
+
+enum EligibilityRuleOperator {
+  REQUIRED
+  EQ
+  NEQ
+  GT
+  GTE
+  LT
+  LTE
+  BETWEEN
+  IN
+  NOT_IN
+}
+
+enum EligibilityRuleSeverity {
+  HARD_FAIL
+  REFER
+  WARNING
+}
+
+enum EligibilityRegulatoryClass {
+  RBI_REGULATORY
+  INDUSTRY_CONSENSUS
+  LENDER_VARIABLE
+}
+
+enum EligibilityOverrideMode {
+  REPLACE
+  DISABLE
+  TIGHTEN
+  RELAX
+}
+
+enum SoftCheckSourceType {
+  RAW
+  PARTNER_DATA
+  LEAD
+}
+
+enum SoftCheckEligibilityStatus {
+  ELIGIBLE
+  REFER_TO_UNDERWRITER
+  INELIGIBLE
+}
+
+enum SoftCheckConfidenceTier {
+  STRONG
+  MODERATE
+  WEAK
+  INELIGIBLE
 }

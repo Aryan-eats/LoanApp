@@ -1,3 +1,10 @@
+import {
+  evaluateSoftCheck,
+  type NormalizedSoftCheckInput,
+  type SoftCheckEngineResult,
+} from './softCheckEngine.js';
+import type { SoftCheckConfiguration } from './softCheckRepository.js';
+
 export type SoftCheckInput = {
   fullName: string;
   phone: string;
@@ -7,6 +14,16 @@ export type SoftCheckInput = {
   loanType: string;
   loanAmount: number;
   consentCredit: boolean;
+  age?: number;
+  requestedTenureMonths?: number;
+  propertyValue?: number;
+  propertyType?: string;
+  declaredCibilRange?: string;
+  purpose?: string;
+  cityTier?: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'UNKNOWN';
+  residenceType?: string;
+  businessProfile?: NormalizedSoftCheckInput['businessProfile'];
+  goldProfile?: NormalizedSoftCheckInput['goldProfile'];
 };
 
 export type SoftCheckBank = {
@@ -45,6 +62,39 @@ export type SoftCheckResult = {
   disclaimer: string;
 };
 
+export type ConfiguredSoftCheckResult = SoftCheckResult &
+  SoftCheckEngineResult & {
+    schemaVersion: '2.0';
+    ruleConfigReleaseId: string;
+    ruleConfigHash: string;
+  };
+
+export type SoftCheckEngineMode = 'legacy' | 'shadow' | 'v2';
+
+export type SoftCheckShadowMetrics = {
+  mode: 'shadow';
+  failed: boolean;
+  ruleConfigReleaseId: string;
+  ruleConfigVersion: number;
+  ruleConfigHash: string;
+  legacyEligible: boolean;
+  v2Status?: SoftCheckEngineResult['eligibilityStatus'];
+  matchedLenderCount?: number;
+  borderlineLenderCount?: number;
+  disqualifiedLenderCount?: number;
+  errorCode?: 'SOFT_CHECK_SHADOW_EVALUATION_FAILED';
+};
+
+export type SoftCheckModeRun = {
+  response: SoftCheckResult | ConfiguredSoftCheckResult;
+  shadowMetrics?: SoftCheckShadowMetrics;
+};
+
+export const getSoftCheckEngineMode = (
+  value = process.env.SOFT_CHECK_ENGINE_MODE
+): SoftCheckEngineMode =>
+  value === 'shadow' || value === 'v2' || value === 'legacy' ? value : 'legacy';
+
 const toNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -58,6 +108,36 @@ const estimateEmi = (amount: number, annualRate = 12, months = 60) => {
       (Math.pow(1 + monthlyRate, months) - 1)
   );
 };
+
+const scoreForConfidence = (tier: SoftCheckEngineResult['confidenceTier']): number =>
+  ({ STRONG: 90, MODERATE: 70, WEAK: 50, INELIGIBLE: 25 })[tier];
+
+const projectMatchedBanks = (
+  matchedLenders: SoftCheckEngineResult['matchedLenders'],
+  banks: SoftCheckBank[]
+): SoftCheckResult['eligibleBanks'] =>
+  matchedLenders.map((lender) => {
+    const bank = banks.find((candidate) => candidate.id === lender.lenderId || candidate.code === lender.code);
+    return {
+      ...(bank ?? {
+        id: lender.lenderId,
+        name: lender.name,
+        code: lender.code,
+        status: 'active',
+        supportedLoanTypes: [lender.productCode],
+        interestRateMin: lender.estimatedRateBand.min,
+        interestRateMax: lender.estimatedRateBand.max,
+        processingFee: '',
+        maxTenure: 0,
+        minAmount: 0,
+        maxAmount: lender.estimatedEligibleAmount,
+        processingTime: '',
+        isPopular: false,
+        features: [],
+      }),
+      displayAmount: lender.estimatedEligibleAmount,
+    };
+  });
 
 export function runSoftCheck({
   input,
@@ -126,3 +206,144 @@ export function runSoftCheck({
       'Soft eligibility check only. No credit score impact. Final approval requires lender verification and may involve a hard inquiry.',
   };
 }
+
+const normalizeEmploymentType = (
+  value: string
+): NormalizedSoftCheckInput['employmentType'] => {
+  switch (value) {
+    case 'salaried':
+    case 'SALARIED':
+      return 'SALARIED';
+    case 'professional':
+    case 'SELF_EMPLOYED_PROFESSIONAL':
+      return 'SELF_EMPLOYED_PROFESSIONAL';
+    case 'self_employed':
+    case 'business_owner':
+    case 'SELF_EMPLOYED_NON_PROFESSIONAL':
+      return 'SELF_EMPLOYED_NON_PROFESSIONAL';
+    default:
+      return 'UNKNOWN';
+  }
+};
+
+export const normalizeSoftCheckInput = (
+  input: SoftCheckInput
+): NormalizedSoftCheckInput => ({
+  employmentType: normalizeEmploymentType(input.employmentType),
+  monthlyIncome: toNumber(input.monthlyIncome),
+  existingEmiObligations: toNumber(input.existingEMI),
+  age: input.age,
+  cityTier: input.cityTier,
+  residenceType: input.residenceType,
+  productCode: input.loanType,
+  requestedAmount: toNumber(input.loanAmount),
+  requestedTenureMonths: input.requestedTenureMonths,
+  propertyValue: input.propertyValue,
+  propertyType: input.propertyType,
+  declaredCibilRange: input.declaredCibilRange,
+  purpose: input.purpose,
+  businessProfile: input.businessProfile,
+  goldProfile: input.goldProfile,
+});
+
+export const runConfiguredSoftCheck = ({
+  input,
+  banks,
+  configuration,
+}: {
+  input: SoftCheckInput;
+  banks: SoftCheckBank[];
+  configuration: SoftCheckConfiguration;
+}): ConfiguredSoftCheckResult => {
+  const legacy = runSoftCheck({ input, banks });
+  const engine = evaluateSoftCheck({
+    input: normalizeSoftCheckInput(input),
+    lenders: configuration.lenders,
+    rules: configuration.rules,
+    configId: configuration.ruleSetId,
+    configVersion: configuration.ruleSetVersion,
+  });
+  const eligibleBanks = projectMatchedBanks(engine.matchedLenders, banks);
+  const maxLoanAmount = engine.matchedLenders.length
+    ? Math.max(...engine.matchedLenders.map((lender) => lender.estimatedEligibleAmount))
+    : 0;
+  const minLoanAmount = engine.matchedLenders.length
+    ? Math.min(...engine.matchedLenders.map((lender) => lender.estimatedEligibleAmount))
+    : 0;
+  const estimatedEMI = engine.matchedLenders.length
+    ? Math.min(...engine.matchedLenders.map((lender) => lender.estimatedEmi))
+    : legacy.estimatedEMI;
+
+  return {
+    ...legacy,
+    isEligible: engine.eligibilityStatus === 'ELIGIBLE',
+    score: scoreForConfidence(engine.confidenceTier),
+    maxLoanAmount,
+    minLoanAmount,
+    estimatedEMI,
+    eligibleBanks,
+    ...engine,
+    schemaVersion: '2.0',
+    ruleConfigReleaseId: configuration.ruleSetId,
+    ruleConfigHash: configuration.configHash,
+    disclaimer:
+      'Indicative pre-qualification based on declared information and current lender rules. This is not a sanction, loan offer, or guarantee. Final terms require lender verification, KYC, and separate consent before any bureau check.',
+  };
+};
+
+export const runSoftCheckForMode = ({
+  input,
+  banks,
+  configuration,
+  mode = getSoftCheckEngineMode(),
+}: {
+  input: SoftCheckInput;
+  banks: SoftCheckBank[];
+  configuration?: SoftCheckConfiguration | null;
+  mode?: SoftCheckEngineMode;
+}): SoftCheckModeRun => {
+  if (mode === 'v2' && configuration) {
+    return { response: runConfiguredSoftCheck({ input, banks, configuration }) };
+  }
+
+  const legacy = runSoftCheck({ input, banks });
+  if (mode !== 'shadow' || !configuration) return { response: legacy };
+
+  try {
+    const engine = evaluateSoftCheck({
+      input: normalizeSoftCheckInput(input),
+      lenders: configuration.lenders,
+      rules: configuration.rules,
+      configId: configuration.ruleSetId,
+      configVersion: configuration.ruleSetVersion,
+    });
+    return {
+      response: legacy,
+      shadowMetrics: {
+        mode: 'shadow',
+        failed: false,
+        ruleConfigReleaseId: configuration.ruleSetId,
+        ruleConfigVersion: configuration.ruleSetVersion,
+        ruleConfigHash: configuration.configHash,
+        legacyEligible: legacy.isEligible,
+        v2Status: engine.eligibilityStatus,
+        matchedLenderCount: engine.matchedLenders.length,
+        borderlineLenderCount: engine.borderlineLenders.length,
+        disqualifiedLenderCount: engine.disqualifiedLenders.length,
+      },
+    };
+  } catch {
+    return {
+      response: legacy,
+      shadowMetrics: {
+        mode: 'shadow',
+        failed: true,
+        ruleConfigReleaseId: configuration.ruleSetId,
+        ruleConfigVersion: configuration.ruleSetVersion,
+        ruleConfigHash: configuration.configHash,
+        legacyEligible: legacy.isEligible,
+        errorCode: 'SOFT_CHECK_SHADOW_EVALUATION_FAILED',
+      },
+    };
+  }
+};

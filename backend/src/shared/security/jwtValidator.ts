@@ -80,6 +80,6 @@ export const validateJWTConfig = (): void => {
 };
 
 export const generateSecureSecret = (): string => {
-  const crypto = require('crypto');
   return crypto.randomBytes(64).toString('hex');
 };
+import crypto from 'node:crypto';

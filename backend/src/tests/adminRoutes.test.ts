@@ -28,6 +28,11 @@ const listBanks = ok('listBanks');
 const getBank = ok('getBank');
 const toggleBankStatus = ok('toggleBankStatus');
 const updateBank = ok('updateBank');
+const listSoftCheckRuleSets = ok('listSoftCheckRuleSets');
+const createSoftCheckRuleSet = ok('createSoftCheckRuleSet');
+const submitSoftCheckRuleSet = ok('submitSoftCheckRuleSet');
+const approveSoftCheckRuleSet = ok('approveSoftCheckRuleSet');
+const activateSoftCheckRuleSet = ok('activateSoftCheckRuleSet');
 
 const getLeads = ok('getLeads');
 const getLeadById = ok('getLeadById');
@@ -77,6 +82,14 @@ vi.mock('../modules/banks/banks.controller.js', () => ({
   getBank,
   toggleBankStatus,
   updateBank,
+}));
+
+vi.mock('../modules/soft-check/softCheckRule.controller.js', () => ({
+  listSoftCheckRuleSets,
+  createSoftCheckRuleSet,
+  submitSoftCheckRuleSet,
+  approveSoftCheckRuleSet,
+  activateSoftCheckRuleSet,
 }));
 
 vi.mock('../modules/leads/lead.controller.js', () => ({
@@ -263,5 +276,32 @@ describe('admin routes', () => {
     expect(response.status).toBe(200);
     expect(json.handler).toBe('toggleBankStatus');
     expect(toggleBankStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes eligibility rule reads only with eligibility rule read permission', async () => {
+    const { response, json } = await requestJson(
+      'GET',
+      '/api/admin/eligibility/rule-sets',
+      undefined,
+      adminHeaders('eligibility_rules:read'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.handler).toBe('listSoftCheckRuleSets');
+    expect(listSoftCheckRuleSets).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes eligibility rule activation only with eligibility rule update permission', async () => {
+    const ruleSetId = '66666666-6666-4666-8666-666666666666';
+    const { response, json } = await requestJson(
+      'POST',
+      `/api/admin/eligibility/rule-sets/${ruleSetId}/activate`,
+      { reason: 'approved rollout' },
+      adminHeaders('eligibility_rules:update'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(json.handler).toBe('activateSoftCheckRuleSet');
+    expect(activateSoftCheckRuleSet).toHaveBeenCalledTimes(1);
   });
 });

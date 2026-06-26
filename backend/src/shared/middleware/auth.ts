@@ -34,12 +34,10 @@ const setCachedAuthUser = (user: User): void => {
   authUserCache.set(user.id, { user, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
 };
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-      partnerOrgId?: string;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: User;
+    partnerOrgId?: string;
   }
 }
 

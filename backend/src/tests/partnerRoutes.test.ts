@@ -28,6 +28,7 @@ const submitStoredClientToGPS = ok('submitStoredClientToGPS');
 const getPartnerCustomerById = ok('getPartnerCustomerById');
 const getPartnerCustomerActivity = ok('getPartnerCustomerActivity');
 const runPartnerSoftCheck = ok('runPartnerSoftCheck');
+const softCheckLimiter = vi.fn((_req: express.Request, _res: express.Response, next: express.NextFunction) => next());
 
 vi.mock('../modules/leads/lead.controller.js', () => ({
   createLead,
@@ -85,6 +86,10 @@ vi.mock('../shared/middleware/partnerContext.js', () => ({
 
 vi.mock('../shared/middleware/cacheControl.js', () => ({
   cacheControl: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
+}));
+
+vi.mock('../shared/middleware/rateLimiter.js', () => ({
+  softCheckLimiter,
 }));
 
 vi.mock('../shared/utils/cache.js', () => ({
@@ -175,6 +180,27 @@ describe('partner routes', () => {
     expect(getCurrentPartnerProfile).not.toHaveBeenCalled();
   });
 
+  it('requires authentication before soft-check endpoint access', async () => {
+    const { response, json } = await requestJson('POST', '/api/partner/soft-check', {});
+
+    expect(response.status).toBe(401);
+    expect(json.success).toBe(false);
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
+  it('requires partner role before soft-check endpoint access', async () => {
+    const { response, json } = await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      {},
+      { authorization: 'Bearer valid-token', 'x-role': 'admin' },
+    );
+
+    expect(response.status).toBe(403);
+    expect(json.success).toBe(false);
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['GET', '/api/partner/profile', getCurrentPartnerProfile],
     ['GET', '/api/partner/leads/stats', getLeadStats],
@@ -233,6 +259,34 @@ describe('partner routes', () => {
     expect(response.status).toBe(400);
     expect(json.message).toBe('Invalid ID format for "id"');
     expect(updateStoredClientStatus).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid soft-check body IDs before controller access', async () => {
+    const { response, json } = await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      { storedClientId: 'not-a-uuid', consentCredit: true },
+      partnerHeaders,
+    );
+
+    expect(response.status).toBe(400);
+    expect(json).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Validation failed',
+    }));
+    expect(runPartnerSoftCheck).not.toHaveBeenCalled();
+  });
+
+  it('applies the dedicated soft-check rate limiter before the controller', async () => {
+    await requestJson(
+      'POST',
+      '/api/partner/soft-check',
+      { consentCredit: true },
+      partnerHeaders,
+    );
+
+    expect(softCheckLimiter).toHaveBeenCalledTimes(1);
+    expect(runPartnerSoftCheck).toHaveBeenCalledTimes(1);
   });
 
   it('redirects dashboard requests to partner lead stats', async () => {

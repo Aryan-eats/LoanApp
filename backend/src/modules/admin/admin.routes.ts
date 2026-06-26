@@ -32,6 +32,13 @@ import {
   toggleBankStatus,
   updateBank,
 } from '../banks/banks.controller.js';
+import {
+  activateSoftCheckRuleSet,
+  approveSoftCheckRuleSet,
+  createSoftCheckRuleSet,
+  listSoftCheckRuleSets,
+  submitSoftCheckRuleSet,
+} from '../soft-check/softCheckRule.controller.js';
 import adminLeadRoutes from '../leads/adminLead.routes.js';
 
 const router = Router();
@@ -81,5 +88,12 @@ router.get('/banks', requirePermission('banks', 'read'), cacheControl(15), listB
 router.get('/banks/:id', requirePermission('banks', 'read'), getBank);
 router.patch('/banks/:id/status', requirePermission('banks', 'update'), toggleBankStatus);
 router.put('/banks/:id', requirePermission('banks', 'update'), updateBank);
+
+// -- Soft-check Eligibility Rules --------------------------------------------
+router.get('/eligibility/rule-sets', requirePermission('eligibility_rules', 'read'), listSoftCheckRuleSets);
+router.post('/eligibility/rule-sets', requirePermission('eligibility_rules', 'create'), createSoftCheckRuleSet);
+router.post('/eligibility/rule-sets/:id/submit', requirePermission('eligibility_rules', 'update'), submitSoftCheckRuleSet);
+router.post('/eligibility/rule-sets/:id/approve', requirePermission('eligibility_rules', 'update'), approveSoftCheckRuleSet);
+router.post('/eligibility/rule-sets/:id/activate', requirePermission('eligibility_rules', 'update'), activateSoftCheckRuleSet);
 
 export default router;
