@@ -10,14 +10,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER audit_log_no_update
-  BEFORE UPDATE ON "audit_logs"
-  FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_modification();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'audit_log_no_update'
+  ) THEN
+    CREATE TRIGGER audit_log_no_update
+      BEFORE UPDATE ON "audit_logs"
+      FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_modification();
+  END IF;
+END $$;
 
 -- Prevent DELETE on audit_logs
-CREATE TRIGGER audit_log_no_delete
-  BEFORE DELETE ON "audit_logs"
-  FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_modification();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'audit_log_no_delete'
+  ) THEN
+    CREATE TRIGGER audit_log_no_delete
+      BEFORE DELETE ON "audit_logs"
+      FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_modification();
+  END IF;
+END $$;
 
 -- Note: To perform administrative maintenance (e.g. archiving after 5 years),
 -- temporarily disable these triggers:

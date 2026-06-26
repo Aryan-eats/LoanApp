@@ -3,13 +3,13 @@
  * Safe to run multiple times (upsert by bank code).
  *
  * Usage:
- *   npx tsx src/scripts/seedBanks.ts
+ *   npx tsx prisma/seeds/seedBanks.ts
  */
 
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { basePrisma as prisma } from '../shared/db/prisma.js';
+import { basePrisma as prisma } from '../../src/shared/db/prisma.js';
 
 interface CommissionRate {
   loanType: string;

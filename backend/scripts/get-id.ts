@@ -1,4 +1,4 @@
-import prisma from './src/config/prisma.js';
+import prisma from '../src/shared/db/prisma.js';
 
 async function main() {
   const user = await prisma.user.findFirst();

@@ -3,7 +3,7 @@
  * Safe to run multiple times (upsert).
  *
  * Usage:
- *   npx tsx src/scripts/seedDocRequirements.ts
+ *   npx tsx prisma/seeds/seedDocRequirements.ts
  */
 
 import dotenv from 'dotenv';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-import { basePrisma as prisma } from '../shared/db/prisma.js';
+import { basePrisma as prisma } from '../../src/shared/db/prisma.js';
 
 // -- Bank / NBFC catalogue (mirrors mockBanks.ts) -----------------------------
 const banks = [
