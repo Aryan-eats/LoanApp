@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { protect, authorizeAdmin, requirePermission } from '../shared/middleware/auth.js';
-import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
+import { protect, authorizeAdmin, requirePermission } from '../../shared/middleware/auth.js';
+import { validateUUID, validateUUIDParam } from '../../shared/middleware/validateUUID.js';
 import {
   getPartners,
   getPartnerById,
@@ -12,8 +12,8 @@ import {
   submitPartnerKYC,
   updatePartnerKYCStatus,
   getPartnerStats,
-} from '../controllers/partnerController.js';
-import { registerPartner } from '../controllers/authController.js';
+} from './partners.controller.js';
+import { registerPartner } from '../../controllers/authController.js';
 
 const router = Router();
 

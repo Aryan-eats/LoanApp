@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { resolvePartnerOrg } from '../../middleware/rlsContext.js';
+import { resolvePartnerOrg } from '../../shared/middleware/partnerContext.js';
 import { protect, authorize } from '../../shared/middleware/auth.js';
 import { validateUUID } from '../../shared/middleware/validateUUID.js';
 import { runPartnerSoftCheck } from './softCheck.controller.js';

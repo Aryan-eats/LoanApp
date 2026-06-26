@@ -56,7 +56,7 @@ vi.mock('../utils/leadId.js', () => ({
   getNextGpsifsLeadId: vi.fn(),
 }));
 
-vi.mock('../services/consent.js', () => ({
+vi.mock('../modules/partner-data/consent.service.js', () => ({
   canViewLeadPII: vi.fn().mockResolvedValue(true),
   grantAccess: vi.fn(),
 }));
@@ -86,7 +86,7 @@ vi.mock('../services/documentService.js', () => ({
 }));
 
 const { getLeadById, getLeads, updateLead } = await import('../controllers/leadController.js');
-const { updateStoredClientStatus } = await import('../controllers/partnerDataController.js');
+const { updateStoredClientStatus } = await import('../modules/partner-data/partnerData.controller.js');
 const {
   generateUploadToken,
   getLeadDocUrl,

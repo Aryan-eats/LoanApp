@@ -22,7 +22,7 @@ vi.mock('../utils/fieldEncryption.js', () => ({
   decryptResultWithBridge: vi.fn(),
 }));
 
-const { grantAccess } = await import('../services/consent.js');
+const { grantAccess } = await import('../modules/partner-data/consent.service.js');
 
 describe('consent tenant isolation', () => {
   beforeEach(() => {

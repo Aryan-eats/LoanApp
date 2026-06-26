@@ -8,7 +8,7 @@ import { logAuditEvent } from '../modules/audit/auditLogger.js';
 import { getRequiredDocTypes } from '../modules/doc-requirements/loanDocsMap.js';
 import { formatLeadResponse } from '../utils/leadHelpers.js';
 import { getNextGpsifsLeadId } from '../utils/leadId.js';
-import { canViewLeadPII, grantAccess } from '../services/consent.js';
+import { canViewLeadPII, grantAccess } from '../modules/partner-data/consent.service.js';
 import { isAdminRole } from '../modules/users/adminPermissions.service.js';
 
 type LeadWithRelations = Prisma.LeadGetPayload<{

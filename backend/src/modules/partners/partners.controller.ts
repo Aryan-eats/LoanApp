@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
 import { Decimal } from '@prisma/client/runtime/client';
 import type { User, AuditEventType } from '@prisma/client';
-import prisma from '../shared/db/prisma.js';
-import { logAuditEvent, redactPAN, redactAadhaar } from '../modules/audit/auditLogger.js';
-import { cacheWrap, cacheDelete } from '../shared/utils/cache.js';
-import { isAdminRole } from '../modules/users/adminPermissions.service.js';
+import prisma from '../../shared/db/prisma.js';
+import { logAuditEvent, redactPAN, redactAadhaar } from '../audit/auditLogger.js';
+import { cacheWrap, cacheDelete } from '../../shared/utils/cache.js';
+import { isAdminRole } from '../users/adminPermissions.service.js';
 
 // Derive the frontend-visible status from DB fields
 const derivePartnerStatus = (user: User): string => {

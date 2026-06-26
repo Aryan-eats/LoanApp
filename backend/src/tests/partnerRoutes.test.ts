@@ -38,11 +38,11 @@ vi.mock('../controllers/leadController.js', () => ({
   updateLeadStatus,
 }));
 
-vi.mock('../controllers/partnerController.js', () => ({
+vi.mock('../modules/partners/partners.controller.js', () => ({
   getCurrentPartnerProfile,
 }));
 
-vi.mock('../controllers/partnerDataController.js', () => ({
+vi.mock('../modules/partner-data/partnerData.controller.js', () => ({
   getStoredClients,
   createStoredClient,
   updateStoredClientStatus,
@@ -79,7 +79,7 @@ vi.mock('../shared/middleware/auth.js', () => ({
     },
 }));
 
-vi.mock('../middleware/rlsContext.js', () => ({
+vi.mock('../shared/middleware/partnerContext.js', () => ({
   resolvePartnerOrg: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
@@ -220,6 +220,19 @@ describe('partner routes', () => {
     expect(response.status).toBe(400);
     expect(json.message).toBe('Invalid ID format for "id"');
     expect(getLeadById).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid stored-client UUID params before controller access', async () => {
+    const { response, json } = await requestJson(
+      'PATCH',
+      '/api/partner/stored-clients/not-a-uuid/status',
+      { localStatus: 'processing' },
+      partnerHeaders,
+    );
+
+    expect(response.status).toBe(400);
+    expect(json.message).toBe('Invalid ID format for "id"');
+    expect(updateStoredClientStatus).not.toHaveBeenCalled();
   });
 
   it('redirects dashboard requests to partner lead stats', async () => {

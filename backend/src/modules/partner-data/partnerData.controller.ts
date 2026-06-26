@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import prisma from '../shared/db/prisma.js';
-import { grantAccess } from '../services/consent.js';
-import { logAuditEvent } from '../modules/audit/auditLogger.js';
-import { formatLeadResponse } from '../utils/leadHelpers.js';
+import prisma from '../../shared/db/prisma.js';
+import { grantAccess } from './consent.service.js';
+import { logAuditEvent } from '../audit/auditLogger.js';
+import { formatLeadResponse } from '../../utils/leadHelpers.js';
 import {
   computeLeadScore,
   deriveCustomerIdentity,
@@ -11,7 +11,7 @@ import {
   scoreBandForLeadScore,
   summarizeConsentGrants,
   type ConsentGrantLike,
-} from '../utils/crmHelpers.js';
+} from '../../utils/crmHelpers.js';
 
 type StoredClientWithRelations = Prisma.PartnerDataGetPayload<{
   include: { documents: true; consentGrants: true };

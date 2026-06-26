@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { protect, authorize } from '../shared/middleware/auth.js';
 import { validateUUID, validateUUIDParam } from '../shared/middleware/validateUUID.js';
 import { cacheControl } from '../shared/middleware/cacheControl.js';
-import { resolvePartnerOrg } from '../middleware/rlsContext.js';
+import { resolvePartnerOrg } from '../shared/middleware/partnerContext.js';
 import {
   createLead,
   getLeads,
@@ -11,21 +11,8 @@ import {
   getLeadStats,
   updateLeadStatus,
 } from '../controllers/leadController.js';
-import { getCurrentPartnerProfile } from '../controllers/partnerController.js';
-import {
-  getStoredClients,
-  createStoredClient,
-  updateStoredClientStatus,
-  updateStoredClientNotes,
-  updateStoredClientAssignedBank,
-  updateStoredClientPreferredBank,
-  deleteStoredClient,
-  bulkCreateStoredClients,
-  saveStoredClientDocuments,
-  submitStoredClientToGPS,
-  getPartnerCustomerById,
-  getPartnerCustomerActivity,
-} from '../controllers/partnerDataController.js';
+import { getCurrentPartnerProfile } from '../modules/partners/partners.controller.js';
+import partnerDataRoutes from '../modules/partner-data/partnerData.routes.js';
 
 const router = Router();
 
@@ -59,27 +46,7 @@ router.route('/leads/:id')
 // Update lead status with timeline entry
 router.patch('/leads/:id/status', updateLeadStatus);
 
-/**
- * Stored Clients (PartnerData) Routes
- * Leads a partner saves privately before submitting to admin.
- */
-// Bulk create (must be before /:id routes)
-router.post('/stored-clients/bulk', bulkCreateStoredClients);
-
-router.get('/customers/:id', getPartnerCustomerById);
-router.get('/customers/:id/activity', getPartnerCustomerActivity);
-
-router.route('/stored-clients')
-  .get(getStoredClients)       // GET  /api/partner/stored-clients
-  .post(createStoredClient);   // POST /api/partner/stored-clients
-
-router.patch('/stored-clients/:id/status', updateStoredClientStatus);
-router.patch('/stored-clients/:id/notes',  updateStoredClientNotes);
-router.patch('/stored-clients/:id/assigned-bank', updateStoredClientAssignedBank);
-router.patch('/stored-clients/:id/preferred-bank', updateStoredClientPreferredBank);
-router.put('/stored-clients/:id/documents', saveStoredClientDocuments);
-router.post('/stored-clients/:id/submit', submitStoredClientToGPS);
-router.delete('/stored-clients/:id',       deleteStoredClient);
+router.use(partnerDataRoutes);
 
 /**
  * Partner Dashboard Route

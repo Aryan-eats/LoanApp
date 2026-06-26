@@ -49,7 +49,7 @@ vi.mock('../modules/users/users.controller.js', () => ({
   listRoles,
 }));
 
-vi.mock('../controllers/partnerController.js', () => ({
+vi.mock('../modules/partners/partners.controller.js', () => ({
   getPartners: listPartners,
 }));
 

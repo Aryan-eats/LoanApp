@@ -1,12 +1,12 @@
 import { Prisma, type UserRole } from '@prisma/client';
-import prisma from '../shared/db/prisma.js';
+import prisma from '../../shared/db/prisma.js';
 import {
   decryptField,
   encryptForGPSIndia,
   isEncryptedCiphertext,
-} from '../shared/security/encryption.js';
-import { getNextGpsifsLeadId } from '../utils/leadId.js';
-import { decryptResultWithBridge } from '../utils/fieldEncryption.js';
+} from '../../shared/security/encryption.js';
+import { getNextGpsifsLeadId } from '../../utils/leadId.js';
+import { decryptResultWithBridge } from '../../utils/fieldEncryption.js';
 
 const GPS_INDIA_GRANTED_TO = 'gps_india';
 

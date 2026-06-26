@@ -26,7 +26,7 @@ vi.mock('../controllers/authController.js', () => ({
   registerPartner,
 }));
 
-vi.mock('../controllers/partnerController.js', () => ({
+vi.mock('../modules/partners/partners.controller.js', () => ({
   getPartners,
   getPartnerById,
   updatePartner,
@@ -65,7 +65,7 @@ vi.mock('../shared/middleware/auth.js', () => ({
     },
 }));
 
-const partnersRoutes = (await import('../routes/partnersRoutes.js')).default;
+const partnersRoutes = (await import('../modules/partners/partners.routes.js')).default;
 
 const createApp = () => {
   const app = express();

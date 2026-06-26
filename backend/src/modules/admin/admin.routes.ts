@@ -11,7 +11,7 @@ import {
   deleteUser,
   updateRolePermissions,
 } from '../users/users.controller.js';
-import { getPartners as listPartners } from '../../controllers/partnerController.js';
+import { getPartners as listPartners } from '../partners/partners.controller.js';
 import { getStats } from './admin.controller.js';
 import {
   listAuditLogs,

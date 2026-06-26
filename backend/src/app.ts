@@ -9,7 +9,7 @@ import authRoutes from "./routes/authRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
 import leadsRoutes from "./routes/leadsRoutes.js";
 import partnerRoutes from "./routes/partnerRoutes.js";
-import partnersRoutes from "./routes/partnersRoutes.js";
+import partnersRoutes from "./modules/partners/partners.routes.js";
 import profileRoutes from "./modules/profile/profile.routes.js";
 import softCheckRoutes from "./modules/soft-check/softCheck.routes.js";
 
