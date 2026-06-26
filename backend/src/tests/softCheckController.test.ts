@@ -42,6 +42,7 @@ const req = (body: Record<string, unknown>) =>
 describe('runPartnerSoftCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.SOFT_CHECK_ENGINE_MODE;
     prismaMock.partnerData.findFirst.mockResolvedValue(null);
     prismaMock.lead.findFirst.mockResolvedValue(null);
     prismaMock.lead.update.mockResolvedValue({});
@@ -232,6 +233,7 @@ describe('runPartnerSoftCheck', () => {
   });
 
   it('returns additive V2 fields when an active rule configuration exists', async () => {
+    process.env.SOFT_CHECK_ENGINE_MODE = 'v2';
     getSoftCheckConfigurationMock.mockResolvedValue({
       productId: 'product-1',
       ruleSetId: 'ruleset-1',

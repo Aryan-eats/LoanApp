@@ -69,6 +69,32 @@ export type ConfiguredSoftCheckResult = SoftCheckResult &
     ruleConfigHash: string;
   };
 
+export type SoftCheckEngineMode = 'legacy' | 'shadow' | 'v2';
+
+export type SoftCheckShadowMetrics = {
+  mode: 'shadow';
+  failed: boolean;
+  ruleConfigReleaseId: string;
+  ruleConfigVersion: number;
+  ruleConfigHash: string;
+  legacyEligible: boolean;
+  v2Status?: SoftCheckEngineResult['eligibilityStatus'];
+  matchedLenderCount?: number;
+  borderlineLenderCount?: number;
+  disqualifiedLenderCount?: number;
+  errorCode?: 'SOFT_CHECK_SHADOW_EVALUATION_FAILED';
+};
+
+export type SoftCheckModeRun = {
+  response: SoftCheckResult | ConfiguredSoftCheckResult;
+  shadowMetrics?: SoftCheckShadowMetrics;
+};
+
+export const getSoftCheckEngineMode = (
+  value = process.env.SOFT_CHECK_ENGINE_MODE
+): SoftCheckEngineMode =>
+  value === 'shadow' || value === 'v2' || value === 'legacy' ? value : 'legacy';
+
 const toNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -217,4 +243,61 @@ export const runConfiguredSoftCheck = ({
     disclaimer:
       'Indicative pre-qualification based on declared information and current lender rules. This is not a sanction, loan offer, or guarantee. Final terms require lender verification, KYC, and separate consent before any bureau check.',
   };
+};
+
+export const runSoftCheckForMode = ({
+  input,
+  banks,
+  configuration,
+  mode = getSoftCheckEngineMode(),
+}: {
+  input: SoftCheckInput;
+  banks: SoftCheckBank[];
+  configuration?: SoftCheckConfiguration | null;
+  mode?: SoftCheckEngineMode;
+}): SoftCheckModeRun => {
+  if (mode === 'v2' && configuration) {
+    return { response: runConfiguredSoftCheck({ input, banks, configuration }) };
+  }
+
+  const legacy = runSoftCheck({ input, banks });
+  if (mode !== 'shadow' || !configuration) return { response: legacy };
+
+  try {
+    const engine = evaluateSoftCheck({
+      input: normalizeSoftCheckInput(input),
+      lenders: configuration.lenders,
+      rules: configuration.rules,
+      configId: configuration.ruleSetId,
+      configVersion: configuration.ruleSetVersion,
+    });
+    return {
+      response: legacy,
+      shadowMetrics: {
+        mode: 'shadow',
+        failed: false,
+        ruleConfigReleaseId: configuration.ruleSetId,
+        ruleConfigVersion: configuration.ruleSetVersion,
+        ruleConfigHash: configuration.configHash,
+        legacyEligible: legacy.isEligible,
+        v2Status: engine.eligibilityStatus,
+        matchedLenderCount: engine.matchedLenders.length,
+        borderlineLenderCount: engine.borderlineLenders.length,
+        disqualifiedLenderCount: engine.disqualifiedLenders.length,
+      },
+    };
+  } catch {
+    return {
+      response: legacy,
+      shadowMetrics: {
+        mode: 'shadow',
+        failed: true,
+        ruleConfigReleaseId: configuration.ruleSetId,
+        ruleConfigVersion: configuration.ruleSetVersion,
+        ruleConfigHash: configuration.configHash,
+        legacyEligible: legacy.isEligible,
+        errorCode: 'SOFT_CHECK_SHADOW_EVALUATION_FAILED',
+      },
+    };
+  }
 };

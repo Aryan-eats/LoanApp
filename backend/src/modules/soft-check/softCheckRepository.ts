@@ -4,6 +4,7 @@ import type {
   EmploymentType,
   SoftCheckLender,
 } from './softCheckEngine.js';
+import { validateEligibilityRules } from './softCheckEngine.js';
 
 export interface SoftCheckConfiguration {
   productId: string;
@@ -13,6 +14,41 @@ export interface SoftCheckConfiguration {
   lenders: SoftCheckLender[];
   rules: EligibilityRule[];
 }
+
+export const validateSoftCheckConfiguration = (
+  configuration: SoftCheckConfiguration
+): SoftCheckConfiguration => {
+  const baseRules = configuration.rules.filter((rule) => !rule.lenderId);
+  if (!baseRules.length) {
+    throw new Error('Malformed soft-check base configuration: no active base rules');
+  }
+
+  try {
+    validateEligibilityRules(baseRules);
+  } catch (error) {
+    throw new Error(
+      `Malformed soft-check base configuration: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`
+    );
+  }
+
+  const validOverlays = configuration.rules
+    .filter((rule) => rule.lenderId)
+    .filter((overlay) => {
+      try {
+        validateEligibilityRules([...baseRules, overlay]);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+  return {
+    ...configuration,
+    rules: [...baseRules, ...validOverlays],
+  };
+};
 
 const employmentTypes = (values: string[]): EmploymentType[] =>
   values.filter((value): value is EmploymentType =>
@@ -101,7 +137,7 @@ export const getSoftCheckConfiguration = async (
       })),
   ];
 
-  return {
+  return validateSoftCheckConfiguration({
     productId: product.id,
     ruleSetId: ruleSet.id,
     ruleSetVersion: ruleSet.version,
@@ -120,5 +156,5 @@ export const getSoftCheckConfiguration = async (
       tenureMaxMonths: entry.tenureMaxMonths,
       employmentTypes: employmentTypes(entry.employmentTypes),
     })),
-  };
+  });
 };

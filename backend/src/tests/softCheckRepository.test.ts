@@ -10,6 +10,46 @@ vi.mock('../shared/db/prisma.js', () => ({
 
 const { getSoftCheckConfiguration } = await import('../modules/soft-check/softCheckRepository.js');
 
+const validBaseRule = {
+  id: 'rule-1',
+  ruleCode: 'PL_MAX_FOIR',
+  name: 'Maximum FOIR',
+  fieldPath: 'derived.foirPercent',
+  operator: 'LTE',
+  threshold: 50,
+  conditions: null,
+  employmentScopes: ['SALARIED'],
+  severity: 'HARD_FAIL',
+  priority: 1,
+  regulatoryClass: 'LENDER_VARIABLE',
+  confidenceWeight: { toString: () => '2' },
+  reasonTemplate: null,
+  suggestionTemplate: null,
+};
+
+const validProduct = (overrides: unknown[] = [], rules: unknown[] = [validBaseRule]) => ({
+  id: 'product-1',
+  code: 'personal_loan',
+  ruleSets: [{
+    id: 'ruleset-1',
+    version: 1,
+    configHash: 'hash-1',
+    rules,
+    overrides,
+  }],
+  lenderEligibility: [{
+    bankId: 'bank-1',
+    ticketMin: { toString: () => '50000' },
+    ticketMax: { toString: () => '1000000' },
+    rateMin: { toString: () => '12' },
+    rateMax: { toString: () => '15' },
+    tenureMinMonths: 12,
+    tenureMaxMonths: 60,
+    employmentTypes: ['SALARIED'],
+    bank: { id: 'bank-1', code: 'BANK_ONE', name: 'Bank One' },
+  }],
+});
+
 describe('getSoftCheckConfiguration', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -19,30 +59,8 @@ describe('getSoftCheckConfiguration', () => {
   });
 
   it('maps the active rule release, lender matrix, and approved overrides', async () => {
-    findFirst.mockResolvedValue({
-      id: 'product-1',
-      code: 'personal_loan',
-      ruleSets: [{
-        id: 'ruleset-1',
-        version: 1,
-        configHash: 'hash-1',
-        rules: [{
-          id: 'rule-1',
-          ruleCode: 'PL_MAX_FOIR',
-          name: 'Maximum FOIR',
-          fieldPath: 'derived.foirPercent',
-          operator: 'LTE',
-          threshold: 50,
-          conditions: null,
-          employmentScopes: ['SALARIED'],
-          severity: 'HARD_FAIL',
-          priority: 1,
-          regulatoryClass: 'LENDER_VARIABLE',
-          confidenceWeight: { toString: () => '2' },
-          reasonTemplate: null,
-          suggestionTemplate: null,
-        }],
-        overrides: [{
+    findFirst.mockResolvedValue(validProduct([
+      {
           id: 'override-1',
           bankId: 'bank-1',
           ruleCode: 'PL_MAX_FOIR',
@@ -57,20 +75,8 @@ describe('getSoftCheckConfiguration', () => {
           confidenceWeight: { toString: () => '2' },
           reasonTemplate: null,
           suggestionTemplate: null,
-        }],
-      }],
-      lenderEligibility: [{
-        bankId: 'bank-1',
-        ticketMin: { toString: () => '50000' },
-        ticketMax: { toString: () => '1000000' },
-        rateMin: { toString: () => '12' },
-        rateMax: { toString: () => '15' },
-        tenureMinMonths: 12,
-        tenureMaxMonths: 60,
-        employmentTypes: ['SALARIED'],
-        bank: { id: 'bank-1', code: 'BANK_ONE', name: 'Bank One' },
-      }],
-    });
+        },
+    ]));
 
     const config = await getSoftCheckConfiguration('personal_loan');
 
@@ -87,5 +93,44 @@ describe('getSoftCheckConfiguration', () => {
       expect.objectContaining({ id: 'rule-1', threshold: 50 }),
       expect.objectContaining({ id: 'override-1', lenderId: 'bank-1', threshold: 45 }),
     ]));
+  });
+
+  it('fails closed when the active base rule release is malformed', async () => {
+    findFirst.mockResolvedValue(validProduct([], [{
+      ...validBaseRule,
+      id: 'rule-bad',
+      fieldPath: 'borrower.pan',
+    }]));
+
+    await expect(getSoftCheckConfiguration('personal_loan')).rejects.toThrow(
+      'Malformed soft-check base configuration'
+    );
+  });
+
+  it('excludes only malformed lender overlays from an otherwise valid release', async () => {
+    findFirst.mockResolvedValue(validProduct([
+      {
+        id: 'override-bad',
+        bankId: 'bank-1',
+        ruleCode: 'PL_MAX_FOIR',
+        overrideMode: 'TIGHTEN',
+        operator: 'LTE',
+        threshold: 60,
+        conditions: null,
+        employmentScopes: ['SALARIED'],
+        severity: 'HARD_FAIL',
+        priority: 1,
+        regulatoryClass: 'LENDER_VARIABLE',
+        confidenceWeight: { toString: () => '2' },
+        reasonTemplate: null,
+        suggestionTemplate: null,
+      },
+    ]));
+
+    const config = await getSoftCheckConfiguration('personal_loan');
+
+    expect(config?.rules).toEqual([
+      expect.objectContaining({ id: 'rule-1', threshold: 50 }),
+    ]);
   });
 });

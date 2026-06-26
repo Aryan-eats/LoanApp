@@ -4,8 +4,7 @@ import prisma from '../../shared/db/prisma.js';
 import { logAuditEvent } from '../audit/auditLogger.js';
 import { getSoftCheckConfiguration } from './softCheckRepository.js';
 import {
-  runConfiguredSoftCheck,
-  runSoftCheck,
+  runSoftCheckForMode,
   type SoftCheckBank,
   type SoftCheckInput,
 } from './softCheck.service.js';
@@ -107,9 +106,8 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
       }),
     ]);
     const banks = bankRows.map(toSoftCheckBank);
-    const result = configuration
-      ? runConfiguredSoftCheck({ input, banks, configuration })
-      : runSoftCheck({ input, banks });
+    const softCheckRun = runSoftCheckForMode({ input, banks, configuration });
+    const result = softCheckRun.response;
 
     if (lead) {
       await prisma.lead.update({
@@ -135,6 +133,7 @@ export const runPartnerSoftCheck = async (req: Request, res: Response): Promise<
         partnerOrgId,
         ruleConfigReleaseId:
           'ruleConfigReleaseId' in result ? result.ruleConfigReleaseId : null,
+        shadowMetrics: softCheckRun.shadowMetrics ?? null,
       },
     });
 

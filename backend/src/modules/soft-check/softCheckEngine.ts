@@ -307,7 +307,7 @@ const isStricter = (base: EligibilityRule, overlay: EligibilityRule): boolean =>
   return thresholdsEqual(base.threshold, overlay.threshold);
 };
 
-const validateRules = (rules: EligibilityRule[]): void => {
+export const validateEligibilityRules = (rules: EligibilityRule[]): void => {
   const baseRules = rules.filter((rule) => !rule.lenderId);
   const seenBase = new Map<string, EligibilityRule>();
 
@@ -439,7 +439,7 @@ export const evaluateSoftCheck = ({
   configId?: string;
   configVersion?: number;
 }): SoftCheckEngineResult => {
-  validateRules(rules);
+  validateEligibilityRules(rules);
   const candidates = lenders.filter((lender) => lender.productCode === input.productCode);
   if (!candidates.length) {
     return {
