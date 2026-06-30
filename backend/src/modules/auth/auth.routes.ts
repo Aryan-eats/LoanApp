@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import {
   getMe,
-  login,
+  handleGooglePartnerOAuthCallback,
+  loginPartner,
+  loginRestrictedAccess,
   logout,
   refreshAccessToken,
   register,
   registerPartner,
+  startGooglePartnerOAuth,
 } from './auth.controller.js';
 import {
   msg91ResendOTP,
@@ -22,6 +25,8 @@ import {
 import { optionalAuth, protect } from '../../shared/middleware/auth.js';
 import {
   loginLimiter,
+  oauthStartLimiter,
+  oauthCallbackLimiter,
   registerLimiter,
   passwordResetLimiter,
   otpLimiter,
@@ -46,7 +51,10 @@ const router = Router();
 // Public routes with rate limiting and validation
 router.post('/register', registerLimiter, validateRegister, register);
 router.post('/register-partner', registerLimiter, validatePartnerRegister, registerPartner);
-router.post('/login', loginLimiter, validateLogin, login);
+router.post('/login/partner', loginLimiter, validateLogin, loginPartner);
+router.post('/login/restricted-access', loginLimiter, validateLogin, loginRestrictedAccess);
+router.get('/login/partner/google', oauthStartLimiter, startGooglePartnerOAuth);
+router.get('/login/partner/google/callback', oauthCallbackLimiter, handleGooglePartnerOAuthCallback);
 router.post('/forgot-password', passwordResetLimiter, validateForgotPassword, forgotPassword);
 router.post('/reset-password', passwordResetLimiter, validateResetPassword, resetPassword);
 router.post('/send-otp', otpLimiter, validateSendOTP, sendOTP);

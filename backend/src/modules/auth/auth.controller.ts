@@ -27,12 +27,155 @@ import {
 } from './user.service.js';
 import { formatUserResponse, hashToken, normalizePhone, verifyMsg91VerificationToken } from './auth.service.js';
 import { consumeVerificationToken } from './otpChallenge.service.js';
+import { isAdminRole } from '../users/adminPermissions.service.js';
+import {
+  OAUTH_STATE_COOKIE,
+  OAUTH_VERIFIER_COOKIE,
+  OAuthError,
+  buildGoogleAuthorizationUrl,
+  createOAuthState,
+  createPkceVerifier,
+  exchangeGoogleCodeForIdToken,
+  getGoogleIdentityFromIdToken,
+  getPartnerOAuthSuccessRedirect,
+  publicOAuthFailureReason,
+  resolveGooglePartnerUser,
+} from './oauth.service.js';
 
 const isMissingTableError = (error: unknown, tableName: string): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
   error.code === 'P2021' &&
   typeof error.meta?.table === 'string' &&
   error.meta.table.includes(tableName);
+
+const oauthCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production',
+  path: '/api/auth/login/partner/google',
+  maxAge: 10 * 60 * 1000,
+};
+
+const clearOAuthCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production',
+  path: '/api/auth/login/partner/google',
+};
+
+const frontendUrl = (): string => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
+const loginFailure = async (
+  req: Request,
+  res: Response,
+  status: number,
+  email: string,
+  message = 'Invalid credentials',
+  code?: string,
+  userId?: string,
+  failureReason = message
+): Promise<void> => {
+  await logAuditEvent('LOGIN_FAILED', req, {
+    userId,
+    email,
+    success: false,
+    failureReason,
+  });
+
+  res.status(status).json({
+    success: false,
+    message,
+    ...(code ? { code } : {}),
+  });
+};
+
+const issueLoginSession = async (
+  req: Request,
+  res: Response,
+  user: User,
+  redirectTo?: string
+): Promise<void> => {
+  const fingerprint = generateDeviceFingerprint(req);
+  let isSuspicious = false;
+  try {
+    isSuspicious = await checkSuspiciousActivity(user.id, fingerprint);
+  } catch (error) {
+    if (!isMissingTableError(error, 'audit_logs')) throw error;
+    console.warn('login suspicious-activity check skipped: audit_logs table is missing');
+  }
+
+  if (isSuspicious) {
+    await logAuditEvent('SUSPICIOUS_ACTIVITY', req, {
+      userId: user.id,
+      email: user.email,
+      metadata: { reason: 'Login from new device' },
+    });
+  }
+
+  const refreshToken = signRefreshToken(user);
+  const refreshExpiresAt = getTokenExpirationMs(refreshToken);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: 0,
+          lockUntil: null,
+          lastLogin: new Date(),
+          refreshToken: hashToken(refreshToken),
+          refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+        },
+      });
+
+      await addSession(
+        user.id,
+        {
+          deviceFingerprint: fingerprint,
+          userAgent: req.headers['user-agent'] || '',
+          ip: getClientIP(req),
+        },
+        tx
+      );
+    });
+  } catch (error) {
+    if (!isMissingTableError(error, 'active_sessions')) throw error;
+
+    console.warn('login session tracking skipped: active_sessions table is missing');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockUntil: null,
+        lastLogin: new Date(),
+        refreshToken: hashToken(refreshToken),
+        refreshTokenExpires: refreshExpiresAt ? new Date(refreshExpiresAt) : null,
+      },
+    });
+  }
+
+  logAuditEvent('LOGIN_SUCCESS', req, {
+    userId: user.id,
+    email: user.email,
+  }).catch((err) => console.error('Audit log failed for LOGIN_SUCCESS:', err));
+
+  res.cookie(REFRESH_COOKIE, refreshToken, getRefreshCookieOptions());
+
+  if (redirectTo) {
+    res.redirect(redirectTo);
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Login successful',
+    data: {
+      user: formatUserResponse(user),
+      accessToken: signAccessToken(user),
+      expiresIn: getAccessTokenTtlSeconds(),
+    },
+  });
+};
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -264,7 +407,12 @@ export const registerPartner = async (req: Request, res: Response): Promise<void
   }
 };
 
-export const login = async (req: Request, res: Response): Promise<void> => {
+const loginWithRolePolicy = async (
+  req: Request,
+  res: Response,
+  isAllowedRole: (role: string) => boolean,
+  forbiddenMessage: string
+): Promise<void> => {
   try {
     const { email, password } = req.body;
 
@@ -299,15 +447,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!user) {
-      await logAuditEvent('LOGIN_FAILED', req, {
-        email: email.toLowerCase(),
-        success: false,
-        failureReason: 'User not found',
-      });
-      res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
+      await loginFailure(req, res, 401, email.toLowerCase(), 'Invalid credentials', undefined, undefined, 'User not found');
+      return;
+    }
+
+    if (!isAllowedRole(user.role)) {
+      await loginFailure(req, res, 403, user.email, forbiddenMessage, 'FORBIDDEN_LOGIN_PORTAL', user.id, 'Wrong login portal');
       return;
     }
 
@@ -345,6 +490,20 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           ? 'Your partner account is pending approval. You will receive an email once approved.'
           : 'Account has been deactivated. Please contact support.',
       });
+      return;
+    }
+
+    if (!user.password) {
+      await loginFailure(
+        req,
+        res,
+        401,
+        user.email,
+        'This account uses Google sign-in. Continue with Google.',
+        'GOOGLE_SIGN_IN_REQUIRED',
+        user.id,
+        'OAuth-only account'
+      );
       return;
     }
 
@@ -475,11 +634,110 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const loginPartner = async (req: Request, res: Response): Promise<void> =>
+  loginWithRolePolicy(req, res, (role) => role === 'partner', 'Please use the restricted access portal for admin accounts.');
+
+export const loginRestrictedAccess = async (req: Request, res: Response): Promise<void> =>
+  loginWithRolePolicy(req, res, (role) => isAdminRole(role), 'Please use the partner portal for partner accounts.');
+
+export const login = loginPartner;
+
+const loginUrlWithReason = (reason: string): string =>
+  `${frontendUrl()}/login/partner?oauth=${encodeURIComponent(reason)}`;
+
+export const startGooglePartnerOAuth = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_REDIRECT_URI) {
+      throw new OAuthError('OAUTH_CONFIGURATION_ERROR');
+    }
+
+    const state = createOAuthState();
+    const codeVerifier = createPkceVerifier();
+
+    res.cookie(OAUTH_STATE_COOKIE, state, oauthCookieOptions);
+    res.cookie(OAUTH_VERIFIER_COOKIE, codeVerifier, oauthCookieOptions);
+
+    logAuditEvent('OAUTH_START', req, {
+      metadata: { provider: 'google', portal: 'partner' },
+    }).catch((err) => console.error('Audit log failed for OAUTH_START:', err));
+
+    res.redirect(buildGoogleAuthorizationUrl({
+      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+      state,
+      codeVerifier,
+    }));
+  } catch (error) {
+    console.error('Google OAuth start error:', error instanceof OAuthError ? error.code : 'OAUTH_PROVIDER_ERROR');
+    res.redirect(loginUrlWithReason(publicOAuthFailureReason(error)));
+  }
+};
+
+export const handleGooglePartnerOAuthCallback = async (req: Request, res: Response): Promise<void> => {
+  const clearOAuthCookies = () => {
+    res.clearCookie(OAUTH_STATE_COOKIE, clearOAuthCookieOptions);
+    res.clearCookie(OAUTH_VERIFIER_COOKIE, clearOAuthCookieOptions);
+  };
+
+  try {
+    clearOAuthCookies();
+
+    if (typeof req.query.error === 'string') {
+      throw new OAuthError('OAUTH_PROVIDER_ERROR');
+    }
+
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    const expectedState = req.cookies?.[OAUTH_STATE_COOKIE];
+    const verifier = req.cookies?.[OAUTH_VERIFIER_COOKIE];
+
+    if (!code || !state || !expectedState || !verifier || state !== expectedState) {
+      throw new OAuthError('OAUTH_INVALID_STATE');
+    }
+
+    const idToken = await exchangeGoogleCodeForIdToken(code, verifier);
+    const identity = getGoogleIdentityFromIdToken(idToken);
+    const { user, accountAction } = await resolveGooglePartnerUser(identity);
+
+    if (accountAction === 'created' || accountAction === 'linked') {
+      logAuditEvent(accountAction === 'created' ? 'OAUTH_ACCOUNT_CREATED' : 'OAUTH_ACCOUNT_LINKED', req, {
+        userId: user.id,
+        email: user.email,
+        metadata: { provider: 'google', portal: 'partner' },
+      }).catch((err) => console.error('Audit log failed for OAuth account action:', err));
+    }
+
+    logAuditEvent('OAUTH_SUCCESS', req, {
+      userId: user.id,
+      email: user.email,
+      metadata: { provider: 'google', portal: 'partner' },
+    }).catch((err) => console.error('Audit log failed for OAUTH_SUCCESS:', err));
+
+    await issueLoginSession(req, res, user, getPartnerOAuthSuccessRedirect(user));
+  } catch (error) {
+    const reason = publicOAuthFailureReason(error);
+    console.error('Google OAuth callback error:', error instanceof OAuthError ? error.code : 'OAUTH_PROVIDER_ERROR');
+    if (error instanceof OAuthError && error.code === 'ACCOUNT_LINK_REQUIRED') {
+      logAuditEvent('OAUTH_ACCOUNT_LINK_BLOCKED', req, {
+        success: false,
+        failureReason: 'ACCOUNT_LINK_REQUIRED',
+        metadata: { provider: 'google', portal: 'partner' },
+      }).catch((err) => console.error('Audit log failed for OAUTH_ACCOUNT_LINK_BLOCKED:', err));
+    }
+    logAuditEvent('OAUTH_FAILURE', req, {
+      success: false,
+      failureReason: reason,
+      metadata: { provider: 'google', portal: 'partner' },
+    }).catch((err) => console.error('Audit log failed for OAUTH_FAILURE:', err));
+    res.redirect(loginUrlWithReason(reason));
+  }
+};
+
 export const refreshAccessToken = async (req: Request, res: Response): Promise<void> => {
   try {
     // Read refresh token from httpOnly cookie (falls back to body for backwards compat)
     const refreshToken: string | undefined =
-      req.cookies?.[REFRESH_COOKIE] || (req.body as { refreshToken?: string }).refreshToken;
+      req.cookies?.[REFRESH_COOKIE] || (req.body as { refreshToken?: string } | undefined)?.refreshToken;
 
     if (!refreshToken) {
       res.status(401).json({

@@ -9,7 +9,7 @@ const Footer: React.FC = () => {
           
           {/* Brand & About */}
           <div className="md:col-span-1">
-            <img src="/logo1.png" alt="GPS India Financial Services" className="h-16 w-auto -ml-3 mb-6 invert opacity-90" />
+            <img src="/logo.png" alt="GPS India Financial Services" className="h-16 w-auto -ml-3 mb-6 invert opacity-90" />
             <p className="text-gray-400 leading-relaxed mb-6">
               Empowering your financial journey with transparent, fast, and reliable loan solutions tailored for every Indian.
             </p>

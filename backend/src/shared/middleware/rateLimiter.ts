@@ -75,6 +75,36 @@ export const loginLimiter = rateLimit({
   store: buildStore('login'),
 });
 
+export const oauthStartLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 100 : 20,
+  passOnStoreError: true,
+  message: {
+    success: false,
+    message: 'Too many OAuth attempts, please try again later',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skip: isLocalDevRequest,
+  store: buildStore('oauth_start'),
+});
+
+export const oauthCallbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 200 : 60,
+  passOnStoreError: true,
+  message: {
+    success: false,
+    message: 'Too many OAuth callbacks, please try again later',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skip: isLocalDevRequest,
+  store: buildStore('oauth_callback'),
+});
+
 // Rate limiter for registration
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

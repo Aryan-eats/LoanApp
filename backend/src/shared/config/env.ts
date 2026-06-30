@@ -46,4 +46,10 @@ export const envConfig = {
   // CORS
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || 'http://localhost:5173',
+
+  // Google OAuth/OIDC for partner login
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+  GOOGLE_OAUTH_REDIRECT_URI:
+    process.env.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:5000/api/auth/login/partner/google/callback',
 } as const;

@@ -125,6 +125,21 @@ describe('auth session lifecycle', () => {
     });
   });
 
+  it('refreshes from the cookie when the request body is missing', async () => {
+    const req = {
+      cookies: { refreshToken: 'old-refresh-token' },
+      headers: {},
+    } as unknown as Request;
+    const res = createResponse();
+
+    await refreshAccessToken(req, res);
+
+    expect(userUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: user.id },
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it('blacklists the access token and clears refresh state on logout', async () => {
     const req = {
       user,

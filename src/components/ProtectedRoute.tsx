@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import useAuthStore from '../stores/authStore';
 
@@ -16,33 +16,16 @@ const LoadingSpinner = () => (
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
   const location = useLocation();
-  const { user, isAuthenticated, isLoading, checkAuth } = useAuthStore();
-  const [isChecking, setIsChecking] = useState(true);
-  const didCheck = useRef(false);
-
-  useEffect(() => {
-    // Run exactly once on mount to avoid re-render loops
-    if (didCheck.current) return;
-    didCheck.current = true;
-
-    const validateAuth = async () => {
-      // Always verify auth with the server on protected route initialization
-      await checkAuth();
-      setIsChecking(false);
-    };
-
-    validateAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { user, isAuthenticated, isLoading, authInitialized } = useAuthStore();
 
   // Show loading while checking authentication
-  if (isLoading || isChecking) {
+  if (isLoading || !authInitialized) {
     return <LoadingSpinner />;
   }
 
   // If not authenticated, redirect to login with return URL
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login/partner" state={{ from: location }} replace />;
   }
 
   // Check if user role is allowed

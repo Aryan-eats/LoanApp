@@ -6,7 +6,10 @@ const noOp = (_req: express.Request, _res: express.Response, next: express.NextF
 
 const register = vi.fn((_req: express.Request, res: express.Response) => res.status(201).json({ success: true }));
 const registerPartner = vi.fn((_req: express.Request, res: express.Response) => res.status(201).json({ success: true }));
-const login = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
+const loginPartner = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true, portal: 'partner' }));
+const loginRestrictedAccess = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true, portal: 'admin' }));
+const startGooglePartnerOAuth = vi.fn((_req: express.Request, res: express.Response) => res.status(302).end());
+const handleGooglePartnerOAuthCallback = vi.fn((_req: express.Request, res: express.Response) => res.status(302).end());
 const getMe = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
 const logout = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
 const refreshAccessToken = vi.fn((_req: express.Request, res: express.Response) => res.status(200).json({ success: true }));
@@ -23,7 +26,10 @@ type JsonObject = Record<string, any>;
 vi.mock('../modules/auth/auth.controller.js', () => ({
   register,
   registerPartner,
-  login,
+  loginPartner,
+  loginRestrictedAccess,
+  startGooglePartnerOAuth,
+  handleGooglePartnerOAuthCallback,
   getMe,
   logout,
   refreshAccessToken,
@@ -45,6 +51,8 @@ vi.mock('../modules/auth/password.controller.js', () => ({
 
 vi.mock('../shared/middleware/rateLimiter.js', () => ({
   loginLimiter: noOp,
+  oauthStartLimiter: noOp,
+  oauthCallbackLimiter: noOp,
   registerLimiter: noOp,
   passwordResetLimiter: noOp,
   otpLimiter: noOp,
@@ -84,13 +92,17 @@ const requestJson = async (
   try {
     const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
       method,
+      redirect: 'manual',
       headers: {
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...headers,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const json = await response.json() as JsonObject;
+    const text = await response.text();
+    const json = text && response.headers.get('content-type')?.includes('application/json')
+      ? JSON.parse(text) as JsonObject
+      : {};
     return { response, json };
   } finally {
     await new Promise<void>((resolve, reject) => {
@@ -104,8 +116,8 @@ describe('auth routes', () => {
     vi.clearAllMocks();
   });
 
-  it('rejects invalid login input before calling the controller', async () => {
-    const { response, json } = await requestJson('POST', '/api/auth/login', {
+  it('rejects invalid partner login input before calling the controller', async () => {
+    const { response, json } = await requestJson('POST', '/api/auth/login/partner', {
       email: 'not-an-email',
       password: '',
     });
@@ -113,18 +125,43 @@ describe('auth routes', () => {
     expect(response.status).toBe(400);
     expect(json.success).toBe(false);
     expect(json.message).toBe('Validation failed');
-    expect(login).not.toHaveBeenCalled();
+    expect(loginPartner).not.toHaveBeenCalled();
   });
 
-  it('routes valid login input to the login controller', async () => {
-    const { response, json } = await requestJson('POST', '/api/auth/login', {
+  it('routes valid partner login input to the partner login controller', async () => {
+    const { response, json } = await requestJson('POST', '/api/auth/login/partner', {
       email: 'user@example.com',
       password: 'StrongPass1!',
     });
 
     expect(response.status).toBe(200);
     expect(json.success).toBe(true);
-    expect(login).toHaveBeenCalledTimes(1);
+    expect(json.portal).toBe('partner');
+    expect(loginPartner).toHaveBeenCalledTimes(1);
+    expect(loginRestrictedAccess).not.toHaveBeenCalled();
+  });
+
+  it('routes valid restricted-access login input to the admin login controller', async () => {
+    const { response, json } = await requestJson('POST', '/api/auth/login/restricted-access', {
+      email: 'admin@example.com',
+      password: 'StrongPass1!',
+    });
+
+    expect(response.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.portal).toBe('admin');
+    expect(loginRestrictedAccess).toHaveBeenCalledTimes(1);
+    expect(loginPartner).not.toHaveBeenCalled();
+  });
+
+  it('routes Google OAuth only under partner login', async () => {
+    const start = await requestJson('GET', '/api/auth/login/partner/google');
+    const callback = await requestJson('GET', '/api/auth/login/partner/google/callback?code=abc&state=xyz');
+
+    expect(start.response.status).toBe(302);
+    expect(callback.response.status).toBe(302);
+    expect(startGooglePartnerOAuth).toHaveBeenCalledTimes(1);
+    expect(handleGooglePartnerOAuthCallback).toHaveBeenCalledTimes(1);
   });
 
   it('rejects weak registration passwords before calling the controller', async () => {

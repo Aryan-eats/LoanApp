@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
@@ -20,11 +20,21 @@ import {
   KeyRound,
 } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
-import { forgotPassword as apiForgotPassword, resetPassword as apiResetPassword } from '../api/authApi';
+import {
+  forgotPassword as apiForgotPassword,
+  getGooglePartnerOAuthUrl,
+  resetPassword as apiResetPassword,
+} from '../api/authApi';
 
 type LoginType = 'select' | 'partner' | 'admin';
 type ForgotStep = 'idle' | 'email' | 'code' | 'success';
 type Lang = 'en' | 'hi';
+
+const getLoginTypeFromPath = (pathname: string): LoginType => {
+  if (pathname.startsWith('/login/restricted-access')) return 'admin';
+  if (pathname.startsWith('/login/partner')) return 'partner';
+  return 'select';
+};
 
 // --- i18n --------------------------------------------------------------------
 const i18n: Record<Lang, Record<string, string>> = {
@@ -146,7 +156,7 @@ const LogIn: React.FC = () => {
   const location = useLocation();
   const { login, isLoading, error: authError, clearError } = useAuthStore();
 
-  const [loginType, setLoginType]     = useState<LoginType>('select');
+  const [loginType, setLoginType]     = useState<LoginType>(() => getLoginTypeFromPath(location.pathname));
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -166,12 +176,35 @@ const LogIn: React.FC = () => {
   const t = i18n[lang];
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
 
+  useEffect(() => {
+    setLoginType(getLoginTypeFromPath(location.pathname));
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const reason = params.get('oauth');
+    if (!reason || reason === 'success') return;
+
+    const messages: Record<string, string> = {
+      account_link_required: 'Please sign in with your existing method.',
+      account_disabled: 'Account has been deactivated. Please contact support.',
+      oauth_unavailable: 'Google sign-in is not available right now.',
+      oauth_failed: 'Google sign-in failed. Please try again.',
+    };
+    setError(messages[reason] ?? messages.oauth_failed);
+    params.delete('oauth');
+    navigate(
+      { pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     clearError();
     try {
-      await login(email, password);
+      await login(email, password, loginType === 'admin' ? 'admin' : 'partner');
       const user = useAuthStore.getState().user;
       const isAdminRole = user?.role && ['super_admin', 'admin', 'manager', 'agent', 'viewer'].includes(user.role);
       if (loginType === 'admin'   && !isAdminRole)   { setError('You do not have admin access.'); return; }
@@ -194,7 +227,7 @@ const LogIn: React.FC = () => {
   };
 
   const handleBack = () => {
-    setLoginType('select');
+    navigate('/', { replace: true });
     setEmail('');
     setPassword('');
     setShowPassword(false);
@@ -266,6 +299,14 @@ const LogIn: React.FC = () => {
     } finally {
       setFpLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.assign(getGooglePartnerOAuthUrl());
+  };
+
+  const selectLoginType = (type: Exclude<LoginType, 'select'>) => {
+    navigate(type === 'admin' ? '/login/restricted-access' : '/login/partner');
   };
 
   const displayError = error || authError;
@@ -419,7 +460,7 @@ const LogIn: React.FC = () => {
                   <motion.div className="p-5 space-y-3" variants={stagger} initial="hidden" animate="visible">
 
                     {/* Partner card */}
-                    <motion.button variants={itemFade} onClick={() => setLoginType('partner')}
+                    <motion.button variants={itemFade} onClick={() => selectLoginType('partner')}
                       className="group w-full rounded-xl border border-transparent p-px shadow-sm hover:shadow-md transition-shadow"
                       style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
                       <div className="flex items-center gap-4 rounded-[11px] bg-white px-5 py-4 group-hover:bg-transparent transition-colors duration-300">
@@ -449,7 +490,7 @@ const LogIn: React.FC = () => {
                     </motion.div>
 
                     {/* Admin card */}
-                    <motion.button variants={itemFade} onClick={() => setLoginType('admin')}
+                    <motion.button variants={itemFade} onClick={() => selectLoginType('admin')}
                       className="group w-full flex items-center gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 transition-all hover:border-gray-400 hover:bg-gray-100">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-200 group-hover:bg-gray-800 transition-colors duration-300 shadow-sm">
                         <Shield size={17} className="text-gray-600 group-hover:text-white transition-colors duration-300" />
@@ -597,6 +638,17 @@ const LogIn: React.FC = () => {
                           ? <><Loader2 size={15} className="animate-spin" />{t.signingIn}</>
                           : t.signIn}
                       </motion.button>
+
+                      {isPartner && (
+                        <button
+                          type="button"
+                          onClick={handleGoogleLogin}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                        >
+                          <Mail size={15} />
+                          Continue with Google
+                        </button>
+                      )}
                     </form>
 
                     {/* Partner CTA */}

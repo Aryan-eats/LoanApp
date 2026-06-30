@@ -8,6 +8,8 @@
 
 import apiClient, { setAccessToken, getAccessToken, startSilentRefresh } from './apiClient';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 export interface PartnerRegistrationData {
   // Step 1: Basic Identity
   fullName: string;
@@ -52,10 +54,11 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   phone?: string;
-  role: 'admin' | 'partner';
+  role: 'super_admin' | 'admin' | 'manager' | 'agent' | 'viewer' | 'partner';
   isActive: boolean;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  onboardingStatus?: 'pending' | 'approved' | 'rejected' | null;
   createdAt: string;
 }
 
@@ -98,9 +101,13 @@ export const registerPartner = async (
  */
 export const login = async (
   email: string,
-  password: string
+  password: string,
+  portal: 'partner' | 'admin' = 'partner'
 ): Promise<ApiResponse<AuthResponse>> => {
-  const response = await apiClient.post('/auth/login', { email, password });
+  const endpoint = portal === 'admin'
+    ? '/auth/login/restricted-access'
+    : '/auth/login/partner';
+  const response = await apiClient.post(endpoint, { email, password });
   
   // Store access token in memory if login successful
   if (response.data.success && response.data.data) {
@@ -115,6 +122,9 @@ export const login = async (
 
   return response.data;
 };
+
+export const getGooglePartnerOAuthUrl = (): string =>
+  `${API_BASE_URL}/auth/login/partner/google`;
 
 /**
  * Get current user profile
@@ -283,6 +293,7 @@ export default {
   register,
   registerPartner,
   login,
+  getGooglePartnerOAuthUrl,
   getMe,
   logout,
   refreshToken,

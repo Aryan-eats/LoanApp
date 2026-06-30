@@ -3,6 +3,7 @@ import { protect, authorize } from '../../shared/middleware/auth.js';
 import { validateUUID, validateUUIDParam } from '../../shared/middleware/validateUUID.js';
 import { cacheControl } from '../../shared/middleware/cacheControl.js';
 import { resolvePartnerOrg } from '../../shared/middleware/partnerContext.js';
+import { requireApprovedPartnerOnboarding } from '../../shared/middleware/onboarding.js';
 import { getCurrentPartnerProfile } from './partners.controller.js';
 import partnerLeadRoutes from '../leads/partnerLead.routes.js';
 import partnerDataRoutes from '../partner-data/partnerData.routes.js';
@@ -14,6 +15,7 @@ router.param('id', validateUUIDParam);
 // All partner routes require authentication and partner role
 router.use(protect);
 router.use(authorize('partner'));
+router.use(requireApprovedPartnerOnboarding);
 router.use(resolvePartnerOrg);
 router.use(validateUUID);
 

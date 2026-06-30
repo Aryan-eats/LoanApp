@@ -48,6 +48,7 @@ export const formatUserResponse = (user: User) => ({
   isActive: user.isActive,
   isEmailVerified: user.isEmailVerified,
   isPhoneVerified: user.isPhoneVerified,
+  onboardingStatus: user.onboardingStatus,
   createdAt: user.createdAt,
 });
 

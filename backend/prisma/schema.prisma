@@ -56,6 +56,7 @@ model User {
   createdAt               DateTime             @default(now()) @map("created_at")
   updatedAt               DateTime             @updatedAt @map("updated_at")
   activeSessions          ActiveSession[]
+  oauthAccounts           OAuthAccount[]
   auditLogs               AuditLog[]
   updatedRolePermissions  RolePermission[]     @relation("RolePermissionUpdatedBy")
   leads                   Lead[]
@@ -98,6 +99,23 @@ model ActiveSession {
   @@index([userId])
   @@index([deviceFingerprint])
   @@map("active_sessions")
+}
+
+model OAuthAccount {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  email          String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@unique([provider, userId])
+  @@index([userId])
+  @@index([email])
+  @@map("oauth_accounts")
 }
 
 model RolePermission {
@@ -725,6 +743,10 @@ enum UserRole {
   partner
 }
 
+enum OAuthProvider {
+  google
+}
+
 enum PartnerType {
   freelancer
   used_car_dealer
@@ -793,6 +815,12 @@ enum AuditEventType {
   ACCOUNT_LOCKED
   TOKEN_REFRESH
   SUSPICIOUS_ACTIVITY
+  OAUTH_START
+  OAUTH_SUCCESS
+  OAUTH_FAILURE
+  OAUTH_ACCOUNT_LINKED
+  OAUTH_ACCOUNT_CREATED
+  OAUTH_ACCOUNT_LINK_BLOCKED
 
   // Lead lifecycle
   LEAD_CREATED

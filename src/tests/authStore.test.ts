@@ -34,6 +34,7 @@ describe('Auth Store', () => {
       user: null,
       isAuthenticated: false,
       isLoading: false,
+      authInitialized: false,
       error: null,
     });
     vi.clearAllMocks();
@@ -43,6 +44,7 @@ describe('Auth Store', () => {
     const state = useAuthStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);
+    expect(state.authInitialized).toBe(false);
   });
 
   it('logs in user and stores access token in memory', async () => {
@@ -149,6 +151,26 @@ describe('Auth Store', () => {
 
     expect(useAuthStore.getState().user?.role).toBe('super_admin');
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().authInitialized).toBe(true);
+  });
+
+  it('coalesces simultaneous auth bootstrap checks', async () => {
+    (getAccessToken as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (apiClient.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { accessToken: 'refreshed-token', expiresIn: 900 } },
+    });
+    (apiClient.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { data: { user: baseUser } },
+    });
+
+    await Promise.all([
+      useAuthStore.getState().checkAuth(),
+      useAuthStore.getState().checkAuth(),
+    ]);
+
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.get).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().authInitialized).toBe(true);
   });
 
   it('checkAuth refreshes token when no in-memory token exists', async () => {

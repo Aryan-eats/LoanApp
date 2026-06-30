@@ -24,6 +24,7 @@ export interface AuthUser {
   isActive: boolean;
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  onboardingStatus?: 'pending' | 'approved' | 'rejected' | null;
   createdAt: string;
 }
 
@@ -32,12 +33,13 @@ type PersistedAuthUser = Pick<AuthUser, 'id' | 'role'>;
 interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  authInitialized: boolean;
   isLoading: boolean;
   error: string | null;
 }
 
 interface AuthActions {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, portal?: 'partner' | 'admin') => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
@@ -94,15 +96,19 @@ export const useAuthStore = create<AuthStore>()(
       // State
       user: null,
       isAuthenticated: false,
+      authInitialized: false,
       isLoading: false,
       error: null,
 
       // Actions
-      login: async (email: string, password: string) => {
+      login: async (email: string, password: string, portal = 'partner') => {
         set({ isLoading: true, error: null });
 
         try {
-          const response = await apiClient.post('/auth/login', { email, password });
+          const endpoint = portal === 'admin'
+            ? '/auth/login/restricted-access'
+            : '/auth/login/partner';
+          const response = await apiClient.post(endpoint, { email, password });
           const data = response.data.data;
 
           const { user, accessToken, expiresIn } = data;
@@ -119,6 +125,7 @@ export const useAuthStore = create<AuthStore>()(
           set({
             user,
             isAuthenticated: true,
+            authInitialized: true,
             isLoading: false,
             error: null,
           });
@@ -130,6 +137,7 @@ export const useAuthStore = create<AuthStore>()(
           set({
             user: null,
             isAuthenticated: false,
+            authInitialized: true,
             isLoading: false,
             error: message,
           });
@@ -148,6 +156,7 @@ export const useAuthStore = create<AuthStore>()(
           set({
             user: null,
             isAuthenticated: false,
+            authInitialized: true,
             isLoading: false,
             error: null,
           });
@@ -180,6 +189,7 @@ export const useAuthStore = create<AuthStore>()(
                 set({
                   user: null,
                   isAuthenticated: false,
+                  authInitialized: true,
                   isLoading: false,
                   error: null,
                 });
@@ -196,6 +206,7 @@ export const useAuthStore = create<AuthStore>()(
               set({
                 user: null,
                 isAuthenticated: false,
+                authInitialized: true,
                 isLoading: false,
                 error: null,
               });
@@ -205,6 +216,7 @@ export const useAuthStore = create<AuthStore>()(
             set({
               user,
               isAuthenticated: true,
+              authInitialized: true,
               isLoading: false,
               error: null,
             });
@@ -214,6 +226,7 @@ export const useAuthStore = create<AuthStore>()(
             set({
               user: null,
               isAuthenticated: false,
+              authInitialized: true,
               isLoading: false,
               error: null,
             });

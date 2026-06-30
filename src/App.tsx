@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, Outlet } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Outlet, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SessionExpiryWarningModal from './components/SessionExpiryWarningModal';
 import PageTransition from './components/shared/PageTransition';
 import { PageSkeleton } from './components/shared/SkeletonLoader';
+import useAuthStore from './stores/authStore';
 
 // Lazy load pages for better performance
 const Home = lazy(() => import('./pages/Home'));
@@ -54,7 +55,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isPartnerDashboard = location.pathname.startsWith('/partner');
-  const isLoginPage = location.pathname === '/login';
+  const isLoginPage = location.pathname.startsWith('/login');
 
   const isUploadPage = location.pathname.startsWith('/upload');
 
@@ -87,7 +88,9 @@ const AppRoutes = () => {
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/apply" element={<PageTransition><div className="pt-24 pb-12 px-4"><ApplicationForm /></div></PageTransition>} />
         <Route path="/onboarding" element={<PageTransition><PartnerOnboarding /></PageTransition>} />
-        <Route path="/login" element={<PageTransition><LogIn /></PageTransition>} />
+        <Route path="/login" element={<Navigate to="/login/partner" replace />} />
+        <Route path="/login/partner" element={<PageTransition><LogIn /></PageTransition>} />
+        <Route path="/login/restricted-access" element={<PageTransition><LogIn /></PageTransition>} />
         <Route path="/forbidden" element={<PageTransition><Forbidden /></PageTransition>} />
         <Route path="/best-offers" element={<PageTransition><BestOffers /></PageTransition>} />
         <Route path="/upload/:token" element={<CustomerUploadPage />} />
@@ -126,13 +129,30 @@ const AppRoutes = () => {
   );
 };
 
+const AuthBootstrap = ({ children }: { children: React.ReactNode }) => {
+  const checkAuth = useAuthStore((state) => state.checkAuth);
+  const authInitialized = useAuthStore((state) => state.authInitialized);
+
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
+
+  if (!authInitialized) {
+    return <PageSkeleton />;
+  }
+
+  return <>{children}</>;
+};
+
 function App() {
   return (
     <ErrorBoundary>
       <Router>
         <AppLayout>
           <Suspense fallback={<PageSkeleton />}>
-            <AppRoutes />
+            <AuthBootstrap>
+              <AppRoutes />
+            </AuthBootstrap>
           </Suspense>
         </AppLayout>
         <SessionExpiryWarningModal />
